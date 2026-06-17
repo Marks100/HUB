@@ -21,6 +21,7 @@
 #include "BUZZER.h"
 #include "CTRL_AXIS.h"
 #include "nvic_driver.h"
+#include "TB_CBK.h"
 
 void app_main( void )
 {
@@ -53,6 +54,7 @@ void app_main( void )
     ESP01_init( &esp01_cfg_s );
     HAL_USART2_set_callback( esp01_uart_byte_rx );
     WIFI_init( &wifi_cfg_s );
+    TB_CBK_init( &tb_cfg_s );
     TB_init( &tb_cfg_s );
     MODE_MGR_init();
 

@@ -102,7 +102,7 @@ MCAL_INCLUDES                := $(addprefix -I ,$(shell find $(MCAL_SRC_DIR) $(M
 ####################################################################################################
 APP_C_SRCS                   := $(shell find $(APP_SRC_DIRS) -type f -name '*.c')
 APP_S_SRCS                   := $(shell find $(APP_SRC_DIRS) -type f -name '*.S')
-COMMON_SRCS                  := $(shell find $(COMMON_SRC_DIRS) -type f -name '*.c' ! -path '*/test/*' ! -path '*/MCAL/*' ! -path '*/CRYPTO/*' ! -path '*/xCOMMON_MODULES/cfg/*' ! -path '*/JSON/*')
+COMMON_SRCS                  := $(shell find $(COMMON_SRC_DIRS) -type f -name '*.c' ! -path '*/test/*' ! -path '*/MCAL/*' ! -path '*/CRYPTO/*' ! -path '*/xCOMMON_MODULES/cfg/*')
 
 # Include paths - add "-I" prefix to all discovered directories
 # Exclude all MCAL subdirs from the broad search; MCAL headers come exclusively from MCAL_INCLUDES

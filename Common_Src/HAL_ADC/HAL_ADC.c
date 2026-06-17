@@ -113,6 +113,31 @@ u16_t HAL_ADC_measure_vref_internal( void )
 /*!
 ****************************************************************************************************
 *
+*   \brief          measure the STM32 internal temperature sensor (raw ADC count)
+*
+*   \author
+*
+*   \return         none
+*
+***************************************************************************************************/
+u16_t HAL_ADC_measure_STM32_temp_raw( void )
+{
+    u16_t result = 0u;
+
+    ADC_TempSensorVrefintCmd( ENABLE );
+    ADC_RegularChannelConfig( ADC1, ADC_Channel_TempSensor, 1u, ADC_SampleTime_239Cycles5 );
+    ADC_SoftwareStartConvCmd( ADC1, ENABLE );
+    while( ADC_GetFlagStatus( ADC1, ADC_FLAG_EOC ) == RESET );
+    result = ADC_GetConversionValue( ADC1 );
+    ADC_ClearFlag( ADC1, ADC_FLAG_EOC );
+    ADC_TempSensorVrefintCmd( DISABLE );
+
+    return( result );
+}
+
+/*!
+****************************************************************************************************
+*
 *   \brief          measure the NTC
 *
 *   \author

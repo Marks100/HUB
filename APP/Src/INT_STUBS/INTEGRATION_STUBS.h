@@ -36,7 +36,7 @@ extern const NVM_func_p_st           nvm_persist_block_s;
 extern const WDG_HW_STM32_config_st  wdg_cfg_s;
 extern const ESP01_cfg_st            esp01_cfg_s;
 extern const WIFI_config_st          wifi_cfg_s;
-extern const TB_config_st            tb_cfg_s;
+extern       TB_config_st            tb_cfg_s;
 
 bool_et app_tick_pending( void );
 void    esp01_uart_byte_rx( u8_t byte );

@@ -12,6 +12,7 @@
 #include "PERSIST_BLK.h"
 #include "FLS_STM32F1.h"
 #include "nvic_driver.h"
+#include "TB_CBK.h"
 
 /***************************************************************************************************
 **                              APP HEADER                                                        **
@@ -285,17 +286,17 @@ const WIFI_config_st wifi_cfg_s =
 /***************************************************************************************************
 **                              TB (ThingsBoard)                                                 **
 ***************************************************************************************************/
-const TB_config_st tb_cfg_s =
+TB_config_st tb_cfg_s =
 {
     .broker           = "your-tb-host.com",
     .port             = 1883u,
     .client_id        = "HUB_DEVICE",
     .token            = "YOUR_ACCESS_TOKEN",
     .send_func_p      = WIFI_send,
-    .telemetry_topics = NULL_P,
-    .num_telemetry    = 0u,
-    .rpc_handlers     = NULL_P,
-    .num_rpc_handlers = 0u,
+    .telemetry_topics = tb_telemetry_topics_s,
+    .num_telemetry    = 0u,   /* set by TB_CBK_init() */
+    .rpc_handlers     = tb_rpc_handlers_s,
+    .num_rpc_handlers = 0u,   /* set by TB_CBK_init() */
 };
 
 /****************************** END OF FILE *******************************************************/
