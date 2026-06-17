@@ -6,6 +6,7 @@
 #include "HAL_ADC.h"
 #include "HAL_TIM.h"
 #include "HAL_SPI.h"
+#include "HAL_UART.h"
 #include "MODE_MGR.h"
 #include "RF_MGR.h"
 #include "PERSIST_BLK.h"
@@ -84,12 +85,10 @@ const TIME_cfg_st time_cfg_s =
 /***************************************************************************************************
 **                              BTN_MGR                                                           **
 ***************************************************************************************************/
-const BTN_MGR_func_table_st btm_mgr_func_table_s[4] =
+const BTN_MGR_func_table_st btm_mgr_func_table_s[2] =
 {
-    { "DBG_S1",    FALSE, HAL_BRD_read_S1_pin,           MODE_MGR_ccw_scroll_cbk,    NULL_P },
-    { "DBG_S2",    FALSE, HAL_BRD_read_S2_pin,           MODE_MGR_cw_scroll_cbk,     NULL_P },
-    { "Rotary_sw", TRUE,  HAL_BRD_read_rotary_sw_pin,    MODE_MGR_enter_pressed_cbk, NULL_P },
-    { "Reset_sw",  TRUE,  HAL_BRD_read_lcd_reset_sw_pin, MODE_MGR_reset_pressed_cbk, NULL_P },
+    { "DBG_S1", FALSE, HAL_BRD_read_S1_pin, MODE_MGR_ccw_scroll_cbk, NULL_P },
+    { "DBG_S2", FALSE, HAL_BRD_read_S2_pin, MODE_MGR_cw_scroll_cbk,  NULL_P },
 };
 
 /***************************************************************************************************
@@ -149,7 +148,7 @@ NRF24_instance_st nrf24_instance_s =
 {
     .ce_pin_func_p         = HAL_BRD_NRF24_set_ce_pin_state,
     .cs_pin_func_p         = HAL_BRD_NRF24_spi_slave_select,
-    .spi_func_p            = HAL_SPI2_write_and_read_data,
+    .spi_func_p            = HAL_SPI1_write_and_read_data,
     .us_delay_func_p       = DWT_delay_us,
     .packet_tx_conf_func_p = RF_MGR_tx_complete,
     .packet_rx_func_p      = RF_MGR_get_rx_frame
@@ -226,6 +225,77 @@ CTRL_AXIS_instance_st throttle_axis_s;
 const WDG_HW_STM32_config_st wdg_cfg_s =
 {
     .timeout_ms = 5000u
+};
+
+/***************************************************************************************************
+**                              ESP01                                                            **
+***************************************************************************************************/
+static u8_t  esp01_rx_buf_s[ESP01_MAX_RX_SIZE];
+static u16_t esp01_rx_idx_s = 0u;
+
+void esp01_uart_byte_rx( u8_t byte )
+{
+    if( esp01_rx_idx_s < ESP01_MAX_RX_SIZE )
+    {
+        esp01_rx_buf_s[esp01_rx_idx_s++] = byte;
+
+        if( ( esp01_rx_idx_s >= 2u ) &&
+            ( esp01_rx_buf_s[esp01_rx_idx_s - 2u] == '\r' ) &&
+            ( esp01_rx_buf_s[esp01_rx_idx_s - 1u] == '\n' ) )
+        {
+            ESP01_uart_frame_ready_callback( esp01_rx_buf_s, esp01_rx_idx_s );
+            esp01_rx_idx_s = 0u;
+        }
+    }
+    else
+    {
+        esp01_rx_idx_s = 0u;
+    }
+}
+
+static void esp01_uart_tx( u8_t* data_p, u16_t len )
+{
+    HAL_USART2_send_data( (const char*)data_p, len );
+}
+
+const ESP01_cfg_st esp01_cfg_s =
+{
+    .initial_mode                 = ESP01_STA,
+    .uart_tx_func_p               = esp01_uart_tx,
+    .network_packet_rx_callback_p = WIFI_esp01_rx_handler,
+};
+
+/***************************************************************************************************
+**                              WIFI                                                             **
+***************************************************************************************************/
+static void on_wifi_send_complete( pass_fail_et result )
+{
+    (void)result;
+    TB_notify_event( TB_EVENT_SEND_COMPLETE );
+}
+
+const WIFI_config_st wifi_cfg_s =
+{
+    .ssid                     = (const u8_t*)"BTHub6-TFH6",
+    .password                 = (const u8_t*)"4YEWArmQiDHL",
+    .rx_callback_p            = tb_mqtt_rx_handler,
+    .send_complete_callback_p = on_wifi_send_complete,
+};
+
+/***************************************************************************************************
+**                              TB (ThingsBoard)                                                 **
+***************************************************************************************************/
+const TB_config_st tb_cfg_s =
+{
+    .broker           = "your-tb-host.com",
+    .port             = 1883u,
+    .client_id        = "HUB_DEVICE",
+    .token            = "YOUR_ACCESS_TOKEN",
+    .send_func_p      = WIFI_send,
+    .telemetry_topics = NULL_P,
+    .num_telemetry    = 0u,
+    .rpc_handlers     = NULL_P,
+    .num_rpc_handlers = 0u,
 };
 
 /****************************** END OF FILE *******************************************************/

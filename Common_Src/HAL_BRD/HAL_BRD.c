@@ -32,12 +32,6 @@ void HAL_BRD_init( void )
 	GPIO_PinRemapConfig( GPIO_Remap_SWJ_JTAGDisable, ENABLE );
 
 	/* Configure the GPIOs */
-	/* Configure the DEBUG selector pin, its important that this comes first */
-	GPIO_InitStructure.GPIO_Pin = DEBUG_SEL_PIN;
-	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IPD;
-	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_10MHz;
-	GPIO_Init( DEBUG_SEL_PORT, &GPIO_InitStructure );
-
 	GPIO_InitStructure.GPIO_Pin = PANEL_2_BTN_PIN;
 	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IPD;
 	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_10MHz;
@@ -61,13 +55,6 @@ void HAL_BRD_init( void )
 	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_10MHz;
 	GPIO_Init( NRF_CE_PORT, &GPIO_InitStructure );
 	HAL_BRD_NRF24_set_ce_pin_state( LOW );
-
-	/* Configure the power pin for the NRF24l01 and set it low immediately*/
-	GPIO_InitStructure.GPIO_Pin = NRF_PWR_EN_PIN;
-	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_Out_PP;
-	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_2MHz;
-	GPIO_Init( NRF_PWR_EN_PORT, &GPIO_InitStructure );
-	HAL_BRD_set_NRF_power_pin_state( OFF );
 
 	/* Configure the GPIO_LED pin and set LOW immediately */
 	GPIO_InitStructure.GPIO_Pin = ONBOARD_LED_PIN;
@@ -199,21 +186,6 @@ void HAL_BRD_toggle_onboard_led( void )
 	HAL_BRD_toggle_pin_state( ONBOARD_LED_PORT, ONBOARD_LED_PIN );
 }
 
-/*!
-****************************************************************************************************
-*
-*   \brief         Sets the state oftheNRF PWR pin
-*
-*   \author        MS
-*
-*   \return        None
-*
-***************************************************************************************************/
-void HAL_BRD_set_NRF_power_pin_state( off_on_et state )
-{
-	/* Inverse logic for PNP transistor */
-	HAL_BRD_set_pin_state( NRF_PWR_EN_PORT, NRF_PWR_EN_PIN, (low_high_et)!state );
-}
 
 /*!
 ****************************************************************************************************
@@ -245,22 +217,6 @@ void HAL_BRD_toggle_debug_mode_led( void )
     HAL_BRD_toggle_pin_state( DEBUG_MODE_LED_PORT, DEBUG_MODE_LED_PIN );
 }
 
-/*!
-****************************************************************************************************
-*
-*   \brief         Reads the state of the debug pin
-*
-*   \author        MS
-*
-*   \return        None
-*
-***************************************************************************************************/
-low_high_et HAL_BRD_read_debug_mode_pin( void )
-{
-	low_high_et state = HAL_BRD_read_pin_state( DEBUG_SEL_PORT, DEBUG_SEL_PIN );
-
-	return( state );
-}
 
 /*!
 ****************************************************************************************************
@@ -352,15 +308,6 @@ low_high_et HAL_BRD_read_S2_pin( void )
 	return HAL_BRD_read_pin_state( PANEL_3_BTN_PORT, PANEL_3_BTN_PIN );
 }
 
-low_high_et HAL_BRD_read_rotary_sw_pin( void )
-{
-	return HAL_BRD_read_pin_state( ROTARY_SW_PORT, ROTARY_SW_PIN );
-}
-
-low_high_et HAL_BRD_read_lcd_reset_sw_pin( void )
-{
-	return HAL_BRD_read_pin_state( LCD_RST_SW_PORT, LCD_RST_SW_PIN );
-}
 
 void HAL_BRD_set_lcd_a0_pin( low_high_et state )
 {
@@ -469,16 +416,7 @@ void EXTI15_10_IRQHandler(void)
 			HAL_BRD_nrf_func_p = NULL_P;
 		}
 
-		/* Clear interrupt flag */
 		EXTI_ClearITPendingBit( NRF24_IRQ_EXT_LINE );
-	}
-
-	/* Make sure that interrupt flag is set */
-	if( EXTI_GetFlagStatus( EXTI_Line15 ) != RESET )
-	{
-	    /* Now we keep track of the interrupt edge */
-		/* Clear interrupt flag */
-		EXTI_ClearITPendingBit(EXTI_Line15);
 	}
 }
 

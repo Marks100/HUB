@@ -1,7 +1,8 @@
 {
   "permissions": {
     "allow": [
-      "PowerShell(Get-Command app_crc_injector -ErrorAction SilentlyContinue)"
+      "PowerShell(Get-Command app_crc_injector -ErrorAction SilentlyContinue)",
+      "PowerShell(cd \"c:\\\\Users\\\\marks\\\\OneDrive\\\\Desktop\\\\Projects\\\\HUB\\\\APP\"; make app_build 2>&1 | Select-String -Pattern \"libg_nano|TOTAL|error:|warning:\" | ForEach-Object { $_.Line })"
     ]
   }
 }

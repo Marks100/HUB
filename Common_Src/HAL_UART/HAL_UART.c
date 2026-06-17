@@ -178,6 +178,17 @@ void HAL_USART2_init( void )
 	/* Enable USART2 clock */
 	RCC_APB1PeriphClockCmd( RCC_APB1Periph_USART2, ENABLE );
 
+	/* Configure PA2 (TX) as AF push-pull, PA3 (RX) as floating input */
+	GPIO_InitTypeDef GPIO_InitStructure;
+	GPIO_InitStructure.GPIO_Pin   = ESP_TX_PIN;
+	GPIO_InitStructure.GPIO_Mode  = GPIO_Mode_AF_PP;
+	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_10MHz;
+	GPIO_Init( ESP_UART_PORT, &GPIO_InitStructure );
+
+	GPIO_InitStructure.GPIO_Pin  = ESP_RX_PIN;
+	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IN_FLOATING;
+	GPIO_Init( ESP_UART_PORT, &GPIO_InitStructure );
+
 	/* NVIC Configuration */
 	NVIC_InitTypeDef NVIC_InitStructure;
 	/* Enable the USARTx Interrupt */

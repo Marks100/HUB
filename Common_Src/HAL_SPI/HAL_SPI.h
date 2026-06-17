@@ -32,12 +32,9 @@
 **                              Function Prototypes                                               **
 ***************************************************************************************************/
 void  HAL_SPI1_init( void );
-void  HAL_SPI2_init( void );
 void  HAL_SPI1_de_init( void );
-void  HAL_SPI2_de_init( void );
-void  HAL_SPI1_write_and_read_data( u8_t* tx_data, u8_t* rx_data, u8_t num_bytes );
+void  HAL_SPI1_write_and_read_data( u8_t* tx_data, u8_t* rx_data, u16_t num_bytes );
 void  HAL_SPI1_send_byte( u8_t data );
-void  HAL_SPI2_write_and_read_data( u8_t* tx_data, u8_t* rx_data, u16_t num_bytes );
 void  HAL_SPI1_clear_receive_spi_buffer( void );
 
 #endif /* HAL_SPI_H multiple inclusion guard */

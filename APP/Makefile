@@ -102,7 +102,7 @@ MCAL_INCLUDES                := $(addprefix -I ,$(shell find $(MCAL_SRC_DIR) $(M
 ####################################################################################################
 APP_C_SRCS                   := $(shell find $(APP_SRC_DIRS) -type f -name '*.c')
 APP_S_SRCS                   := $(shell find $(APP_SRC_DIRS) -type f -name '*.S')
-COMMON_SRCS                  := $(shell find $(COMMON_SRC_DIRS) -type f -name '*.c' ! -path '*/test/*' ! -path '*/MCAL/*' ! -path '*/CRYPTO/*' ! -path '*/TB/*' ! -path '*/xCOMMON_MODULES/cfg/*')
+COMMON_SRCS                  := $(shell find $(COMMON_SRC_DIRS) -type f -name '*.c' ! -path '*/test/*' ! -path '*/MCAL/*' ! -path '*/CRYPTO/*' ! -path '*/xCOMMON_MODULES/cfg/*' ! -path '*/JSON/*')
 
 # Include paths - add "-I" prefix to all discovered directories
 # Exclude all MCAL subdirs from the broad search; MCAL headers come exclusively from MCAL_INCLUDES
@@ -124,8 +124,8 @@ TARGET_DEPS                  := $(APP_C_OBJS:.o=.d) $(COMMON_OBJS:.o=.d) $(MCAL_
 # Compilation Settings
 ####################################################################################################
 ifeq ($(RELEASE),y)
-    APP_OPTIMISATION         := -Og
-    COMMON_OPTIMISATION      := -Og
+    APP_OPTIMISATION         := -Os
+    COMMON_OPTIMISATION      := -Os
     MCAL_OPTIMISATION        := -Os
 else
     APP_OPTIMISATION         := -Og
@@ -137,6 +137,8 @@ endif
 LDFLAGS := \
     $(LDFLAGS_COMMON) \
     $(APP_OPTIMISATION) \
+    --specs=nano.specs \
+    --specs=nosys.specs \
     "-Wl,-Map=$(APP_MAP_FILE)" \
     -L$(dir $(APP_LINKER_SCRIPT)) \
     -T$(APP_LINKER_SCRIPT) \

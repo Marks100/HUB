@@ -42,7 +42,20 @@ typedef enum
 
 typedef enum
 {
+    RF_MGR_MODE_TX = 0u,
+    RF_MGR_MODE_RX,
+} RF_MGR_mode_et;
+
+typedef struct
+{
+    RF_MGR_mode_et mode;
+    u8_t           channel;
+} RF_MGR_cfg_st;
+
+typedef enum
+{
     RF_MGR_IDLE = 0u,
+    RF_MGR_APPLY_CFG,
     RF_MGR_SETUP_TX,
     RF_MGR_TX,
     RF_MGR_WAIT_FOR_TX_COMPLETE,
@@ -75,7 +88,7 @@ typedef struct
 /***************************************************************************************************
 **                              Function Prototypes                                               **
 ***************************************************************************************************/
-void               RF_MGR_init( RF_MGR_rf_state_et state, u8_t channel );
+void               RF_MGR_init( RF_MGR_cfg_st cfg );
 void               RF_MGR_tick( void );
 RF_MGR_rf_state_et RF_MGR_get_state( void );
 void               RF_MGR_tx_complete( pass_fail_et state );

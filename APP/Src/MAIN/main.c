@@ -38,8 +38,8 @@ void app_main( void )
     HAL_TIM3_init();
     HAL_TIM4_init_encoder();
     HAL_USART1_init();
+    HAL_USART2_init();
     HAL_SPI1_init();
-    HAL_SPI2_init();
     CHKSUM_init_hw_crc( &hw_crc_cfg_s );
     UID_init();
     BTN_MGR_init( (BTN_MGR_func_table_st*)&btm_mgr_func_table_s, sizeof(btm_mgr_func_table_s)/sizeof(BTN_MGR_func_table_st), NULL_P, 0u );
@@ -49,8 +49,11 @@ void app_main( void )
     WS2811_init( &ws2811_instance_s );
     ST7567_init( &st7567_func_table_s );
     NRF24_init( &nrf24_instance_s );
-    //NRF24_apply_config( &nrf24_instance_s, NRF24_DEFAULT_CONFIG );
-    RF_MGR_init( RF_MGR_SETUP_TX, 0u );
+    RF_MGR_init( (RF_MGR_cfg_st){ .mode = RF_MGR_MODE_TX, .channel = 0u } );
+    ESP01_init( &esp01_cfg_s );
+    HAL_USART2_set_callback( esp01_uart_byte_rx );
+    WIFI_init( &wifi_cfg_s );
+    TB_init( &tb_cfg_s );
     MODE_MGR_init();
 
     SYSTICK_init( &systick_cfg_s, SystemCoreClock );
@@ -66,6 +69,9 @@ void app_main( void )
 
         if( app_tick_pending() )
         {
+            ESP01_tick();
+            WIFI_tick();
+            TB_tick();
             MODE_MGR_tick();
         }
     }

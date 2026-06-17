@@ -57,6 +57,7 @@ CFLAGS :=  \
 	-Wno-pragmas \
 	-Wno-pointer-sign \
 	-ffunction-sections \
+	-fdata-sections \
 	-Wno-format \
 	-Wno-unused-function \
 	-Wno-unused-variable \

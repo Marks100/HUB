@@ -12,15 +12,14 @@
 /* Module Identification for assert functionality */
 #define STDC_MODULE_ID STDC_RF_MGR
 
-extern NRF24_instance_st      nrf24_instance_s;
-extern CTRL_AXIS_instance_st  steering_axis_s;
-extern CTRL_AXIS_instance_st  throttle_axis_s;
+extern NRF24_instance_st nrf24_instance_s;
 
 /***************************************************************************************************
 **                              Data declarations and definitions                                 **
 ***************************************************************************************************/
 STATIC RF_MGR_data_st     rf_mgr_data_s;
 STATIC RF_MGR_rf_state_et rf_mgr_state_s;
+STATIC RF_MGR_cfg_st      rf_mgr_cfg_s;
 STATIC u8_t               rf_mgr_chan_freq_s[7u] = { 0, 20, 40, 60, 80, 100, 120 };
 
 /***************************************************************************************************
@@ -38,12 +37,11 @@ STATIC u8_t               rf_mgr_chan_freq_s[7u] = { 0, 20, 40, 60, 80, 100, 120
 *   \note
 *
 ***************************************************************************************************/
-void RF_MGR_init( RF_MGR_rf_state_et state, u8_t channel )
+void RF_MGR_init( RF_MGR_cfg_st cfg )
 {
-    rf_mgr_state_s = state;
+    rf_mgr_cfg_s   = cfg;
+    rf_mgr_state_s = RF_MGR_APPLY_CFG;
     STDC_memset( &rf_mgr_data_s, 0x00, sizeof( rf_mgr_data_s ) );
-
-    rf_mgr_configure_transmitt_mode( channel );
 }
 
 /*!
@@ -72,27 +70,55 @@ void RF_MGR_tick( void )
         {
         }
         break;
-        
+
+        case RF_MGR_APPLY_CFG:
+        {
+            NRF24_apply_config( &nrf24_instance_s, NRF24_DEFAULT_CONFIG );
+
+            if( rf_mgr_cfg_s.mode == RF_MGR_MODE_TX )
+            {
+                rf_mgr_set_state( RF_MGR_SETUP_TX );
+            }
+            else
+            {
+                rf_mgr_set_state( RF_MGR_SETUP_RX );
+            }
+        }
+        break;
+
         case RF_MGR_SETUP_TX:
         {
-            rf_mgr_configure_transmitt_mode( 0u );
+            rf_mgr_configure_transmitt_mode( rf_mgr_cfg_s.channel );
             rf_mgr_set_state( RF_MGR_TX );
         }
 
         /* Intentional fallthrough */
         case RF_MGR_TX:
-        {           
+        {
             /* Setup the payload */
             rf_mgr_setup_tx_payload();
-            rf_mgr_send_payload(); 
+            rf_mgr_send_payload();
 
             rf_mgr_set_state( RF_MGR_WAIT_FOR_TX_COMPLETE );
         }
 
         /* Intentional fallthrough */
         case RF_MGR_WAIT_FOR_TX_COMPLETE:
-        { 
-            /* A callback will be triggered when the frame is either sent sucesfully or failed */          
+        {
+            /* A callback will be triggered when the frame is either sent sucesfully or failed */
+        }
+        break;
+
+        case RF_MGR_SETUP_RX:
+        {
+            rf_mgr_configure_receive_mode();
+            rf_mgr_set_state( RF_MGR_RX );
+        }
+
+        /* Intentional fallthrough */
+        case RF_MGR_RX:
+        {
+            /* Waiting for frames - handled by RF_MGR_get_rx_frame callback */
         }
         break;
 
@@ -297,11 +323,6 @@ void rf_mgr_setup_tx_payload( void )
 
     /* RF MGR handles the packet number */
     rf_mgr_data_s.tx_payload[0u] = rf_mgr_data_s.tx_packet_num;
-
-    /* Byte 1 handle the pwm value */
-    rf_mgr_data_s.tx_payload[1u] = (u8_t)CTRL_AXIS_get_output( &steering_axis_s );
-
-    rf_mgr_data_s.tx_payload[2u] = (u8_t)CTRL_AXIS_get_output( &throttle_axis_s );
 
     /* Calculate checksum and place at byte 31 */
     rf_mgr_data_s.tx_payload[31u] = CHKSUM_calc_byte_wise_checksum( rf_mgr_data_s.tx_payload, RF_MGR_MAX_PAYLOAD_SIZE - 1u );
