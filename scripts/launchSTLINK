@@ -1,0 +1,3 @@
+#!/bin/bash
+
+start $PTLD/Workspace/ceedling_test.coproj

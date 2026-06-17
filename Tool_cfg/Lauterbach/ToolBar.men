@@ -1,0 +1,53 @@
+MENU.ReProgram
+(
+	ADD
+	TOOLBAR
+	(
+		TOOLITEM "REFLASH AND DEBUG" "[:flashstate]" ""
+		(
+			DO s32k144_flash.cmm
+		)
+		SEPARATOR
+		TOOLITEM "FLASH AND RUN" "[:flash]" ""
+		(
+			DO s32k144_flash.cmm
+			Go
+		)
+		SEPARATOR
+		TOOLITEM "RESET CORE" "[:refresh]" ""
+		(
+			SYStem.down
+			SYStem.up
+			Go.Direct main
+			List.auto
+		)
+		SEPARATOR
+		TOOLITEM "RESET CORE AND RUN" "[:redo]" ""
+		(
+			SYStem.down
+			SYStem.up
+			Go
+			List.auto
+		)
+		SEPARATOR
+		TOOLITEM "NODEBUG" "[:flashreset]" ""
+		(
+			SYStem.mode.nodebug
+		)
+		TOOLITEM "Attach" "[:oinfo]" ""
+		(
+			SYStem.mode.Attach
+		)
+		SEPARATOR
+		TOOLITEM "Snooper" "[:iview]" ""
+		(
+			SNOOPer.SELect %Long MODE_MGR_tick_timer_msecs_s
+			SNOOPer.Rate 100us
+			SNOOPer.SIZE 100000
+			SNOOPer.Mode PC
+			SNOOPer.Arm
+			SNOOPer.state
+		)
+	)
+)	
+

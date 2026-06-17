@@ -1,0 +1,15 @@
+
+
+; Environment variables
+OS=
+ID=T32
+TMP=
+SYS=C:\SVN_source\Tools\Lauterbach\T32
+
+
+; USB information 
+PBI=
+USB
+
+; Printer settings 
+PRINTER=WINDOWS

@@ -1,0 +1,127 @@
+{
+    // See https://go.microsoft.com/fwlink/?LinkId=733558
+    // for the documentation about the tasks.json format
+    "version": "2.0.0",
+    "tasks":
+     [
+        {
+            "label": "flash_with_jlink",
+            "type": "shell",
+            "options": { "cwd": "${workspaceFolder}/APP" },
+            "command": "JFlash.exe -openprj\"${workspaceFolder}/APP/Tool_cfg/Jflash/jflash_proj.jflash\" -open\"./APP/Build_output/STM32_RF_HUB_APP.elf\" -auto -min -exit",
+        },
+        {
+            "label": "all",
+            "type": "shell",
+            "options": { "cwd": "${workspaceFolder}/APP" },
+            "command": "mingw32-make.exe all",
+        },
+        {
+            "label": "APP_build",
+            "type": "shell",
+            "options": { "cwd": "${workspaceFolder}/APP" },
+            "command": "mingw32-make.exe app_build",
+        },
+        {
+            "label": "APP_rebuild",
+            "type": "shell",
+            "options": { "cwd": "${workspaceFolder}/APP" },
+            "command": "mingw32-make.exe app_rebuild",
+        },
+        {
+            "label": "BM_build",
+            "type": "shell",
+            "options": { "cwd": "${workspaceFolder}/BM" },
+            "command": "mingw32-make.exe bm_build",
+        },
+        {
+            "label": "BM_rebuild",
+            "type": "shell",
+            "options": { "cwd": "${workspaceFolder}/BM" },
+            "command": "mingw32-make.exe bm_rebuild",
+        },
+        {
+            "label": "Combined_image",
+            "type": "shell",
+            "options": { "cwd": "${workspaceFolder}/APP" },
+            "command": "mingw32-make.exe full_image",
+        },
+        {
+            "label": "total_clean",
+            "type": "shell",
+            "options": { "cwd": "${workspaceFolder}/APP" },
+            "command": "mingw32-make.exe total_clean",
+        },
+        {
+            "label": "test_specific",
+            "type": "shell",
+            "options": { "cwd": "${workspaceFolder}/APP" },
+            "command": "mingw32-make.exe ${fileBasenameNoExtension}.test",
+        },
+        {
+            "label": "test_specific_bl",
+            "type": "shell",
+            "options": { "cwd": "${workspaceFolder}/BM" },
+            "command": "mingw32-make.exe ${fileBasenameNoExtension}.test",
+        },
+        {
+            "label": "test_specific_cov_report",
+            "type": "shell",
+            "options": { "cwd": "${workspaceFolder}/APP" },
+            "command": "mingw32-make.exe ${fileBasenameNoExtension}.test_cov",
+        },
+        {
+            "label": "test_all",
+            "type": "shell",
+            "options": { "cwd": "${workspaceFolder}/APP" },
+            "command": "mingw32-make.exe test_unit_all test_int_all",
+        },
+        {
+            "label": "gen_overall_gcovr_report",
+            "type": "shell",
+            "options": { "cwd": "${workspaceFolder}/APP" },
+            "command": "mingw32-make.exe gen_lcov_report",
+        },
+        {
+            "label": "APP_memory_stats",
+            "type": "shell",
+            "options": { "cwd": "${workspaceFolder}/APP" },
+            "command": "mingw32-make.exe full_memory_stats",
+        },
+        {
+            "label": "BM_memory_stats",
+            "type": "shell",
+            "options": { "cwd": "${workspaceFolder}/BM" },
+            "command": "mingw32-make.exe memory_stats",
+        },
+        {
+            "label": "release_package",
+            "type": "shell",
+            "options": { "cwd": "${workspaceFolder}/APP" },
+            "command": "mingw32-make.exe release_package",
+        },
+        {
+            "label": "doxygen",
+            "type": "shell",
+            "options": { "cwd": "${workspaceFolder}/APP" },
+            "command": "mingw32-make.exe doxygen",
+        },
+        {
+            "label": "analyse_app_mapfile",
+            "type": "shell",
+            "options": { "cwd": "${workspaceFolder}/APP" },
+            "command": "mingw32-make.exe analyse_app_mapfile",
+        },
+        {
+            "label": "trace32",
+            "type": "process",
+            "command": "bash",
+            "args": ["scripts/trace32"],
+            "options": {
+                "cwd": "${workspaceFolder}",
+                "env": { "PTLD": "${workspaceFolder}" }
+            },
+            "isBackground": true,
+        },
+    ]
+}

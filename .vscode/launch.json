@@ -1,0 +1,91 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "type": "cortex-debug",
+      "request": "launch",
+      "name": "Stm32 flash & Debug",
+      "cwd": "${workspaceFolder}",
+      "executable": "RF_HUB_APP_BM_combined.hex",
+      "showDevDebugOutput": "raw",
+      "gdbPath": "C:\\SVN_source\\Tools\\gcc-arm\\10.3.0\\bin\\arm-none-eabi-gdb.exe",
+      "loadFiles": [
+        "APP/Build_output/APP_BM_combined.hex",
+      ],
+      "symbolFiles": [
+        {
+          "file": "BM/Build_output/BM.elf"
+        },
+        {
+          "file": "APP/Build_output/APP.elf"
+        }
+      ],
+      "serverpath": "C:/SVN_source/Tools/SEGGER/JLink_V788/JLinkGDBServerCL.exe",
+      "servertype": "jlink",
+      "device": "STM32F103C8",
+      "interface": "swd",
+      "preLaunchTask": "",
+      "svdFile": "${workspaceFolder}/Common_Src/svd/STM32F103.svd"
+    },
+    {
+      "type": "cortex-debug",
+      "request": "attach",
+      "name": "Stm32 Attach",
+      "cwd": "${workspaceRoot}",
+      "executable": "",
+      "symbolFiles": [
+        {
+          "file": "BM/Build_output/RF_HUB_BM.elf"
+        },
+        {
+          "file": "APP/Build_output/RF_HUB_APP.elf"
+        }
+      ],
+      "serverpath": "C:/SVN_source/Tools/SEGGER/JLink_V620b/JLinkGDBServerCL.exe",
+      "servertype": "jlink",
+      "device": "STM32F103C8",
+      "interface": "swd",
+      "preLaunchTask": "",
+      "svdFile": "${workspaceFolder}/Common_Src/svd/STM32F103.svd"
+    },
+    {
+      "name": "Ceedling Debug",
+      "type": "cppdbg",
+      "request": "launch",
+      "program": "${workspaceFolder}/APP/test/build/gcov/out/${fileBasenameNoExtension}.out",
+      "args": [],
+      "stopAtEntry": false,
+      "cwd": "${workspaceFolder}",
+      "environment": [],
+      "externalConsole": false,
+      "MIMode": "gdb",
+      "miDebuggerPath": "${env:TTLD}/MinGW/TDM32_492_0/bin/gdb.exe",
+      "setupCommands": [
+        {
+          "description": "Enable pretty-printing for gdb",
+          "text": "-enable-pretty-printing",
+          "ignoreFailures": true
+        }
+      ]
+    },
+    {
+      "name": "C/C++ Runner: Debug Session",
+      "type": "cppdbg",
+      "request": "launch",
+      "args": [],
+      "stopAtEntry": false,
+      "externalConsole": true,
+      "cwd": "c:/Users/marks/OneDrive/Desktop/testbed/APP/Src/SENT",
+      "program": "c:/Users/marks/OneDrive/Desktop/testbed/APP/Src/SENT/build/Debug/outDebug",
+      "MIMode": "gdb",
+      "miDebuggerPath": "gdb",
+      "setupCommands": [
+        {
+          "description": "Enable pretty-printing for gdb",
+          "text": "-enable-pretty-printing",
+          "ignoreFailures": true
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(Get-Command app_crc_injector -ErrorAction SilentlyContinue)"
+    ]
+  }
+}

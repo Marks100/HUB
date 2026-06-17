@@ -1,0 +1,7 @@
+#!/bin/bash
+
+# Find the ELF and export as environment variable for the Trace32 scripts
+export LAUTERBACH_APP_EXE=$(cygpath -w $(find $PTLD/APP/Build/ -type f -name "*.elf"))
+
+# Launch Trace32 for ARM Cortex-M4 (S32K144)
+cd $PTLD/Tool_cfg/Lauterbach && t32marm -c $PTLD/Tool_cfg/Lauterbach/config.t32 -s $PTLD/Tool_cfg/Lauterbach/s32k144_flash.cmm &

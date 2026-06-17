@@ -1,0 +1,6 @@
+[submodule "xCOMMON_MODULES"]
+	path = xCOMMON_MODULES
+	url = https://github.com/Marks100/common_modules.git
+[submodule "BuildEnv"]
+	path = BuildEnv
+	url = https://github.com/Marks100/build_env.git

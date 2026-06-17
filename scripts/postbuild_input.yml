@@ -1,0 +1,7 @@
+---
+DeviceInfo:
+  product_code: AABBCCDDEEFFAA112233445566778899
+  major_hw_version: 255
+  minor_hw_version: 4
+  location: 5
+  tx_rate: 300

@@ -1,0 +1,51 @@
+; --------------------------------------------------------------------------------
+; @Title: Demo script for S32K144 on S32K144EVB (FLASH)
+; @Description:
+;   Programs the sieve demo application into the processor internal flash and
+;   sets up a demo debug scenario.
+;   This script can be used as a template for flashing an application.
+;   Prerequisites:
+;    * Connect Debug Cable to J14 using Adapter LA-3770
+;      or
+;      Connect Combiprobe/uTrace to J14
+; @Keywords: ARM, Cortex-M4, Flash
+; @Author: AME
+; @Board: S32K144EVB
+; @Chip: S32K14*
+; @Copyright: (C) 1989-2017 Lauterbach GmbH, licensed for use with TRACE32(R) only
+; --------------------------------------------------------------------------------
+; $Id: s32k144_sieve_flash.cmm 10999 2017-06-22 14:55:33Z amerkle $
+
+WinCLEAR
+DO ToolBar.men
+
+; Grab the name of the exe from the environment variables
+&app_exe=OS.ENV("LAUTERBACH_APP_EXE")
+&bm_exe=OS.ENV("LAUTERBACH_BM_EXE")
+
+Data.LOAD.auto &app_exe    /nocode /noclear
+;Data.LOAD.auto &bm_exe     /nocode /noclear
+
+; --------------------------------------------------------------------------------
+; initialize and start the debugger
+SYStem.CPU S32K144
+SYStem.CONFIG.DEBUGPORTTYPE SWD
+
+SYStem.Option DUALPORT ON
+SYStem.MemAccess DAP
+SYStem.JtagClock CTCK 10MHz
+Trace.DISable
+Mode.Hll
+SYStem.Up
+
+; --------------------------------------------------------------------------------
+SYStem.attach
+Go
+
+
+; --------------------------------------------------------------------------------
+; open some windows
+List.auto
+setup.var.%Hex %Decimal %SpotLight %Index
+
+ENDDO

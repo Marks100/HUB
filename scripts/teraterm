@@ -1,0 +1,5 @@
+#!/bin/bash
+
+TTERMPRO /F=`cygpath -w $PTLD/Tool_cfg/TeraTerm/TERATERM.INI` &
+
+
