@@ -100,14 +100,13 @@ STATIC char* append_s32( char* write_pos, s32_t signed_value )
         *write_pos++ = '-';
         signed_value = -signed_value;
     }
-    
+
     return( append_u32( write_pos, (u32_t)signed_value ) );
 }
 
 /***************************************************************************************************
 **                              Public Functions                                                  **
 ***************************************************************************************************/
-
 void TB_CBK_init( TB_config_st* config_p )
 {
     if( config_p != NULL_P )
@@ -119,20 +118,27 @@ void TB_CBK_init( TB_config_st* config_p )
 
 TB_rpc_handler_entry_st* TB_CBK_get_rpc_handlers( u8_t* count_p )
 {
-    if( count_p != NULL_P ) { *count_p = (u8_t)TB_RPC_HANDLER_COUNT; }
+    if( count_p != NULL_P ) 
+    { 
+        *count_p = (u8_t)TB_RPC_HANDLER_COUNT; 
+    }
+    
     return( tb_rpc_handlers_s );
 }
 
 TB_telemetry_topic_st* TB_CBK_get_telemetry_topics( u8_t* count_p )
 {
-    if( count_p != NULL_P ) { *count_p = (u8_t)TB_TELEMETRY_TOPIC_COUNT; }
+    if( count_p != NULL_P ) 
+    {
+        *count_p = (u8_t)TB_TELEMETRY_TOPIC_COUNT; 
+    }
+
     return( tb_telemetry_topics_s );
 }
 
 /***************************************************************************************************
 **                              RPC Handlers - Getters                                            **
 ***************************************************************************************************/
-
 pass_fail_et TB_CBK_rpc_switch1_get_val( const u8_t* params_p, u8_t* response_p, u16_t* response_len_p )
 {
     pass_fail_et result = FAIL;
