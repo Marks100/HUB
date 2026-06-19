@@ -50,6 +50,7 @@ void        HAL_BRD_setup_pins_for_low_power( void );
 /* Button reads */
 low_high_et HAL_BRD_read_S1_pin( void );
 low_high_et HAL_BRD_read_S2_pin( void );
+low_high_et HAL_BRD_read_onboard_btn( void );
 
 /* LCD control pins */
 void HAL_BRD_set_lcd_a0_pin( low_high_et state );
@@ -59,7 +60,5 @@ void HAL_BRD_set_lcd_rst_pin( low_high_et state );
 /* WS2811 bit-bang pulses — call with interrupts disabled, tuned for 72 MHz */
 void HAL_BRD_WS2811_zero_pulse_direct( void );
 void HAL_BRD_WS2811_one_pulse_direct( void );
-
-void HAL_BRD_toggle_led1_pin( void );
 
 #endif

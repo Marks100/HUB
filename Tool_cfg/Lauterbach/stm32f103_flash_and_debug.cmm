@@ -1,0 +1,65 @@
+; HUB project - STM32F103C8T6
+; Flash BM + APP combined image and open a debug session.
+;
+; Flash layout:
+;   BM  : 0x08000000 - 0x08000FFF   4 KB
+;   APP : 0x08005000 - 0x0800FFFF  44 KB  (vectors at 0x08005100)
+;
+; Required environment variables:
+;   LAUTERBACH_APP_EXE      path to APP/Build/APP.elf
+;   LAUTERBACH_BM_EXE       path to BM/Build/BM.elf
+;   LAUTERBACH_COMBINED_EXE path to APP/Build/BM_FBL_APP_combined.hex
+
+&app_exe=OS.ENV("LAUTERBACH_APP_EXE")
+&bm_exe=OS.ENV("LAUTERBACH_BM_EXE")
+&combined_hex=OS.ENV("LAUTERBACH_COMBINED_EXE")
+
+; --------------------------------------------------------------------------------
+; Connect
+SYStem.RESet
+SYStem.CPU STM32F103C8
+SYStem.CONFIG.DEBUGPORTTYPE SWD
+IF COMBIPROBE()||UTRACE()
+(
+  SYStem.CONFIG.CONNECTOR MIPI20T
+)
+SYStem.Option DUALPORT ON
+SYStem.MemAccess DAP
+SYStem.JtagClock 10MHz
+SYStem.Option.IMASKHLL ON
+SYStem.Option.IMASKASM ON
+Trace.DISable
+SYStem.Up
+
+; --------------------------------------------------------------------------------
+; Flash combined BM + APP image
+DO ~~/demo/arm/flash/stm32f10x.cmm PREPAREONLY
+FLASH.ReProgram ALL
+Data.LOAD.auto &combined_hex
+FLASH.ReProgram OFF
+
+; --------------------------------------------------------------------------------
+; Reset MCU after flashing, reconnect debugger
+SYStem.Up
+
+; --------------------------------------------------------------------------------
+; Load debug symbols from both partitions (no reflash)
+Data.LOAD.auto &bm_exe  /nocode /noclear
+Data.LOAD.auto &app_exe /nocode /noclear
+
+Mode.Hll
+
+; Run through BM jump, halt at app_main entry
+Go.direct app_main
+WAIT !STATE.RUN()
+
+; --------------------------------------------------------------------------------
+; Open debug windows
+List.auto
+Frame.view
+Register.view /SpotLight
+setup.var.%Hex %Decimal %SpotLight %Index
+
+Do ToolBar.men
+
+ENDDO

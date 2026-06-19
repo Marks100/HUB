@@ -1,4 +1,4 @@
-// T32 Sun Jun 14 14:15:19 2026
+// T32 Thu Jun 18 15:42:24 2026
 
 B::
 
@@ -103,6 +103,11 @@ HISTory.Set FILE ":edit" "B::B::CD.PEDIT C:\Users\marks\OneDrive\Desktop\Project
 HISTory.Set FILE ":practice" "B::B::CD.DO C:\SVN_source\Tools\Lauterbach\T32\demo\arm\hardware\s32k\s32k144\s32k144_sieve_flash.cmm" "C:\SVN_source\Tools\Lauterbach\T32\demo\arm\hardware\s32k\s32k144"
 HISTory.Set FILE ":practice" "B::B::CD.DO C:\Users\marks\OneDrive\Desktop\Projects\S32K\Tool_cfg\Lauterbach\s32k144_attach.cmm" "C:\Users\marks\OneDrive\Desktop\Projects\S32K\tool_cfg\Lauterbach"
 HISTory.Set FILE ":edit" "B::B::CD.PEDIT C:\Users\marks\OneDrive\Desktop\Projects\S32K\Tool_cfg\Lauterbach\s32k144_flash.cmm" "C:\Users\marks\OneDrive\Desktop\Projects\S32K\tool_cfg\Lauterbach"
+HISTory.Set FILE ":edit" "B::B::CD.PEDIT C:\Users\marks\OneDrive\Desktop\Projects\HUB\Tool_cfg\Lauterbach\stm32f103_flash_and_debug.cmm" "C:\Users\marks\OneDrive\Desktop\Projects\HUB\Tool_cfg\Lauterbach"
+HISTory.Set FILE ":edit" "B::B::CD.PEDIT C:\Users\marks\OneDrive\Desktop\Projects\HUB\Tool_cfg\Lauterbach\stm32f103_attach.cmm" "C:\Users\marks\OneDrive\Desktop\Projects\HUB\Tool_cfg\Lauterbach"
+HISTory.Set FILE ":practice" "B::B::CD.DO C:\Users\marks\OneDrive\Desktop\Projects\HUB\Tool_cfg\Lauterbach\stm32f103_flash_and_debug.cmm" "C:\Users\marks\OneDrive\Desktop\Projects\HUB\Tool_cfg\Lauterbach"
+HISTory.Set FILE ":practice" "B::B::CD.DO C:\Users\marks\OneDrive\Desktop\Projects\HUB\Tool_cfg\Lauterbach\ToolBar.men" "C:\Users\marks\OneDrive\Desktop\Projects\HUB\Tool_cfg\Lauterbach"
+HISTory.Set FILE ":edit" "B::B::CD.PEDIT C:\Users\marks\OneDrive\Desktop\Projects\HUB\Tool_cfg\Lauterbach\ToolBar.men" "C:\Users\marks\OneDrive\Desktop\Projects\HUB\Tool_cfg\Lauterbach"
 HISTory.Set HLL "STEERING_control_data_s.neutral_trim = -25"
 HISTory.Set HLL "STEERING_control_data_s.neutral_trim = -20"
 HISTory.Set HLL "STEERING_control_data_s.neutral_trim = 5"

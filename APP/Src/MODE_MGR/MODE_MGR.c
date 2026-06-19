@@ -57,9 +57,10 @@ void MODE_MGR_init( void )
 void MODE_MGR_tick( void )
 {
 	//DBG_MGR_start_cpu_load_timer();
+    TIME_increment_time();
+	HAL_BRD_toggle_onboard_led();
 
 	WDG_kick();
-	TIME_increment_time();
 
 	switch( mode_mgr_mode_s )
 	{
@@ -345,6 +346,10 @@ void mode_mgr_action_schedule_normal( void )
 {	
 	if( mode_mgr_check_time_interval( 10u ) == TRUE )
 	{
+		ESP01_tick();
+        WIFI_tick();
+        TB_tick();
+		
 		//ST7567_tick();
 		//NRF24_tick( &nrf24_instance_s );
     	ROTARY_MGR_tick();
@@ -355,8 +360,6 @@ void mode_mgr_action_schedule_normal( void )
 	{
 		BUZZER_tick( &buzzer_instance_s );
 		BTN_MGR_tick();
-		CTRL_AXIS_tick( &steering_axis_s );
-		CTRL_AXIS_tick( &throttle_axis_s );
 	}
 
 	if( mode_mgr_check_time_interval( 50u ) == TRUE )

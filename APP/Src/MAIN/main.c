@@ -1,3 +1,4 @@
+#include "CLK_STM32F1.h"
 #include "INTEGRATION_STUBS.h"
 #include "CHKSUM.h"
 #include "HAL_BRD.h"
@@ -21,13 +22,12 @@
 #include "BUZZER.h"
 #include "CTRL_AXIS.h"
 #include "nvic_driver.h"
+#include "scb_driver.h"
 #include "TB_CBK.h"
 
 void app_main( void )
 {
-    /* SystemInit() is called by the startup file before main.
-       Update the SystemCoreClock variable to reflect actual frequency. */
-    SystemCoreClockUpdate();
+    CLK_STM32F1_init( &hse8_72mhz_s );
 
     NVM_init( &nvm_hw_interface_s );
     NVM_register_block( 0u, &nvm_persist_block_s );
@@ -63,20 +63,9 @@ void app_main( void )
     NVIC_EnableGlobalIRQ();
 
     /* Init WDG at the end */
-    //WDG_init( &wdg_cfg_s );
+    WDG_init( &wdg_cfg_s );
 
-    while(1)
-    {
-        __WFI();
-
-        if( app_tick_pending() )
-        {
-            ESP01_tick();
-            WIFI_tick();
-            TB_tick();
-            MODE_MGR_tick();
-        }
-    }
+    while(1);
 }
 
 void main( void )

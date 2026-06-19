@@ -1,7 +1,9 @@
 #!/bin/bash
 
-# Find the ELF and export as environment variable for the Trace32 scripts
+# Export ELF and combined HEX paths as Windows paths for Trace32
 export LAUTERBACH_APP_EXE=$(cygpath -w $(find $PTLD/APP/Build/ -type f -name "*.elf"))
+export LAUTERBACH_BM_EXE=$(cygpath -w $(find $PTLD/BM/Build/  -type f -name "*.elf"))
+export LAUTERBACH_COMBINED_EXE=$(cygpath -w $(find $PTLD/APP/Build/ -type f -name "*combined*.hex"))
 
-# Launch Trace32 for ARM Cortex-M4 (S32K144)
-cd $PTLD/Tool_cfg/Lauterbach && t32marm -c $PTLD/Tool_cfg/Lauterbach/config.t32 -s $PTLD/Tool_cfg/Lauterbach/s32k144_flash.cmm &
+# Launch Trace32 for ARM Cortex-M3 (STM32)
+cd $PTLD/Tool_cfg/Lauterbach && t32marm -c $PTLD/Tool_cfg/Lauterbach/config.t32 -s $PTLD/Tool_cfg/Lauterbach/stm32f103_attach.cmm &

@@ -208,8 +208,6 @@ void RF_MGR_tx_complete( pass_fail_et status )
     /* Release the state machine again to run */
     rf_mgr_inc_tx_packet_ctr();
     rf_mgr_set_state( RF_MGR_TX );
-
-    HAL_BRD_toggle_led1_pin();
 }
 
 /*!

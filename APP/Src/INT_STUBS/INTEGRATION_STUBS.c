@@ -35,24 +35,10 @@ const APP_header_st app_header_s = {
 /***************************************************************************************************
 **                              SYSTICK                                                           **
 ***************************************************************************************************/
-static volatile u8_t run_flag_s = FALSE;
-
-static void app_on_tick( void )
-{
-    run_flag_s = TRUE;
-}
-
-bool_et app_tick_pending( void )
-{
-    bool_et pending = (bool_et)run_flag_s;
-    run_flag_s = FALSE;
-    return pending;
-}
-
 const SYSTICK_cfg_st systick_cfg_s =
 {
-    .timeout_ms     = 10u,
-    .systick_func_p = app_on_tick
+    .timeout_ms     = APP_TIMER_TICK_RATE_MS,
+    .systick_func_p = MODE_MGR_tick
 };
 
 /***************************************************************************************************
@@ -86,10 +72,11 @@ const TIME_cfg_st time_cfg_s =
 /***************************************************************************************************
 **                              BTN_MGR                                                           **
 ***************************************************************************************************/
-const BTN_MGR_func_table_st btm_mgr_func_table_s[2] =
+const BTN_MGR_func_table_st btm_mgr_func_table_s[3] =
 {
-    { "DBG_S1", FALSE, HAL_BRD_read_S1_pin, MODE_MGR_ccw_scroll_cbk, NULL_P },
-    { "DBG_S2", FALSE, HAL_BRD_read_S2_pin, MODE_MGR_cw_scroll_cbk,  NULL_P },
+    { "DBG_S1",  FALSE, HAL_BRD_read_S1_pin,      MODE_MGR_ccw_scroll_cbk, NULL_P },
+    { "DBG_S2",  FALSE, HAL_BRD_read_S2_pin,       MODE_MGR_cw_scroll_cbk,  NULL_P },
+    { "ONBOARD", FALSE, HAL_BRD_read_onboard_btn,  NULL_P,                   NULL_P },
 };
 
 /***************************************************************************************************
@@ -124,8 +111,8 @@ WS2811_instance_st ws2811_instance_s =
     .led_array_p        = ws2811_leds_s,
     .num_leds           = 3u,
     .brightness         = WS2811_BRIGHTNESS_DEFAULT,
-    .zero_pulse_func_p  = HAL_BRD_WS2811_zero_pulse_direct,
-    .one_pulse_func_p   = HAL_BRD_WS2811_one_pulse_direct,
+    //.zero_pulse_func_p  = HAL_BRD_WS2811_zero_pulse_direct,
+    //.one_pulse_func_p   = HAL_BRD_WS2811_one_pulse_direct,
     .disable_irq_func_p = NVIC_DisableGlobalIRQ,
     .enable_irq_func_p  = NVIC_EnableGlobalIRQ,
 };

@@ -163,11 +163,6 @@ void HAL_BRD_toggle_pin_state( GPIO_TypeDef* port, u16_t pin )
 ***************************************************************************************************/
 void HAL_BRD_set_onboard_led( off_on_et state )
 {	
-#if( HW_VERSION == 1u )
-	/* Onboard LED is inverse logic on VER 1 */
-	state ^= ON;
-#endif
-
 	HAL_BRD_set_pin_state( ONBOARD_LED_PORT, ONBOARD_LED_PIN, (low_high_et)state );
 }
 
@@ -288,16 +283,6 @@ void HAL_BRD_setup_pins_for_low_power( void )
 	GPIO_Init( GPIOC, &GPIO_InitStructure );
 }
 
-/*!
-****************************************************************************************************
-*
-*   \brief         Interrupt Handler ( 0 )
-*
-*   \author        MS
-*
-*   \return        None
-*
-***************************************************************************************************/
 low_high_et HAL_BRD_read_S1_pin( void )
 {
 	return HAL_BRD_read_pin_state( PANEL_2_BTN_PORT, PANEL_2_BTN_PIN );
@@ -308,6 +293,20 @@ low_high_et HAL_BRD_read_S2_pin( void )
 	return HAL_BRD_read_pin_state( PANEL_3_BTN_PORT, PANEL_3_BTN_PIN );
 }
 
+/*!
+****************************************************************************************************
+*
+*   \brief         Reads the state of the onboard button
+*
+*   \author        MS
+*
+*   \return        low_high_et state of the onboard button pin
+*
+***************************************************************************************************/
+low_high_et HAL_BRD_read_onboard_btn( void )
+{
+	return HAL_BRD_read_pin_state( ONBOARD_BTN_PORT, ONBOARD_BTN_PIN );
+}
 
 void HAL_BRD_set_lcd_a0_pin( low_high_et state )
 {
@@ -324,43 +323,47 @@ void HAL_BRD_set_lcd_rst_pin( low_high_et state )
 	HAL_BRD_set_pin_state( LCD_RST_PORT, LCD_RST_PIN, state );
 }
 
-/* WS2811 timings below assume 72 MHz CPU clock.
-   Adjust NOP count if running at a different frequency. */
-void HAL_BRD_toggle_led1_pin( void )
-{
-	HAL_BRD_toggle_onboard_led();
-}
 
-void HAL_BRD_WS2811_zero_pulse_direct( void )
-{
-	/* T0H ~0.4 us: set then hold ~28 cycles */
-	WS2811_PORT->BSRR = WS2811_PIN;
-	__asm volatile(
-		"nop\nnop\nnop\nnop\nnop\nnop\nnop\nnop\n"
-		"nop\nnop\nnop\nnop\nnop\nnop\nnop\nnop\n"
-		"nop\nnop\nnop\nnop\nnop\nnop\n"
-	);
-	/* T0L ~0.85 us: clear; remainder consumed by caller loop overhead */
-	WS2811_PORT->BRR = WS2811_PIN;
-}
+// void HAL_BRD_WS2811_zero_pulse_direct( void )
+// {
+// 	/* T0H ~0.4 us: set then hold ~28 cycles */
+// 	WS2811_PORT->BSRR = WS2811_PIN;
+// 	__asm volatile(
+// 		"nop\nnop\nnop\nnop\nnop\nnop\nnop\nnop\n"
+// 		"nop\nnop\nnop\nnop\nnop\nnop\nnop\nnop\n"
+// 		"nop\nnop\nnop\nnop\nnop\nnop\n"
+// 	);
+// 	/* T0L ~0.85 us: clear; remainder consumed by caller loop overhead */
+// 	WS2811_PORT->BRR = WS2811_PIN;
+// }
 
-void HAL_BRD_WS2811_one_pulse_direct( void )
-{
-	/* T1H ~0.8 us: set then hold ~57 cycles */
-	WS2811_PORT->BSRR = WS2811_PIN;
-	__asm volatile(
-		"nop\nnop\nnop\nnop\nnop\nnop\nnop\nnop\n"
-		"nop\nnop\nnop\nnop\nnop\nnop\nnop\nnop\n"
-		"nop\nnop\nnop\nnop\nnop\nnop\nnop\nnop\n"
-		"nop\nnop\nnop\nnop\nnop\nnop\nnop\nnop\n"
-		"nop\nnop\nnop\nnop\nnop\nnop\nnop\nnop\n"
-		"nop\nnop\nnop\nnop\nnop\nnop\nnop\nnop\n"
-		"nop\nnop\nnop\nnop\nnop\nnop\nnop\n"
-	);
-	/* T1L ~0.45 us: clear; remainder consumed by caller loop overhead */
-	WS2811_PORT->BRR = WS2811_PIN;
-}
+// void HAL_BRD_WS2811_one_pulse_direct( void )
+// {
+// 	/* T1H ~0.8 us: set then hold ~57 cycles */
+// 	WS2811_PORT->BSRR = WS2811_PIN;
+// 	__asm volatile(
+// 		"nop\nnop\nnop\nnop\nnop\nnop\nnop\nnop\n"
+// 		"nop\nnop\nnop\nnop\nnop\nnop\nnop\nnop\n"
+// 		"nop\nnop\nnop\nnop\nnop\nnop\nnop\nnop\n"
+// 		"nop\nnop\nnop\nnop\nnop\nnop\nnop\nnop\n"
+// 		"nop\nnop\nnop\nnop\nnop\nnop\nnop\nnop\n"
+// 		"nop\nnop\nnop\nnop\nnop\nnop\nnop\nnop\n"
+// 		"nop\nnop\nnop\nnop\nnop\nnop\nnop\n"
+// 	);
+// 	/* T1L ~0.45 us: clear; remainder consumed by caller loop overhead */
+// 	WS2811_PORT->BRR = WS2811_PIN;
+// }
 
+/*!
+****************************************************************************************************
+*
+*   \brief         Interrupt Handler ( 0 )
+*
+*   \author        MS
+*
+*   \return        low_high_et
+*
+***************************************************************************************************/
 void EXTI0_IRQHandler(void)
 {
 	/* Make sure that interrupt flag is set */

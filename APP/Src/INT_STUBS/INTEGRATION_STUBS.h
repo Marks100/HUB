@@ -24,7 +24,7 @@ extern const SYSTICK_cfg_st          systick_cfg_s;
 extern const hw_crc_config_st        hw_crc_cfg_s;
 extern const DBG_MGR_cfg_st          dbg_mgr_cfg_s;
 extern const TIME_cfg_st             time_cfg_s;
-extern const BTN_MGR_func_table_st   btm_mgr_func_table_s[2];
+extern const BTN_MGR_func_table_st   btm_mgr_func_table_s[3];
 extern const ROTARY_MGR_func_p_st    rotary_mgr_func_table_s;
 extern const BUZZER_func_table_st    buzzer_func_table_s;
 extern       BUZZER_instance_st      buzzer_instance_s;
@@ -38,7 +38,6 @@ extern const ESP01_cfg_st            esp01_cfg_s;
 extern const WIFI_config_st          wifi_cfg_s;
 extern       TB_config_st            tb_cfg_s;
 
-bool_et app_tick_pending( void );
 void    esp01_uart_byte_rx( u8_t byte );
 
 #endif /* INTEGRATION_STUBS_H */

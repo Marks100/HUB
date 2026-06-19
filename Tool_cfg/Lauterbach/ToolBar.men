@@ -5,12 +5,12 @@ MENU.ReProgram
 	(
 		TOOLITEM "REFLASH AND DEBUG" "[:flashstate]" ""
 		(
-			DO s32k144_flash.cmm
+			DO stm32f103_flash_and_debug.cmm
 		)
 		SEPARATOR
 		TOOLITEM "FLASH AND RUN" "[:flash]" ""
 		(
-			DO s32k144_flash.cmm
+			DO stm32f103_flash_and_debug.cmm
 			Go
 		)
 		SEPARATOR

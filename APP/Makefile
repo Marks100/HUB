@@ -133,6 +133,9 @@ else
     MCAL_OPTIMISATION        := -Os
 endif
 
+# APP vector table offset: APP_FLASH_START (0x08005000) + 256-byte app_header = 0x08005100
+CFLAGS += -DVECT_TAB_OFFSET=0x5100
+
 # Linker flags configuration
 LDFLAGS := \
     $(LDFLAGS_COMMON) \
@@ -173,18 +176,18 @@ mux_dbc:
 rebuild: build_clean
 	$(MAKE) app_build
 
-# Build BM first to ensure it's available before APP links/combines  
+# Build BM first to ensure it's available before APP links/combines
 $(BM_IMAGE):
-#@$(MAKE) -j $(MAKE_FLAGS) -C ../BM bm_build
+	@$(MAKE) $(MAKE_FLAGS) -C ../BM bm_build
 
-# Build FBL to ensure it's available before APP links/combines
+# Placeholder — uncomment when FBL is implemented
 $(FBL_IMAGE):
-#@$(MAKE) -j $(MAKE_FLAGS) -C ../FBL fbl_build
+#	@$(MAKE) $(MAKE_FLAGS) -C ../FBL fbl_build
 
-all: $(BM_IMAGE) $(FBL_IMAGE) app_build
-	@$(SREC) $(BM_IMAGE) -Intel --multiple $(FBL_IMAGE) -Intel --multiple $(APP_HEX_WITH_CRC_FILE) -Intel --multiple -o $(COMBINED_IMAGE) -intel
+all: $(BM_IMAGE) app_build
+	@$(SREC) $(BM_IMAGE) -Intel --multiple $(APP_HEX_WITH_CRC_FILE) -Intel --multiple -o $(COMBINED_IMAGE) -intel
 	@echo "--> Combined image created: $(COMBINED_IMAGE)"
-	@echo "    Contains: BM ($(BM_FLASH_START)-$(BM_FLASH_END)) + FBL ($(FBL_FLASH_START)-$(FBL_FLASH_END)) + APP ($(APP_FLASH_START)-$(APP_FLASH_END))"
+	@echo "    Contains: BM ($(BM_FLASH_START)-$(BM_FLASH_END)) + APP ($(APP_FLASH_START)-$(APP_FLASH_END))"
 	@echo "--> Generating flash pack..."
 	@ruby -S $(FLASH_PACK_SCRIPT) $(FLASH_PACK_PROFILE) $(APP_HEX_SIGNED_FILE) \
 		--output=$(FLASH_PACK_OUTPUT) \
@@ -450,7 +453,7 @@ full_memory_stats: $(APP_MAP_FILE)
 	@$(BUILD_ENV_BIN)/memory_analyser_stm32 $(APP_MAP_FILE) $(APP_ELF_FILE) $(APP_LINKER_SCRIPT) --out $(APP_MEM_OUTPUT_FILE) --csv $(APP_MEM_CSV_FILE)
 
 memory_badges:
-	@memory_analyser_s32k --badges --root .. --output ../.github/badges --badge-creator "ruby -S badge_creator"
+	@$(BUILD_ENV_BIN)/memory_analyser_stm32 $(APP_MAP_FILE) $(APP_ELF_FILE) $(APP_LINKER_SCRIPT) --badges --output ../.github/badges || true
 		
 release_package:
 	@echo "======================================================================"

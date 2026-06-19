@@ -1,0 +1,47 @@
+; HUB project - STM32F103C8T6
+; Attach to a running target without reset or reflash.
+; Use this for live debugging after the target is already running.
+;
+; Flash layout:
+;   BM  : 0x08000000 - 0x08000FFF   4 KB
+;   APP : 0x08005000 - 0x0800FFFF  44 KB  (vectors at 0x08005100)
+;
+; Required environment variables:
+;   LAUTERBACH_APP_EXE  path to APP/Build/APP.elf
+;   LAUTERBACH_BM_EXE   path to BM/Build/BM.elf
+
+&app_exe=OS.ENV("LAUTERBACH_APP_EXE")
+&bm_exe=OS.ENV("LAUTERBACH_BM_EXE")
+
+; --------------------------------------------------------------------------------
+; Attach without reset
+SYStem.CPU STM32F103C8
+SYStem.CONFIG.DEBUGPORTTYPE SWD
+IF COMBIPROBE()||UTRACE()
+(
+  SYStem.CONFIG.CONNECTOR MIPI20T
+)
+SYStem.Option DUALPORT ON
+SYStem.MemAccess DAP
+SYStem.JtagClock 10MHz
+SYStem.Option.IMASKHLL ON
+SYStem.Option.IMASKASM ON
+Trace.DISable
+Mode.Hll
+SYStem.Attach
+
+; --------------------------------------------------------------------------------
+; Load debug symbols from both partitions (no reflash)
+Data.LOAD.auto &bm_exe  /nocode /noclear
+Data.LOAD.auto &app_exe /nocode /noclear
+
+; --------------------------------------------------------------------------------
+; Open debug windows
+List.auto
+Frame.view
+Register.view /SpotLight
+setup.var.%Hex %Decimal %SpotLight %Index
+
+Do ToolBar.men
+
+ENDDO
