@@ -73,9 +73,13 @@ void RF_MGR_tick( void )
 
         case RF_MGR_APPLY_CFG:
         {
-            NRF24_apply_config( &nrf24_instance_s, NRF24_DEFAULT_CONFIG );
+            NRF24_apply_config( &nrf24_instance_s, NRF24_HUB_CONFIG );
 
-            if( rf_mgr_cfg_s.mode == RF_MGR_MODE_TX )
+            if( NRF24_self_check( &nrf24_instance_s ) != PASS )
+            {
+                rf_mgr_set_state( RF_MGR_FAULT );
+            }
+            else if( rf_mgr_cfg_s.mode == RF_MGR_MODE_TX )
             {
                 rf_mgr_set_state( RF_MGR_SETUP_TX );
             }
@@ -118,7 +122,6 @@ void RF_MGR_tick( void )
         /* Intentional fallthrough */
         case RF_MGR_RX:
         {
-            /* Waiting for frames - handled by RF_MGR_get_rx_frame callback */
         }
         break;
 

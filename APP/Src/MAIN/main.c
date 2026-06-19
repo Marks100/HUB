@@ -50,7 +50,7 @@ void app_main( void )
     WS2811_init( &ws2811_instance_s );
     ST7567_init( &st7567_func_table_s );
     NRF24_init( &nrf24_instance_s );
-    RF_MGR_init( (RF_MGR_cfg_st){ .mode = RF_MGR_MODE_TX, .channel = 0u } );
+    RF_MGR_init( (RF_MGR_cfg_st){ .mode = RF_MGR_MODE_RX, .channel = 0u } );
     ESP01_init( &esp01_cfg_s );
     HAL_USART2_set_callback( esp01_uart_byte_rx );
     WIFI_init( &wifi_cfg_s );

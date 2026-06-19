@@ -38,7 +38,7 @@ void HAL_BRD_init( void )
 	GPIO_Init( PANEL_2_BTN_PORT, &GPIO_InitStructure );
 
 	GPIO_InitStructure.GPIO_Pin = PANEL_3_BTN_PIN;
-	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IPD;
+	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IPU;
 	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_10MHz;
 	GPIO_Init( PANEL_3_BTN_PORT, &GPIO_InitStructure );
 	

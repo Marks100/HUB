@@ -58,7 +58,6 @@ void MODE_MGR_tick( void )
 {
 	//DBG_MGR_start_cpu_load_timer();
     TIME_increment_time();
-	HAL_BRD_toggle_onboard_led();
 
 	WDG_kick();
 
@@ -353,13 +352,14 @@ void mode_mgr_action_schedule_normal( void )
 		//ST7567_tick();
 		//NRF24_tick( &nrf24_instance_s );
     	ROTARY_MGR_tick();
-		//RF_MGR_tick();
 	}
 
 	if( mode_mgr_check_time_interval( 20u ) == TRUE )
 	{
 		BUZZER_tick( &buzzer_instance_s );
 		BTN_MGR_tick();
+		NRF24_tick( &nrf24_instance_s );
+		RF_MGR_tick();
 	}
 
 	if( mode_mgr_check_time_interval( 50u ) == TRUE )

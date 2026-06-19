@@ -3,6 +3,7 @@
 ***************************************************************************************************/
 #include "INTEGRATION_STUBS.h"
 #include "HAL_BRD.h"
+#include "WIFI.h"
 #include "HAL_ADC.h"
 #include "HAL_TIM.h"
 #include "HAL_SPI.h"
@@ -72,11 +73,14 @@ const TIME_cfg_st time_cfg_s =
 /***************************************************************************************************
 **                              BTN_MGR                                                           **
 ***************************************************************************************************/
+STATIC void onboard_btn_short_press( void )
+{
+    WIFI_set_hl_state( WIFI_RESTARTING );
+}
+
 const BTN_MGR_func_table_st btm_mgr_func_table_s[3] =
 {
-    { "DBG_S1",  FALSE, HAL_BRD_read_S1_pin,      MODE_MGR_ccw_scroll_cbk, NULL_P },
-    { "DBG_S2",  FALSE, HAL_BRD_read_S2_pin,       MODE_MGR_cw_scroll_cbk,  NULL_P },
-    { "ONBOARD", FALSE, HAL_BRD_read_onboard_btn,  NULL_P,                   NULL_P },
+    { "ONBOARD", TRUE,  HAL_BRD_read_onboard_btn, onboard_btn_short_press, NULL_P },
 };
 
 /***************************************************************************************************
@@ -132,6 +136,12 @@ const ST7567_func_table_st st7567_func_table_s =
 /***************************************************************************************************
 **                              NRF24                                                             **
 ***************************************************************************************************/
+STATIC void on_packet_rx( void )
+{
+    RF_MGR_get_rx_frame();
+    HAL_BRD_toggle_onboard_led();
+}
+
 NRF24_instance_st nrf24_instance_s =
 {
     .ce_pin_func_p         = HAL_BRD_NRF24_set_ce_pin_state,
@@ -139,7 +149,7 @@ NRF24_instance_st nrf24_instance_s =
     .spi_func_p            = HAL_SPI1_write_and_read_data,
     .us_delay_func_p       = DWT_delay_us,
     .packet_tx_conf_func_p = RF_MGR_tx_complete,
-    .packet_rx_func_p      = RF_MGR_get_rx_frame
+    .packet_rx_func_p      = on_packet_rx
 };
 
 /***************************************************************************************************

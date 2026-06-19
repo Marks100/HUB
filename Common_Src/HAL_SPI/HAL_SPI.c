@@ -27,7 +27,7 @@
 *
 *   \return        none
 *
-*   \note          Fixed baudrate for now at 5MHz 8N1
+*   \note          Fixed baudrate at 9 MHz (PCLK2 72 MHz / 8), within NRF24L01+ 10 MHz SPI limit
 *
 ***************************************************************************************************/
 void HAL_SPI1_init( void )
@@ -54,7 +54,7 @@ void HAL_SPI1_init( void )
 	SPI_InitStructure.SPI_CPOL = SPI_CPOL_Low;
 	SPI_InitStructure.SPI_CPHA = SPI_CPHA_1Edge;
 	SPI_InitStructure.SPI_NSS = SPI_NSS_Soft;
-	SPI_InitStructure.SPI_BaudRatePrescaler = SPI_BaudRatePrescaler_2;
+	SPI_InitStructure.SPI_BaudRatePrescaler = SPI_BaudRatePrescaler_8; /* 72 MHz / 8 = 9 MHz, within NRF24L01+ 10 MHz SPI max */
 	SPI_InitStructure.SPI_FirstBit = SPI_FirstBit_MSB;
 	SPI_InitStructure.SPI_CRCPolynomial = 0xAAAA;
 
@@ -73,7 +73,7 @@ void HAL_SPI1_init( void )
 *
 *   \return        none
 *
-*   \note          Fixed baudrate for now at 5MHz 8N1
+*   \note          Fixed baudrate at 9 MHz (PCLK2 72 MHz / 8), within NRF24L01+ 10 MHz SPI limit
 *
 ***************************************************************************************************/
 void HAL_SPI1_de_init( void )
