@@ -6,6 +6,7 @@
 **                              Includes                                                          **
 ***************************************************************************************************/
 #include "MODE_MGR.h"
+#include "INTEGRATION_STUBS.h"
 
 /***************************************************************************************************
 **                              Data declarations and definitions                                 **
@@ -345,6 +346,7 @@ void mode_mgr_action_schedule_normal( void )
 {	
 	if( mode_mgr_check_time_interval( 10u ) == TRUE )
 	{
+		esp01_check_rx_timeout();
 		ESP01_tick();
         WIFI_tick();
         TB_tick();

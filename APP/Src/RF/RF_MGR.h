@@ -10,6 +10,7 @@
 #include "NRF24.h"
 #include "CHKSUM.h"
 #include "DBG_MGR.h"
+#include "TIME_MGR.h"
 
 /***************************************************************************************************
 **                              Defines                                                           **
@@ -18,6 +19,18 @@
 #define RF_MGR_MAX_PAYLOAD_SIZE         ( NRF_MAX_PAYLOAD_SIZE )
 #define RF_MGR_TX_TIMEOUT_MS            ( 30u/RF_MGR_TICK_RATE )
 #define RF_MGR_RX_TIMEOUT_MS            ( 30u/RF_MGR_TICK_RATE )
+
+#define RF_MGR_MAX_SENSORS              ( 8u )
+
+#define RF_MGR_COMMS_LOST_TIMEOUT_SECS  ( 30u * 60u )
+
+/* Uncomment to bypass the CRC check on received frames (debug only) */
+#define RF_MGR_DISABLE_CRC_CHECK
+
+/* Battery state flag bit positions within RF_MGR_sensor_data_st.battery_flags */
+#define RF_MGR_BAT_FLAG_LOW_BIT         ( 0u )
+#define RF_MGR_BAT_FLAG_CRITICAL_BIT    ( 1u )
+#define RF_MGR_BAT_FLAG_LATCHED_LOW_BIT ( 2u )
 
 /***************************************************************************************************
 **                              Constants                                                         **
@@ -80,6 +93,24 @@ typedef struct
     false_true_et frame_pending;
 } RF_MGR_data_st;
 
+typedef struct
+{
+    u32_t         sensor_id;
+    u8_t          sensor_type;
+    u8_t          operating_mode;
+    u8_t          sensor_location;
+    s16_t         temperature_centidegC;
+    s16_t         humidity_tenths_pct;
+    u16_t         battery_voltage_mv;
+    u16_t         wakeup_interval_sec;
+    u32_t         runtime_sec;
+    u8_t          battery_flags;
+    u64_t         last_rx_time_ms;
+    u32_t         rx_frame_count;
+    false_true_et comms_lost;
+    false_true_et valid;
+} RF_MGR_sensor_data_st;
+
 /***************************************************************************************************
 **                              Exported Globals                                                  **
 ***************************************************************************************************/
@@ -88,22 +119,25 @@ typedef struct
 /***************************************************************************************************
 **                              Function Prototypes                                               **
 ***************************************************************************************************/
-void               RF_MGR_init( RF_MGR_cfg_st cfg );
-void               RF_MGR_tick( void );
-RF_MGR_rf_state_et RF_MGR_get_state( void );
-void               RF_MGR_tx_complete( pass_fail_et state );
-void               RF_MGR_get_rx_frame( void );
+void                   RF_MGR_init( RF_MGR_cfg_st cfg );
+void                   RF_MGR_tick( void );
+RF_MGR_rf_state_et     RF_MGR_get_state( void );
+void                   RF_MGR_tx_complete( pass_fail_et state );
+void                   RF_MGR_get_rx_frame( void );
+RF_MGR_sensor_data_st* RF_MGR_get_sensor_db( void );
 
-void               rf_mgr_set_state( RF_MGR_rf_state_et state );
-void               rf_mgr_send_payload( void );
-void               rf_mgr_analyse_received_frame( u8_t* data_p );
-void               rf_mgr_configure_transmitt_mode( u8_t channel );
-void               rf_mgr_configure_receive_mode( void );
-void               rf_mgr_power_down_chip( void );
-void               rf_mgr_setup_tx_payload( void );
-pass_fail_et       rf_mgr_analyse_packet_crc( u8_t* data_p, u8_t crc_pos );
-void               rf_mgr_inc_tx_packet_ctr( void );
-void               rf_mgr_setup_ack_payload( u8_t* buffer, u8_t len );
+void                   rf_mgr_set_state( RF_MGR_rf_state_et state );
+void                   rf_mgr_send_payload( void );
+void                   rf_mgr_analyse_received_frame( u8_t* data_p );
+void                   rf_mgr_decode_sensor_frame( u8_t* data_p );
+void                   rf_mgr_configure_transmitt_mode( u8_t channel );
+void                   rf_mgr_configure_receive_mode( void );
+void                   rf_mgr_power_down_chip( void );
+void                   rf_mgr_setup_tx_payload( void );
+pass_fail_et           rf_mgr_analyse_packet_crc( u8_t* data_p, u8_t crc_pos );
+void                   rf_mgr_inc_tx_packet_ctr( void );
+void                   rf_mgr_setup_ack_payload( u8_t* buffer, u8_t len );
+void                   rf_mgr_check_comms_lost( void );
 
 #endif /* RF_MGR_H multiple inclusion guard */
 

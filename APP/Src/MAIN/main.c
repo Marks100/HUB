@@ -52,7 +52,7 @@ void app_main( void )
     NRF24_init( &nrf24_instance_s );
     RF_MGR_init( (RF_MGR_cfg_st){ .mode = RF_MGR_MODE_RX, .channel = 0u } );
     ESP01_init( &esp01_cfg_s );
-    HAL_USART2_set_callback( esp01_uart_byte_rx );
+    HAL_USART2_set_rx_callback( esp01_uart_byte_rx );
     WIFI_init( &wifi_cfg_s );
     TB_CBK_init( &tb_cfg_s );
     TB_init( &tb_cfg_s );

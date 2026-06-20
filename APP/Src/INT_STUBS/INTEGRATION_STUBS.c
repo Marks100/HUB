@@ -228,26 +228,43 @@ const WDG_HW_STM32_config_st wdg_cfg_s =
 /***************************************************************************************************
 **                              ESP01                                                            **
 ***************************************************************************************************/
-static u8_t  esp01_rx_buf_s[ESP01_MAX_RX_SIZE];
-static u16_t esp01_rx_idx_s = 0u;
 
+/* Must be strictly > 1 tick period: timestamp can be stale by up to 1 tick, so an exact
+   1x window can fire with near-zero actual silence. +1ms guarantees at least 1 full tick
+   of real inter-byte gap before the callback fires. */
+#define ESP01_INTER_BYTE_TIMEOUT_MS     ( APP_TIMER_TICK_RATE_MS + 1u )
+
+static u8_t                    esp01_rx_buf_s[ESP01_MAX_RX_SIZE];
+static volatile u16_t          esp01_rx_len_s       = 0u;
+static volatile u64_t          esp01_last_byte_ms_s = 0u;
+static volatile false_true_et  esp01_rx_active_s    = FALSE;
+
+/* Called from UART ISR - buffer the byte and record when it arrived */
+__attribute__(( optimize("O3"), hot ))
 void esp01_uart_byte_rx( u8_t byte )
 {
-    if( esp01_rx_idx_s < ESP01_MAX_RX_SIZE )
+    if( esp01_rx_len_s < ESP01_MAX_RX_SIZE )
     {
-        esp01_rx_buf_s[esp01_rx_idx_s++] = byte;
-
-        if( ( esp01_rx_idx_s >= 2u ) &&
-            ( esp01_rx_buf_s[esp01_rx_idx_s - 2u] == '\r' ) &&
-            ( esp01_rx_buf_s[esp01_rx_idx_s - 1u] == '\n' ) )
-        {
-            ESP01_uart_frame_ready_callback( esp01_rx_buf_s, esp01_rx_idx_s );
-            esp01_rx_idx_s = 0u;
-        }
+        esp01_rx_buf_s[esp01_rx_len_s++] = byte;
     }
     else
     {
-        esp01_rx_idx_s = 0u;
+        esp01_rx_len_s = 0u;
+    }
+
+    esp01_last_byte_ms_s = TIME_get_cumulative_run_time_ms();
+    esp01_rx_active_s    = TRUE;
+}
+
+/* Called from tick context (before ESP01_tick) - fires callback once the inter-byte gap expires */
+void esp01_check_rx_timeout( void )
+{
+    if( ( esp01_rx_active_s == TRUE ) &&
+        ( TIME_has_time_elapsed_ms( esp01_last_byte_ms_s, ESP01_INTER_BYTE_TIMEOUT_MS ) == TRUE ) )
+    {
+        ESP01_uart_frame_ready_callback( esp01_rx_buf_s, esp01_rx_len_s );
+        esp01_rx_len_s    = 0u;
+        esp01_rx_active_s = FALSE;
     }
 }
 

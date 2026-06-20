@@ -17,10 +17,23 @@ extern NRF24_instance_st nrf24_instance_s;
 /***************************************************************************************************
 **                              Data declarations and definitions                                 **
 ***************************************************************************************************/
-STATIC RF_MGR_data_st     rf_mgr_data_s;
-STATIC RF_MGR_rf_state_et rf_mgr_state_s;
-STATIC RF_MGR_cfg_st      rf_mgr_cfg_s;
-STATIC u8_t               rf_mgr_chan_freq_s[7u] = { 0, 20, 40, 60, 80, 100, 120 };
+STATIC RF_MGR_data_st        rf_mgr_data_s;
+STATIC RF_MGR_rf_state_et    rf_mgr_state_s;
+STATIC RF_MGR_cfg_st         rf_mgr_cfg_s;
+STATIC u8_t                  rf_mgr_chan_freq_s[7u] = { 0, 20, 40, 60, 80, 100, 120 };
+STATIC RF_MGR_sensor_data_st rf_mgr_sensor_db_s[RF_MGR_MAX_SENSORS];
+
+/* Byte offsets within the sensor RF frame */
+#define RF_FRAME_OFFSET_SENSOR_ID       ( 0u )
+#define RF_FRAME_OFFSET_SENSOR_TYPE     ( 4u )
+#define RF_FRAME_OFFSET_OPER_MODE       ( 5u )
+#define RF_FRAME_OFFSET_LOCATION        ( 6u )
+#define RF_FRAME_OFFSET_TEMPERATURE     ( 7u )
+#define RF_FRAME_OFFSET_HUMIDITY        ( 9u )
+#define RF_FRAME_OFFSET_BATT_VOLTAGE    ( 11u )
+#define RF_FRAME_OFFSET_WAKEUP_INTERVAL ( 13u )
+#define RF_FRAME_OFFSET_RUNTIME         ( 15u )
+#define RF_FRAME_OFFSET_BATT_FLAGS      ( 19u )
 
 /***************************************************************************************************
 **                              Public Functions                                                  **
@@ -41,7 +54,8 @@ void RF_MGR_init( RF_MGR_cfg_st cfg )
 {
     rf_mgr_cfg_s   = cfg;
     rf_mgr_state_s = RF_MGR_APPLY_CFG;
-    STDC_memset( &rf_mgr_data_s, 0x00, sizeof( rf_mgr_data_s ) );
+    STDC_memset( &rf_mgr_data_s,      0x00, sizeof( rf_mgr_data_s ) );
+    STDC_memset( &rf_mgr_sensor_db_s, 0x00, sizeof( rf_mgr_sensor_db_s ) );
 }
 
 /*!
@@ -63,6 +77,8 @@ void RF_MGR_tick( void )
         rf_mgr_data_s.frame_pending = FALSE;
         rf_mgr_analyse_received_frame( rf_mgr_data_s.rx_payload );
     }
+
+    rf_mgr_check_comms_lost();
 
     switch( rf_mgr_state_s )
     {
@@ -383,13 +399,18 @@ void rf_mgr_inc_tx_packet_ctr( void )
 ***************************************************************************************************/
 void rf_mgr_analyse_received_frame( u8_t* data_p )
 {
-    if( PASS == rf_mgr_analyse_packet_crc( data_p, RF_MGR_MAX_PAYLOAD_SIZE - 1u ) )
+    pass_fail_et crc_result = PASS;
+
+#ifndef RF_MGR_DISABLE_CRC_CHECK
+    crc_result = rf_mgr_analyse_packet_crc( data_p, RF_MGR_MAX_PAYLOAD_SIZE - 1u );
+#endif
+
+    if( crc_result == PASS )
     {
-        /* first byte is the packet num and the DF MGR doesnt care about that */
+        rf_mgr_decode_sensor_frame( data_p );
     }
     else
     {
-        /* Wrong CRC so possiby corrupt frame */
         DBG_MGR_LOG_MSG( "Wrong CRC" );
     }
 }
@@ -422,6 +443,101 @@ pass_fail_et rf_mgr_analyse_packet_crc( u8_t* data_p, u8_t crc_pos )
     }
 
     return( status );
+}
+
+/*!
+****************************************************************************************************
+*
+*   \brief         Returns a pointer to the sensor database array
+*
+*   \author        MS
+*
+*   \return        Pointer to RF_MGR_sensor_data_st[RF_MGR_MAX_SENSORS]
+*
+***************************************************************************************************/
+RF_MGR_sensor_data_st* RF_MGR_get_sensor_db( void )
+{
+    return( rf_mgr_sensor_db_s );
+}
+
+/*!
+****************************************************************************************************
+*
+*   \brief         Decodes a validated sensor RF frame into the sensor database
+*
+*   \author        MS
+*
+*   \return        none
+*
+***************************************************************************************************/
+void rf_mgr_decode_sensor_frame( u8_t* data_p )
+{
+    u8_t                   i;
+    u8_t                   free_slot = RF_MGR_MAX_SENSORS;
+    u32_t                  sensor_id = STDC_copy_buffer_msb_first_to_32bit( &data_p[RF_FRAME_OFFSET_SENSOR_ID] );
+    RF_MGR_sensor_data_st* entry_p   = NULL_P;
+
+    for( i = 0u; i < RF_MGR_MAX_SENSORS; i++ )
+    {
+        if( ( rf_mgr_sensor_db_s[i].valid == TRUE ) && ( rf_mgr_sensor_db_s[i].sensor_id == sensor_id ) )
+        {
+            entry_p = &rf_mgr_sensor_db_s[i];
+        }
+
+        if( ( rf_mgr_sensor_db_s[i].valid == FALSE ) && ( free_slot == RF_MGR_MAX_SENSORS ) )
+        {
+            free_slot = i;
+        }
+    }
+
+    if( ( entry_p == NULL_P ) && ( free_slot < RF_MGR_MAX_SENSORS ) )
+    {
+        entry_p = &rf_mgr_sensor_db_s[free_slot];
+    }
+
+    if( entry_p != NULL_P )
+    {
+        entry_p->sensor_id              = sensor_id;
+        entry_p->sensor_type            = data_p[RF_FRAME_OFFSET_SENSOR_TYPE];
+        entry_p->operating_mode         = data_p[RF_FRAME_OFFSET_OPER_MODE];
+        entry_p->sensor_location        = data_p[RF_FRAME_OFFSET_LOCATION];
+        entry_p->temperature_centidegC  = (s16_t)STDC_copy_buffer_msb_first_to_16bit( &data_p[RF_FRAME_OFFSET_TEMPERATURE] );
+        entry_p->humidity_tenths_pct    = (s16_t)STDC_copy_buffer_msb_first_to_16bit( &data_p[RF_FRAME_OFFSET_HUMIDITY] );
+        entry_p->battery_voltage_mv     = STDC_copy_buffer_msb_first_to_16bit( &data_p[RF_FRAME_OFFSET_BATT_VOLTAGE] );
+        entry_p->wakeup_interval_sec    = STDC_copy_buffer_msb_first_to_16bit( &data_p[RF_FRAME_OFFSET_WAKEUP_INTERVAL] );
+        entry_p->runtime_sec            = STDC_copy_buffer_msb_first_to_32bit( &data_p[RF_FRAME_OFFSET_RUNTIME] );
+        entry_p->battery_flags          = data_p[RF_FRAME_OFFSET_BATT_FLAGS];
+        entry_p->last_rx_time_ms        = TIME_get_cumulative_run_time_ms();
+        entry_p->rx_frame_count         += 1u;
+        entry_p->comms_lost             = FALSE;
+        entry_p->valid                  = TRUE;
+    }
+}
+
+/*!
+****************************************************************************************************
+*
+*   \brief         Checks all known sensors for lost communication
+*
+*   \author        MS
+*
+*   \return        none
+*
+***************************************************************************************************/
+void rf_mgr_check_comms_lost( void )
+{
+    u8_t i;
+
+    for( i = 0u; i < RF_MGR_MAX_SENSORS; i++ )
+    {
+        if( rf_mgr_sensor_db_s[i].valid == TRUE )
+        {
+            if( TIME_has_time_elapsed_ms( rf_mgr_sensor_db_s[i].last_rx_time_ms, RF_MGR_COMMS_LOST_TIMEOUT_SECS * MSECS_PER_SEC ) == TRUE )
+            {
+                rf_mgr_sensor_db_s[i].comms_lost = TRUE;
+            }
+        }
+    }
 }
 
 /****************************** END OF FILE *******************************************************/

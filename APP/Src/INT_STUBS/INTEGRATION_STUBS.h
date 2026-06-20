@@ -38,6 +38,7 @@ extern const ESP01_cfg_st            esp01_cfg_s;
 extern const WIFI_config_st          wifi_cfg_s;
 extern       TB_config_st            tb_cfg_s;
 
-void    esp01_uart_byte_rx( u8_t byte );
+void esp01_uart_byte_rx( u8_t byte );
+void esp01_check_rx_timeout( void );
 
 #endif /* INTEGRATION_STUBS_H */

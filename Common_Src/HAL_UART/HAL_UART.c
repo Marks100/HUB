@@ -201,9 +201,9 @@ void HAL_USART2_init( void )
 	/* Configure the USART2 */
 	USART_InitTypeDef USART_InitStructure;
 
-	/* USART1 configuration ------------------------------------------------------*/
-	/* USART1 configured as follow:
-		- BaudRate = 115200 baud
+	/* USART2 configuration ------------------------------------------------------*/
+	/* USART2 configured as follow:
+		- BaudRate = 19200 baud
 		- Word Length = 8 Bits
 		- One Stop Bit
 		- No parity
@@ -215,7 +215,7 @@ void HAL_USART2_init( void )
 		- USART LastBit: The clock pulse of the last data bit is not output to
 			the SCLK pin
 	 */
-	USART_InitStructure.USART_BaudRate = 115200;
+	USART_InitStructure.USART_BaudRate = 19200;
 	USART_InitStructure.USART_WordLength = USART_WordLength_8b;
 	USART_InitStructure.USART_StopBits = USART_StopBits_1;
 	USART_InitStructure.USART_Parity = USART_Parity_No;
@@ -269,7 +269,7 @@ void HAL_USART2_close( void )
 *   \note         
 *
 ***************************************************************************************************/
-void HAL_USART2_set_callback( HAL_USART_func_type func_p )
+void HAL_USART2_set_rx_callback( HAL_USART_func_type func_p )
 {
 	if( func_p != NULL_P )
 	{
