@@ -2,3 +2,5 @@ APP/Build/
 APP/Src/autoversion.h
 BM/Build/
 Tool_cfg/Lauterbach/T32_t32marm_01_autostart.log
+Tool_cfg/Lauterbach/T32store.bak
+Tool_cfg/Lauterbach/T32store.cmm

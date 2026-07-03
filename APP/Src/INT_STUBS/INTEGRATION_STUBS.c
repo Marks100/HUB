@@ -75,7 +75,7 @@ const TIME_cfg_st time_cfg_s =
 ***************************************************************************************************/
 STATIC void onboard_btn_short_press( void )
 {
-    WIFI_set_hl_state( WIFI_RESTARTING );
+    WIFI_restart();
 }
 
 const BTN_MGR_func_table_st btm_mgr_func_table_s[3] =
@@ -177,47 +177,6 @@ const NVM_func_p_st nvm_persist_block_s =
 };
 
 /***************************************************************************************************
-**                              CTRL_AXIS                                                         **
-***************************************************************************************************/
-const CTRL_AXIS_cfg_st steering_axis_cfg_s =
-{
-    .min_counts           = 7u,
-    .max_counts           = 3560u,
-    .centre_counts        = 2020u,
-    .deadband_counts      = 80u,
-    .input_inverted       = TRUE,
-    .output_limit_percent = 40u,
-    .trim_cfg             = { .trim_enabled = FALSE }
-};
-
-const CTRL_AXIS_func_table_st steering_axis_funcs_s =
-{
-    .read_adc_func_p      = HAL_ADC_measure_steering_input,
-    .read_trim_adc_func_p = HAL_ADC_measure_steering_trim,
-};
-
-CTRL_AXIS_instance_st steering_axis_s;
-
-const CTRL_AXIS_cfg_st throttle_axis_cfg_s =
-{
-    .min_counts           = 1100u,
-    .max_counts           = 2900u,
-    .centre_counts        = 2020u,
-    .deadband_counts      = 80u,
-    .input_inverted       = TRUE,
-    .output_limit_percent = 100u,
-    .trim_cfg             = { .trim_enabled = FALSE }
-};
-
-const CTRL_AXIS_func_table_st throttle_axis_funcs_s =
-{
-    .read_adc_func_p      = HAL_ADC_measure_throttle_input,
-    .read_trim_adc_func_p = NULL_P,
-};
-
-CTRL_AXIS_instance_st throttle_axis_s;
-
-/***************************************************************************************************
 **                              WDG                                                               **
 ***************************************************************************************************/
 const WDG_HW_STM32_config_st wdg_cfg_s =
@@ -293,8 +252,13 @@ const WIFI_config_st wifi_cfg_s =
 {
     .ssid                     = (const u8_t*)"BTHub6-TFH6",
     .password                 = (const u8_t*)"4YEWArmQiDHL",
+    .ap_ssid                  = (const u8_t*)"HUB_AP",
+    .ap_password              = (const u8_t*)"hubpassword",
+    .ap_channel               = 6u,
+    .ap_encryption            = 3u,   /* WPA2_PSK */
     .rx_callback_p            = tb_mqtt_rx_handler,
     .send_complete_callback_p = on_wifi_send_complete,
+    .rssi_polling_enabled     = FALSE,
 };
 
 /***************************************************************************************************
@@ -302,10 +266,10 @@ const WIFI_config_st wifi_cfg_s =
 ***************************************************************************************************/
 TB_config_st tb_cfg_s =
 {
-    .broker           = "your-tb-host.com",
+    .broker           = "thingsboard.cloud",
     .port             = 1883u,
     .client_id        = "HUB_DEVICE",
-    .token            = "YOUR_ACCESS_TOKEN",
+    .token            = "wHngu0Owdj1xt4pfhFdS",
     .send_func_p      = WIFI_send,
     .telemetry_topics = tb_telemetry_topics_s,
     .num_telemetry    = 0u,   /* set by TB_CBK_init() */

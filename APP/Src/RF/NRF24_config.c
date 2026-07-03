@@ -46,7 +46,7 @@ const NRF24_reg_config_st NRF24_HUB_config_c[] =
     { SETUP_AW,     1u, { 0x01 } },
 	{ SETUP_RETR,   1u, { 0xF6 } },
 	{ RF_CH,        1u, { 0x78 } },
-	{ RF_SETUP,     1u, { 0x0E } }, /* 2 Mbps, 0 dBm — matches SST node */
+	{ RF_SETUP,     1u, { 0x26 } }, /* 250 kbps, 0 dBm — matches SST node */
 	{ RX_ADDR_P0,   5u, { 0xE7, 0xE7, 0xE7, 0xE7, 0xE7 } },
 	{ RX_ADDR_P1,   5u, { 0xC2, 0xC2, 0xC2, 0xC2, 0xC2 } },
 	{ RX_ADDR_P2,   1u, { 0xC3 } },

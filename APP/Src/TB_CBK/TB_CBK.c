@@ -9,6 +9,7 @@
 #include "HAL_ADC.h"
 #include "TIME_MGR.h"
 #include "STDC.h"
+#include "RF_MGR.h"
 
 /* Module Identification for STDC_assert functionality */
 #define STDC_MODULE_ID STDC_MOD_TB_CBK
@@ -18,6 +19,10 @@
 ***************************************************************************************************/
 STATIC off_on_et switch1val = OFF;
 STATIC off_on_et switch2val = OFF;
+
+#define TB_CBK_SENSOR_MIN_PUBLISH_INTERVAL_MS  ( 2u * 60u * 1000u )
+
+STATIC u64_t sensor_last_publish_ms_s[RF_MGR_MAX_SENSORS];
 
 /* RPC Handler Registration Array - Exported for TB configuration */
 TB_rpc_handler_entry_st tb_rpc_handlers_s[] =
@@ -43,35 +48,14 @@ TB_telemetry_topic_st tb_telemetry_topics_s[] =
     {
         .topic_name      = "heartbeat",
         .callback        = tb_telemetry_heartbeat_callback,
-        .interval_ms     = 300000u,
-        .last_publish_ms = 0u,
-        .enabled         = TRUE
-    },
-    {
-        .topic_name      = "temperature",
-        .callback        = tb_telemetry_temperature_callback,
-        .interval_ms     = 300000u,
-        .last_publish_ms = 0u,
-        .enabled         = TRUE
-    },
-    {
-        .topic_name      = "pressure",
-        .callback        = tb_telemetry_pressure_callback,
-        .interval_ms     = 300000u,
-        .last_publish_ms = 0u,
-        .enabled         = TRUE
-    },
-    {
-        .topic_name      = "temperature/cave",
-        .callback        = tb_telemetry_temperature_cave_callback,
-        .interval_ms     = 300000u,
+        .interval_ms     = 30000u,
         .last_publish_ms = 0u,
         .enabled         = TRUE
     },
     {
         .topic_name      = "sensors",
         .callback        = tb_telemetry_sensors_callback,
-        .interval_ms     = 300000u,
+        .interval_ms     = 100u,
         .last_publish_ms = 0u,
         .enabled         = TRUE
     }
@@ -102,6 +86,23 @@ STATIC char* append_s32( char* write_pos, s32_t signed_value )
     }
 
     return( append_u32( write_pos, (u32_t)signed_value ) );
+}
+
+STATIC char* append_centideg( char* write_pos, s16_t centideg )
+{
+    s32_t val = (s32_t)centideg;
+
+    if( val < 0 )
+    {
+        *write_pos++ = '-';
+        val = -val;
+    }
+
+    write_pos  = append_u32( write_pos, (u32_t)( val / 100 ) );
+    *write_pos++ = '.';
+    write_pos  = append_u32( write_pos, (u32_t)( ( val % 100 ) / 10 ) );
+
+    return( write_pos );
 }
 
 /***************************************************************************************************
@@ -218,7 +219,6 @@ pass_fail_et TB_CBK_rpc_tb_get_post_time( const u8_t* params_p, u8_t* response_p
 /***************************************************************************************************
 **                              RPC Handlers - Setters                                            **
 ***************************************************************************************************/
-
 pass_fail_et TB_CBK_rpc_switch1_set_val( const u8_t* params_p, u8_t* response_p, u16_t* response_len_p )
 {
     pass_fail_et result = FAIL;
@@ -372,7 +372,6 @@ pass_fail_et TB_CBK_rpc_tb_set_post_time( const u8_t* params_p, u8_t* response_p
 /***************************************************************************************************
 **                              Telemetry Callbacks                                               **
 ***************************************************************************************************/
-
 u16_t tb_telemetry_heartbeat_callback( u8_t* buffer_p, u16_t buffer_size )
 {
     STATIC u32_t heartbeat_count_s = 0u;
@@ -415,217 +414,54 @@ u16_t tb_telemetry_temperature_callback( u8_t* buffer_p, u16_t buffer_size )
     return( json_len );
 }
 
-u16_t tb_telemetry_pressure_callback( u8_t* buffer_p, u16_t buffer_size )
-{
-    u16_t json_len = 0u;
-
-    if( ( NULL_P != buffer_p ) && ( buffer_size > 0u ) )
-    {
-        STATIC u16_t pressure_hpa_s = 1013u;
-        pressure_hpa_s += 2u;
-        if( pressure_hpa_s > 1020u ) { pressure_hpa_s = 980u; }
-
-        char* p = (char*)buffer_p;
-        p = append( p, "{\"pressure\":" );
-        p = append_u32( p, (u32_t)pressure_hpa_s );
-        p = append( p, "}" );
-        *p = '\0';
-        json_len = (u16_t)( p - (char*)buffer_p );
-    }
-
-    return( json_len );
-}
-
-u16_t tb_telemetry_temperature_cave_callback( u8_t* buffer_p, u16_t buffer_size )
-{
-    u16_t json_len = 0u;
-
-    if( ( NULL_P != buffer_p ) && ( buffer_size > 0u ) )
-    {
-        STATIC s16_t cave_temp_s = 17;
-        cave_temp_s++;
-        if( cave_temp_s > 20 ) { cave_temp_s = 15; }
-
-        char* p = (char*)buffer_p;
-        p = append( p, "{\"temperature_cave\":" );
-        p = append_s32( p, (s32_t)cave_temp_s );
-        p = append( p, "}" );
-        *p = '\0';
-        json_len = (u16_t)( p - (char*)buffer_p );
-    }
-
-    return( json_len );
-}
-
 u16_t tb_telemetry_sensors_callback( u8_t* buffer_p, u16_t buffer_size )
 {
-    u16_t json_len = 0u;
+    STATIC u8_t            next_sensor_s = 0u;
+    u16_t                  json_len      = 0u;
 
     if( ( NULL_P != buffer_p ) && ( buffer_size > 0u ) )
     {
-        STATIC s16_t temp_s     = 22;
-        STATIC u16_t pressure_s = 1013u;
-        STATIC u16_t humidity_s = 45u;
+        RF_MGR_sensor_data_st* db_p    = RF_MGR_get_sensor_db();
+        u8_t                   checked = 0u;
+        u8_t                   found   = FALSE;
 
-        temp_s++;
-        if( temp_s > 28 ) { temp_s = 20; }
-        pressure_s += 2u;
-        if( pressure_s > 1020u ) { pressure_s = 1000u; }
-        humidity_s += 2u;
-        if( humidity_s > 70u ) { humidity_s = 30u; }
+        while( ( checked < RF_MGR_MAX_SENSORS ) && ( found == FALSE ) )
+        {
+            u8_t          idx      = ( next_sensor_s + checked ) % RF_MGR_MAX_SENSORS;
+            u64_t         last_pub = sensor_last_publish_ms_s[idx];
+            false_true_et time_ok  = FALSE;
 
-        char* p = (char*)buffer_p;
-        p = append( p, "{\"temperature\":" );  p = append_s32( p, (s32_t)temp_s );
-        p = append( p, ",\"pressure\":" );      p = append_u32( p, (u32_t)pressure_s );
-        p = append( p, ",\"humidity\":" );      p = append_u32( p, (u32_t)humidity_s );
-        p = append( p, "}" );
-        *p = '\0';
-        json_len = (u16_t)( p - (char*)buffer_p );
+            if( ( last_pub == 0u ) || ( TIME_has_time_elapsed_ms( last_pub, TB_CBK_SENSOR_MIN_PUBLISH_INTERVAL_MS ) == TRUE ) )
+            {
+                time_ok = TRUE;
+            }
+
+            if( ( db_p[idx].valid == TRUE ) && ( db_p[idx].tb_publish_pending == TRUE ) && ( time_ok == TRUE ) )
+            {
+                char* p = (char*)buffer_p;
+                p = append( p, "{\"" );    p = append_u32( p, (u32_t)idx );   p = append( p, "/temp\":" );        p = append_centideg( p, db_p[idx].temperature_centidegC );
+                p = append( p, ",\"" );   p = append_u32( p, (u32_t)idx );   p = append( p, "/hum\":" );         p = append_u32( p, (u32_t)( (u16_t)db_p[idx].humidity_tenths_pct / 10u ) );
+                p = append( p, ",\"" );   p = append_u32( p, (u32_t)idx );   p = append( p, "/batt_mv\":" );     p = append_u32( p, (u32_t)db_p[idx].battery_voltage_mv );
+                p = append( p, ",\"" );   p = append_u32( p, (u32_t)idx );   p = append( p, "/comms_lost\":" );  p = append_u32( p, (u32_t)db_p[idx].comms_lost );
+                p = append( p, "}" );
+                *p = '\0';
+                json_len = (u16_t)( p - (char*)buffer_p );
+
+                if( TB_publish_telemetry( (const char*)buffer_p, json_len ) == PASS )
+                {
+                    db_p[idx].tb_publish_pending  = FALSE;
+                    sensor_last_publish_ms_s[idx] = TIME_get_cumulative_run_time_ms();
+                }
+
+                next_sensor_s = ( idx + 1u ) % RF_MGR_MAX_SENSORS;
+                found         = TRUE;
+            }
+
+            checked++;
+        }
     }
 
-    return( json_len );
-}
-
-u16_t tb_telemetry_battery_callback( u8_t* buffer_p, u16_t buffer_size )
-{
-    u16_t json_len = 0u;
-
-    if( ( NULL_P != buffer_p ) && ( buffer_size > 0u ) )
-    {
-        /* Stored in millivolts to retain resolution without float */
-        STATIC u16_t voltage_mv_s = 12500u;
-        voltage_mv_s += 100u;
-        if( voltage_mv_s > 13500u ) { voltage_mv_s = 11500u; }
-
-        char* p = (char*)buffer_p;
-        p = append( p, "{\"battery_mv\":" );
-        p = append_u32( p, (u32_t)voltage_mv_s );
-        p = append( p, "}" );
-        *p = '\0';
-        json_len = (u16_t)( p - (char*)buffer_p );
-    }
-
-    return( json_len );
-}
-
-u16_t tb_telemetry_system_status_callback( u8_t* buffer_p, u16_t buffer_size )
-{
-    u16_t json_len = 0u;
-
-    if( ( NULL_P != buffer_p ) && ( buffer_size > 0u ) )
-    {
-        STATIC u8_t can_active = 1u;
-        STATIC u8_t errors     = 0u;
-
-        can_active = (can_active == 1u) ? 0u : 1u;
-        errors = (errors + 1u) % 3u;
-
-        char* p = (char*)buffer_p;
-        p = append( p, "{\"wifi\":" );    p = append_u32( p, (u32_t)WIFI_is_connected() );
-        p = append( p, ",\"can\":" );     p = append_u32( p, (u32_t)can_active );
-        p = append( p, ",\"errors\":" );  p = append_u32( p, (u32_t)errors );
-        p = append( p, "}" );
-        *p = '\0';
-        json_len = (u16_t)( p - (char*)buffer_p );
-    }
-
-    return( json_len );
-}
-
-u16_t tb_telemetry_memory_callback( u8_t* buffer_p, u16_t buffer_size )
-{
-    u16_t json_len = 0u;
-
-    if( ( NULL_P != buffer_p ) && ( buffer_size > 0u ) )
-    {
-        STATIC u32_t heap_used  = 1024u;
-        STATIC u32_t stack_used = 512u;
-
-        heap_used += 64u;
-        if( heap_used > 2048u ) { heap_used = 512u; }
-        stack_used = (stack_used + 32u) % 1024u;
-
-        char* p = (char*)buffer_p;
-        p = append( p, "{\"heap_used\":" );   p = append_u32( p, heap_used );
-        p = append( p, ",\"stack_used\":" );  p = append_u32( p, stack_used );
-        p = append( p, "}" );
-        *p = '\0';
-        json_len = (u16_t)( p - (char*)buffer_p );
-    }
-
-    return( json_len );
-}
-
-u16_t tb_telemetry_comm_stats_callback( u8_t* buffer_p, u16_t buffer_size )
-{
-    u16_t json_len = 0u;
-
-    if( ( NULL_P != buffer_p ) && ( buffer_size > 0u ) )
-    {
-        STATIC u32_t packets_tx  = 0u;
-        STATIC u32_t packets_rx  = 0u;
-        STATIC u16_t packet_loss = 0u;
-
-        packets_tx  += 10u;
-        packets_rx  += 9u;
-        packet_loss  = (u16_t)( packets_tx - packets_rx );
-
-        char* p = (char*)buffer_p;
-        p = append( p, "{\"tx_packets\":" );   p = append_u32( p, packets_tx );
-        p = append( p, ",\"rx_packets\":" );   p = append_u32( p, packets_rx );
-        p = append( p, ",\"packet_loss\":" );  p = append_u32( p, (u32_t)packet_loss );
-        p = append( p, "}" );
-        *p = '\0';
-        json_len = (u16_t)( p - (char*)buffer_p );
-    }
-
-    return( json_len );
-}
-
-u16_t tb_telemetry_cpu_load_callback( u8_t* buffer_p, u16_t buffer_size )
-{
-    u16_t json_len = 0u;
-
-    if( ( NULL_P != buffer_p ) && ( buffer_size > 0u ) )
-    {
-        STATIC u8_t cpu_load_pct = 25u;
-        cpu_load_pct += 5u;
-        if( cpu_load_pct > 80u ) { cpu_load_pct = 20u; }
-
-        char* p = (char*)buffer_p;
-        p = append( p, "{\"cpu_load\":" );
-        p = append_u32( p, (u32_t)cpu_load_pct );
-        p = append( p, "}" );
-        *p = '\0';
-        json_len = (u16_t)( p - (char*)buffer_p );
-    }
-
-    return( json_len );
-}
-
-u16_t tb_telemetry_rf_signal_callback( u8_t* buffer_p, u16_t buffer_size )
-{
-    u16_t json_len = 0u;
-
-    if( ( NULL_P != buffer_p ) && ( buffer_size > 0u ) )
-    {
-        STATIC s8_t rssi_dbm       = -50;
-        STATIC u8_t signal_quality = 80u;
-
-        rssi_dbm -= 2;
-        if( rssi_dbm < -90 ) { rssi_dbm = -40; }
-        signal_quality = (u8_t)( 100 + rssi_dbm );
-        if( signal_quality > 100u ) { signal_quality = 100u; }
-
-        char* p = (char*)buffer_p;
-        p = append( p, "{\"rssi\":" );            p = append_s32( p, (s32_t)rssi_dbm );
-        p = append( p, ",\"signal_quality\":" );  p = append_u32( p, (u32_t)signal_quality );
-        p = append( p, "}" );
-        *p = '\0';
-        json_len = (u16_t)( p - (char*)buffer_p );
-    }
-
-    return( json_len );
+    return( 0u );
 }
 
 /****************************** END OF FILE *******************************************************/

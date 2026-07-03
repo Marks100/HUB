@@ -60,15 +60,7 @@ TB_telemetry_topic_st* TB_CBK_get_telemetry_topics( u8_t* count_p );
 /* Telemetry Callbacks (TB_telemetry_callback_t signature) */
 u16_t tb_telemetry_heartbeat_callback( u8_t* buffer_p, u16_t buffer_size );
 u16_t tb_telemetry_temperature_callback( u8_t* buffer_p, u16_t buffer_size );
-u16_t tb_telemetry_pressure_callback( u8_t* buffer_p, u16_t buffer_size );
-u16_t tb_telemetry_temperature_cave_callback( u8_t* buffer_p, u16_t buffer_size );
 u16_t tb_telemetry_sensors_callback( u8_t* buffer_p, u16_t buffer_size );
-u16_t tb_telemetry_battery_callback( u8_t* buffer_p, u16_t buffer_size );
-u16_t tb_telemetry_system_status_callback( u8_t* buffer_p, u16_t buffer_size );
-u16_t tb_telemetry_memory_callback( u8_t* buffer_p, u16_t buffer_size );
-u16_t tb_telemetry_comm_stats_callback( u8_t* buffer_p, u16_t buffer_size );
-u16_t tb_telemetry_cpu_load_callback( u8_t* buffer_p, u16_t buffer_size );
-u16_t tb_telemetry_rf_signal_callback( u8_t* buffer_p, u16_t buffer_size );
 
 #endif /* TB_CBK_H multiple inclusion guard */
 

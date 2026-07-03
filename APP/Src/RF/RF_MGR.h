@@ -20,7 +20,7 @@
 #define RF_MGR_TX_TIMEOUT_MS            ( 30u/RF_MGR_TICK_RATE )
 #define RF_MGR_RX_TIMEOUT_MS            ( 30u/RF_MGR_TICK_RATE )
 
-#define RF_MGR_MAX_SENSORS              ( 8u )
+#define RF_MGR_MAX_SENSORS              ( 12u )
 
 #define RF_MGR_COMMS_LOST_TIMEOUT_SECS  ( 30u * 60u )
 
@@ -108,6 +108,7 @@ typedef struct
     u64_t         last_rx_time_ms;
     u32_t         rx_frame_count;
     false_true_et comms_lost;
+    false_true_et tb_publish_pending;
     false_true_et valid;
 } RF_MGR_sensor_data_st;
 

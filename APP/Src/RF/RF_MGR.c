@@ -7,7 +7,6 @@
 ***************************************************************************************************/
 #include "RF_MGR.h"
 #include "HAL_BRD.h"
-#include "CTRL_AXIS.h"
 
 /* Module Identification for assert functionality */
 #define STDC_MODULE_ID STDC_RF_MGR
@@ -510,6 +509,7 @@ void rf_mgr_decode_sensor_frame( u8_t* data_p )
         entry_p->last_rx_time_ms        = TIME_get_cumulative_run_time_ms();
         entry_p->rx_frame_count         += 1u;
         entry_p->comms_lost             = FALSE;
+        entry_p->tb_publish_pending     = TRUE;
         entry_p->valid                  = TRUE;
     }
 }
