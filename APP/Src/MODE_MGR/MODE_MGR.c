@@ -7,6 +7,7 @@
 ***************************************************************************************************/
 #include "MODE_MGR.h"
 #include "INTEGRATION_STUBS.h"
+#include "MSG_SCHED.h"
 
 /***************************************************************************************************
 **                              Data declarations and definitions                                 **
@@ -362,6 +363,7 @@ void mode_mgr_action_schedule_normal( void )
 		BTN_MGR_tick();
 		NRF24_tick( &nrf24_instance_s );
 		RF_MGR_tick();
+		MSG_SCHED_tick();
 	}
 
 	if( mode_mgr_check_time_interval( 50u ) == TRUE )

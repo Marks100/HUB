@@ -19,6 +19,9 @@
 #include "ESP01.h"
 #include "WIFI.h"
 #include "TB.h"
+#include "TJA1051.h"
+#include "PDUR.h"
+#include "MSG_SCHED.h"
 
 extern const SYSTICK_cfg_st          systick_cfg_s;
 extern const hw_crc_config_st        hw_crc_cfg_s;
@@ -37,6 +40,11 @@ extern const WDG_HW_STM32_config_st  wdg_cfg_s;
 extern const ESP01_cfg_st            esp01_cfg_s;
 extern const WIFI_config_st          wifi_cfg_s;
 extern       TB_config_st            tb_cfg_s;
+extern const TJA1051_func_st         tja1051_func_s;
+extern const TJA1051_config_st       tja1051_cfg_s;
+extern const PDUR_rx_route_st        pdur_routing_table_s[];
+extern const u16_t                   pdur_num_routes_s;
+extern const MSG_SCHED_cfg_st        msg_sched_cfg_s;
 
 void esp01_uart_byte_rx( u8_t byte );
 void esp01_check_rx_timeout( void );

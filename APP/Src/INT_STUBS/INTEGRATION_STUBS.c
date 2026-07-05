@@ -3,6 +3,9 @@
 ***************************************************************************************************/
 #include "INTEGRATION_STUBS.h"
 #include "HAL_BRD.h"
+#include "HAL_CAN.h"
+#include "PDUR.h"
+#include "MSG_SCHED.h"
 #include "WIFI.h"
 #include "HAL_ADC.h"
 #include "HAL_TIM.h"
@@ -14,6 +17,7 @@
 #include "FLS_STM32F1.h"
 #include "nvic_driver.h"
 #include "TB_CBK.h"
+#include "TJA1051.h"
 
 /***************************************************************************************************
 **                              APP HEADER                                                        **
@@ -275,6 +279,102 @@ TB_config_st tb_cfg_s =
     .num_telemetry    = 0u,   /* set by TB_CBK_init() */
     .rpc_handlers     = tb_rpc_handlers_s,
     .num_rpc_handlers = 0u,   /* set by TB_CBK_init() */
+};
+
+/***************************************************************************************************
+**                              TJA1051 CAN transceiver                                          **
+***************************************************************************************************/
+const TJA1051_func_st tja1051_func_s =
+{
+    .en_pin_set = HAL_BRD_TJA1051_set_en_pin,
+    .s_pin_set  = NULL_P
+};
+
+const TJA1051_config_st tja1051_cfg_s =
+{
+    .initial_mode   = TJA1051_MODE_NORMAL,
+    .event_callback = NULL_P
+};
+
+/***************************************************************************************************
+**                              CAN / PDUR / MSG_SCHED                                           **
+***************************************************************************************************/
+
+/* Adapts PDUR's generic TX signature to HAL_CAN_send_frame */
+STATIC void pdur_hal_can_tx( u32_t id, u8_t id_type, u8_t frame_type, u8_t* data_p, u16_t len, u8_t channel )
+{
+    (void)id_type;
+    (void)frame_type;
+    (void)channel;
+    HAL_CAN_send_frame( id, data_p, (u8_t)len );
+}
+
+/* Base CAN ID for sensor telemetry frames — slot N uses ID (base + N) */
+#define CAN_SENSOR_BASE_ID  ( 0x100u )
+
+/* One TX-only PDUR route per sensor slot */
+#define CAN_SENSOR_PDUR_ENTRY( n ) \
+    { 0u, 0xFFFFFFFFu, ( CAN_SENSOR_BASE_ID + (u32_t)(n) ), 0u, 0u, 0u, NULL_P, pdur_hal_can_tx, NULL_P }
+
+const PDUR_rx_route_st pdur_routing_table_s[] =
+{
+    CAN_SENSOR_PDUR_ENTRY(  0u ),
+    CAN_SENSOR_PDUR_ENTRY(  1u ),
+    CAN_SENSOR_PDUR_ENTRY(  2u ),
+    CAN_SENSOR_PDUR_ENTRY(  3u ),
+    CAN_SENSOR_PDUR_ENTRY(  4u ),
+    CAN_SENSOR_PDUR_ENTRY(  5u ),
+    CAN_SENSOR_PDUR_ENTRY(  6u ),
+    CAN_SENSOR_PDUR_ENTRY(  7u ),
+    CAN_SENSOR_PDUR_ENTRY(  8u ),
+    CAN_SENSOR_PDUR_ENTRY(  9u ),
+    CAN_SENSOR_PDUR_ENTRY( 10u ),
+    CAN_SENSOR_PDUR_ENTRY( 11u ),
+};
+
+const u16_t pdur_num_routes_s = (u16_t)( sizeof(pdur_routing_table_s) / sizeof(pdur_routing_table_s[0u]) );
+
+/* Packs one sensor DB slot into the 7-byte CAN frame.
+   msg_idx maps directly to the sensor slot (MSG_SCHED table is 1:1 with sensor slots). */
+STATIC void can_sensor_get_data( u8_t msg_idx, u8_t* buf_p, u8_t* len_p )
+{
+    const RF_MGR_sensor_data_st* db_p = RF_MGR_get_sensor_db();
+
+    buf_p[0u] = (u8_t)( (u16_t)db_p[msg_idx].temperature_centidegC >> 8u );
+    buf_p[1u] = (u8_t)(  db_p[msg_idx].temperature_centidegC        & 0xFFu );
+    buf_p[2u] = (u8_t)( (u16_t)db_p[msg_idx].humidity_tenths_pct   >> 8u );
+    buf_p[3u] = (u8_t)(  db_p[msg_idx].humidity_tenths_pct          & 0xFFu );
+    buf_p[4u] = (u8_t)(  db_p[msg_idx].battery_voltage_mv           >> 8u );
+    buf_p[5u] = (u8_t)(  db_p[msg_idx].battery_voltage_mv           & 0xFFu );
+    buf_p[6u] = (u8_t)db_p[msg_idx].comms_lost;
+    *len_p    = 7u;
+}
+
+/* One on-event MSG_SCHED entry per sensor slot */
+#define CAN_SENSOR_MSG_ENTRY( n ) \
+    { ( CAN_SENSOR_BASE_ID + (u32_t)(n) ), 0u, 0u, MSG_SCHED_TX_ON_EVENT, can_sensor_get_data }
+
+STATIC const MSG_SCHED_msg_cfg_st can_msg_table_s[] =
+{
+    CAN_SENSOR_MSG_ENTRY(  0u ),
+    CAN_SENSOR_MSG_ENTRY(  1u ),
+    CAN_SENSOR_MSG_ENTRY(  2u ),
+    CAN_SENSOR_MSG_ENTRY(  3u ),
+    CAN_SENSOR_MSG_ENTRY(  4u ),
+    CAN_SENSOR_MSG_ENTRY(  5u ),
+    CAN_SENSOR_MSG_ENTRY(  6u ),
+    CAN_SENSOR_MSG_ENTRY(  7u ),
+    CAN_SENSOR_MSG_ENTRY(  8u ),
+    CAN_SENSOR_MSG_ENTRY(  9u ),
+    CAN_SENSOR_MSG_ENTRY( 10u ),
+    CAN_SENSOR_MSG_ENTRY( 11u ),
+};
+
+const MSG_SCHED_cfg_st msg_sched_cfg_s =
+{
+    .msg_table      = can_msg_table_s,
+    .num_msgs       = (u8_t)( sizeof(can_msg_table_s) / sizeof(can_msg_table_s[0u]) ),
+    .get_time_ms_fn = TIME_get_cumulative_run_time_ms,
 };
 
 /****************************** END OF FILE *******************************************************/

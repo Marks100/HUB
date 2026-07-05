@@ -69,6 +69,13 @@ void HAL_BRD_init( void )
 	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_Out_PP;
 	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_10MHz;
 	GPIO_Init( DEBUG_MODE_LED_PORT, &GPIO_InitStructure );
+
+	/* TJA1051 EN pin — hold low (standby) until CAN_MGR_init() drives it high */
+	GPIO_InitStructure.GPIO_Pin   = TJA1051_EN_PIN;
+	GPIO_InitStructure.GPIO_Mode  = GPIO_Mode_Out_PP;
+	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_10MHz;
+	GPIO_Init( TJA1051_EN_PORT, &GPIO_InitStructure );
+	HAL_BRD_TJA1051_set_en_pin( LOW );
 }
 
 /*!
@@ -81,6 +88,11 @@ void HAL_BRD_init( void )
 *   \return        low_high_et
 *
 ***************************************************************************************************/
+void HAL_BRD_TJA1051_set_en_pin( low_high_et state )
+{
+	HAL_BRD_set_pin_state( TJA1051_EN_PORT, TJA1051_EN_PIN, state );
+}
+
 void HAL_BRD_reset( void )
 {
 	NVIC_SystemReset();

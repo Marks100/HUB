@@ -7,6 +7,7 @@
 ***************************************************************************************************/
 #include "RF_MGR.h"
 #include "HAL_BRD.h"
+#include "MSG_SCHED.h"
 
 /* Module Identification for assert functionality */
 #define STDC_MODULE_ID STDC_RF_MGR
@@ -511,6 +512,7 @@ void rf_mgr_decode_sensor_frame( u8_t* data_p )
         entry_p->comms_lost             = FALSE;
         entry_p->tb_publish_pending     = TRUE;
         entry_p->valid                  = TRUE;
+        MSG_SCHED_send_now( (u8_t)( entry_p - rf_mgr_sensor_db_s ) );
     }
 }
 

@@ -57,6 +57,9 @@ void HAL_BRD_set_lcd_a0_pin( low_high_et state );
 void HAL_BRD_set_lcd_cs_pin( low_high_et state );
 void HAL_BRD_set_lcd_rst_pin( low_high_et state );
 
+/* TJA1051 CAN transceiver */
+void HAL_BRD_TJA1051_set_en_pin( low_high_et state );
+
 /* WS2811 bit-bang pulses — call with interrupts disabled, tuned for 72 MHz */
 void HAL_BRD_WS2811_zero_pulse_direct( void );
 void HAL_BRD_WS2811_one_pulse_direct( void );

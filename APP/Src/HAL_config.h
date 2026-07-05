@@ -97,4 +97,14 @@
 #define ADC_STEERING_TRIM_CHANNEL   ADC_Channel_5   /* PA5 -- placeholder, verify */
 #define ADC_THROTTLE_CHANNEL        ADC_Channel_6   /* PA6 -- placeholder, verify */
 
+/* TJA1051 CAN transceiver */
+#define TJA1051_EN_PORT             GPIOB
+#define TJA1051_EN_PIN              GPIO_Pin_10
+
+/* bxCAN1 — PA11=RX, PA12=TX (default mapping, no remap required) */
+#define CAN_TX_PORT                 GPIOA
+#define CAN_TX_PIN                  GPIO_Pin_12
+#define CAN_RX_PORT                 GPIOA
+#define CAN_RX_PIN                  GPIO_Pin_11
+
 #endif /* HAL_CONFIG_H */

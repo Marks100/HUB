@@ -24,6 +24,8 @@
 #include "nvic_driver.h"
 #include "scb_driver.h"
 #include "TB_CBK.h"
+#include "TJA1051.h"
+#include "HAL_CAN.h"
 
 void app_main( void )
 {
@@ -56,6 +58,10 @@ void app_main( void )
     WIFI_init( &wifi_cfg_s );
     TB_CBK_init( &tb_cfg_s );
     TB_init( &tb_cfg_s );
+    TJA1051_init( &tja1051_func_s, &tja1051_cfg_s );
+    HAL_CAN_init( NULL_P );
+    PDUR_init( pdur_routing_table_s, pdur_num_routes_s );
+    MSG_SCHED_init( &msg_sched_cfg_s );
     MODE_MGR_init();
 
     SYSTICK_init( &systick_cfg_s, SystemCoreClock );
