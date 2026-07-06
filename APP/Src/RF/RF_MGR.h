@@ -120,7 +120,7 @@ typedef struct
 /***************************************************************************************************
 **                              Function Prototypes                                               **
 ***************************************************************************************************/
-void                   RF_MGR_init( RF_MGR_cfg_st cfg );
+void                   RF_MGR_init( const RF_MGR_cfg_st* cfg_p );
 void                   RF_MGR_tick( void );
 RF_MGR_rf_state_et     RF_MGR_get_state( void );
 void                   RF_MGR_tx_complete( pass_fail_et state );

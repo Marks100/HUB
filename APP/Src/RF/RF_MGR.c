@@ -50,9 +50,9 @@ STATIC RF_MGR_sensor_data_st rf_mgr_sensor_db_s[RF_MGR_MAX_SENSORS];
 *   \note
 *
 ***************************************************************************************************/
-void RF_MGR_init( RF_MGR_cfg_st cfg )
+void RF_MGR_init( const RF_MGR_cfg_st* cfg_p )
 {
-    rf_mgr_cfg_s   = cfg;
+    rf_mgr_cfg_s   = *cfg_p;
     rf_mgr_state_s = RF_MGR_APPLY_CFG;
     STDC_memset( &rf_mgr_data_s,      0x00, sizeof( rf_mgr_data_s ) );
     STDC_memset( &rf_mgr_sensor_db_s, 0x00, sizeof( rf_mgr_sensor_db_s ) );

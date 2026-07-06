@@ -25,14 +25,15 @@
 **  The FBL checks the presence_pattern before jumping to APP.                                    **
 **  The crc field is patched by app_crc_injector after linking.                                   **
 ***************************************************************************************************/
-typedef struct {
+typedef struct 
+{
     u32_t presence_pattern;
     u32_t crc;
     u8_t  reserved[248];
 } APP_header_st;
 
-__attribute__((section(".app_header"), used))
-const APP_header_st app_header_s = {
+__attribute__((section(".app_header"), used)) const APP_header_st app_header_s = 
+{
     .presence_pattern = 0xDEADBEEFU,
     .crc              = 0x00000000U,
 };
@@ -203,8 +204,7 @@ static volatile u64_t          esp01_last_byte_ms_s = 0u;
 static volatile false_true_et  esp01_rx_active_s    = FALSE;
 
 /* Called from UART ISR - buffer the byte and record when it arrived */
-__attribute__(( optimize("O3"), hot ))
-void esp01_uart_byte_rx( u8_t byte )
+__attribute__(( optimize("O3"), hot )) void esp01_uart_byte_rx( u8_t byte )
 {
     if( esp01_rx_len_s < ESP01_MAX_RX_SIZE )
     {
@@ -297,10 +297,17 @@ const TJA1051_config_st tja1051_cfg_s =
 };
 
 /***************************************************************************************************
+**                              RF_MGR                                                            **
+***************************************************************************************************/
+const RF_MGR_cfg_st rf_mgr_cfg_s =
+{
+    .mode    = RF_MGR_MODE_RX,
+    .channel = 0u
+};
+
+/***************************************************************************************************
 **                              CAN / PDUR / MSG_SCHED                                           **
 ***************************************************************************************************/
-
-/* Adapts PDUR's generic TX signature to HAL_CAN_send_frame */
 STATIC void pdur_hal_can_tx( u32_t id, u8_t id_type, u8_t frame_type, u8_t* data_p, u16_t len, u8_t channel )
 {
     (void)id_type;

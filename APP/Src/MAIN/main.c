@@ -1,5 +1,5 @@
-#include "CLK_STM32F1.h"
 #include "INTEGRATION_STUBS.h"
+#include "CLK_STM32F1.h"
 #include "CHKSUM.h"
 #include "HAL_BRD.h"
 #include "HAL_ADC.h"
@@ -30,13 +30,13 @@
 void app_main( void )
 {
     CLK_STM32F1_init( &hse8_72mhz_s );
-
     NVM_init( &nvm_hw_interface_s );
     NVM_register_block( 0u, &nvm_persist_block_s );
 
-    HAL_BRD_init();
     DBG_MGR_init( &dbg_mgr_cfg_s, SystemCoreClock );
     DWT_init( SystemCoreClock );
+    HAL_BRD_init();
+    HAL_CAN_init( NULL_P );
     HAL_ADC_init();
     HAL_TIM3_init();
     HAL_TIM4_init_encoder();
@@ -52,14 +52,13 @@ void app_main( void )
     WS2811_init( &ws2811_instance_s );
     ST7567_init( &st7567_func_table_s );
     NRF24_init( &nrf24_instance_s );
-    RF_MGR_init( (RF_MGR_cfg_st){ .mode = RF_MGR_MODE_RX, .channel = 0u } );
+    RF_MGR_init( &rf_mgr_cfg_s );
     ESP01_init( &esp01_cfg_s );
     HAL_USART2_set_rx_callback( esp01_uart_byte_rx );
     WIFI_init( &wifi_cfg_s );
     TB_CBK_init( &tb_cfg_s );
     TB_init( &tb_cfg_s );
     TJA1051_init( &tja1051_func_s, &tja1051_cfg_s );
-    HAL_CAN_init( NULL_P );
     PDUR_init( pdur_routing_table_s, pdur_num_routes_s );
     MSG_SCHED_init( &msg_sched_cfg_s );
     MODE_MGR_init();
