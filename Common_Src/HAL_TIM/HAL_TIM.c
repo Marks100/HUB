@@ -101,8 +101,8 @@ void HAL_TIM2_init( void )
 
 	/* Add IRQ vector to NVIC */
 	NVIC_InitStruct.NVIC_IRQChannel = TIM2_IRQn;
-	/* Set priority */
-	NVIC_InitStruct.NVIC_IRQChannelPreemptionPriority = 0x00;
+	/* Priority 1 — below the CPS input ISR (EXTI2, priority 0) so it can preempt this */
+	NVIC_InitStruct.NVIC_IRQChannelPreemptionPriority = 0x01;
 	/* Set sub priority */
 	NVIC_InitStruct.NVIC_IRQChannelSubPriority = 0x00;
 	NVIC_InitStruct.NVIC_IRQChannelCmd = ENABLE;
@@ -244,7 +244,8 @@ void HAL_TIM1_start( u16_t counter )
 
 	NVIC_InitTypeDef NVIC_InitStruct;
 	NVIC_InitStruct.NVIC_IRQChannel                   = TIM1_UP_IRQn;
-	NVIC_InitStruct.NVIC_IRQChannelPreemptionPriority = 0x00;
+	/* Priority 1 — below the CPS input ISR (EXTI2, priority 0) so it can preempt this */
+	NVIC_InitStruct.NVIC_IRQChannelPreemptionPriority = 0x01;
 	NVIC_InitStruct.NVIC_IRQChannelSubPriority        = 0x00;
 	NVIC_InitStruct.NVIC_IRQChannelCmd                = ENABLE;
 	NVIC_Init( &NVIC_InitStruct );
@@ -283,7 +284,7 @@ void HAL_TIM1_disable( void )
 
 	NVIC_InitTypeDef NVIC_InitStruct;
 	NVIC_InitStruct.NVIC_IRQChannel                   = TIM1_UP_IRQn;
-	NVIC_InitStruct.NVIC_IRQChannelPreemptionPriority = 0x00;
+	NVIC_InitStruct.NVIC_IRQChannelPreemptionPriority = 0x01;
 	NVIC_InitStruct.NVIC_IRQChannelSubPriority        = 0x00;
 	NVIC_InitStruct.NVIC_IRQChannelCmd                = DISABLE;
 	NVIC_Init( &NVIC_InitStruct );
@@ -537,7 +538,8 @@ void HAL_TIM_IC_init( TIM_TypeDef* tim_p, u8_t channel, HAL_TIM_IC_edge_et edge,
 		TIM_Cmd( tim_p, ENABLE );
 
 		NVIC_InitStructure.NVIC_IRQChannel                   = irqn;
-		NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = 0x00;
+		/* Priority 1 — below the CPS input ISR (EXTI2, priority 0) so it can preempt this */
+		NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = 0x01;
 		NVIC_InitStructure.NVIC_IRQChannelSubPriority        = 0x00;
 		NVIC_InitStructure.NVIC_IRQChannelCmd                = ENABLE;
 		NVIC_Init( &NVIC_InitStructure );

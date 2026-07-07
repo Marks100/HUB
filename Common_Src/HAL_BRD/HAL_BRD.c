@@ -29,6 +29,14 @@ void HAL_BRD_init( void )
 {
 	GPIO_InitTypeDef GPIO_InitStructure;
 
+	/* Establish the board's interrupt priority scheme before any NVIC_Init() call.
+	 * Full 4 preemption-priority bits, 0 subpriority bits — every peripheral gets a
+	 * distinct preemption level rather than an undefined tie at the NVIC's reset default.
+	 *   0 (highest) - CPS input pin (EXTI2, configured below)
+	 *   1           - every other peripheral ISR (see HAL_TIM.c, HAL_CAN.c, HAL_UART.c)
+	 *   lowest      - SysTick (sets its own priority in SYSTICK_init() — see systick_driver.h) */
+	NVIC_PriorityGroupConfig( NVIC_PriorityGroup_4 );
+
 	RCC_APB2PeriphClockCmd( RCC_APB2Periph_AFIO,  ENABLE );
 	RCC_APB2PeriphClockCmd( RCC_APB2Periph_GPIOC, ENABLE );
 	RCC_APB2PeriphClockCmd( RCC_APB2Periph_GPIOB, ENABLE );
@@ -100,6 +108,10 @@ void HAL_BRD_init( void )
 
 	NVIC_InitTypeDef NVIC_InitStruct;
 	NVIC_InitStruct.NVIC_IRQChannel                   = EXTI2_IRQn;
+	/* Priority 0 — the highest in the system. Every other peripheral ISR is priority 1+
+	 * (see HAL_TIM.c, HAL_CAN.c, HAL_UART.c) and SysTick is priority 2, so this pin can
+	 * always preempt them and feed CPS with minimum latency. Requires
+	 * NVIC_PriorityGroupConfig(NVIC_PriorityGroup_4) to have already run (see main.c). */
 	NVIC_InitStruct.NVIC_IRQChannelPreemptionPriority = 0x00;
 	NVIC_InitStruct.NVIC_IRQChannelSubPriority        = 0x00;
 	NVIC_InitStruct.NVIC_IRQChannelCmd                = ENABLE;

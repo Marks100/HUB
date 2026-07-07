@@ -82,7 +82,8 @@ void HAL_CAN_init( HAL_CAN_rx_callback_ft rx_callback_p )
     CAN_ITConfig( CAN1, CAN_IT_FMP0, ENABLE );
 
     nvic_init.NVIC_IRQChannel                   = USB_LP_CAN1_RX0_IRQn;
-    nvic_init.NVIC_IRQChannelPreemptionPriority = 0u;
+    /* Priority 1 — below the CPS input ISR (EXTI2, priority 0) so it can preempt this */
+    nvic_init.NVIC_IRQChannelPreemptionPriority = 1u;
     nvic_init.NVIC_IRQChannelSubPriority        = 0u;
     nvic_init.NVIC_IRQChannelCmd                = ENABLE;
     NVIC_Init( &nvic_init );
