@@ -26,6 +26,7 @@
 #include "TB_CBK.h"
 #include "TJA1051.h"
 #include "HAL_CAN.h"
+#include "CPS.h"
 
 void app_main( void )
 {
@@ -61,6 +62,7 @@ void app_main( void )
     TJA1051_init( &tja1051_func_s, &tja1051_cfg_s );
     PDUR_init( pdur_routing_table_s, pdur_num_routes_s );
     MSG_SCHED_init( &msg_sched_cfg_s );
+    CPS_init( &cps_instance_s, &cps_cfg_s, SystemCoreClock );
     MODE_MGR_init();
 
     SYSTICK_init( &systick_cfg_s, SystemCoreClock );

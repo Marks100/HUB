@@ -18,6 +18,7 @@
 #include "nvic_driver.h"
 #include "TB_CBK.h"
 #include "TJA1051.h"
+#include "CPS.h"
 
 /***************************************************************************************************
 **                              APP HEADER                                                        **
@@ -204,7 +205,7 @@ static volatile u64_t          esp01_last_byte_ms_s = 0u;
 static volatile false_true_et  esp01_rx_active_s    = FALSE;
 
 /* Called from UART ISR - buffer the byte and record when it arrived */
-__attribute__(( optimize("O3"), hot )) void esp01_uart_byte_rx( u8_t byte )
+OPTIMISE_O3 HOT void esp01_uart_byte_rx( u8_t byte )
 {
     if( esp01_rx_len_s < ESP01_MAX_RX_SIZE )
     {
@@ -382,6 +383,34 @@ const MSG_SCHED_cfg_st msg_sched_cfg_s =
     .msg_table      = can_msg_table_s,
     .num_msgs       = (u8_t)( sizeof(can_msg_table_s) / sizeof(can_msg_table_s[0u]) ),
     .get_time_ms_fn = TIME_get_cumulative_run_time_ms,
+};
+
+/***************************************************************************************************
+**                              CPS                                                                **
+**  Feed a signal generator into CPS_INPUT_PIN (HAL_config.h) to find the max frequency            **
+**  this HAL/CPS chain can track without dropping edges.                                          **
+**  Pin setup + EXTI2_IRQHandler live in HAL_BRD.c, which calls CPS_tooth_event() directly —       **
+**  no generic dispatch layer. Wired directly in main(): CPS_init(&cps_instance_s, &cps_cfg_s,     **
+**  SystemCoreClock). Ticked directly via CPS_tick(&cps_instance_s) from MODE_MGR.                 **
+**  Watch cps_instance_s.rpm (== input Hz, see cfg comment) live in the debugger, or call          **
+**  CPS_get_rpm(&cps_instance_s).                                                                  **
+***************************************************************************************************/
+CPS_instance_st cps_instance_s;
+
+/* total_teeth = 60 makes CPS_get_rpm() read out directly in Hz:
+ *   RPM = ticks_per_min / (avg_interval_ticks * total_teeth)  ->  with total_teeth=60, RPM == input Hz. */
+const CPS_cfg_st cps_cfg_s =
+{
+    .total_teeth                     = 60u,
+    .gap_type                        = CPS_GAP_NONE,
+    .capture_edge                    = CPS_EDGE_RISING,
+    .filter_depth                    = 1u,     /* no averaging — most responsive for bench testing */
+    .stall_timeout_us                = 500000u,
+    .rpm_max_credible                = 65535u, /* don't clamp — we want to see the real ceiling */
+    .rpm_min_credible                = 0u,
+    .get_timer_ticks_func_p          = DWT_get_count, /* raw cycle counter — no conversion in the ISR */
+    .revolution_sync_callback_func_p = NULL_P,
+    .stall_callback_func_p           = NULL_P,
 };
 
 /****************************** END OF FILE *******************************************************/

@@ -6,6 +6,12 @@
 **                              Includes                                                          **
 ***************************************************************************************************/
 #include "HAL_BRD.h"
+#include "CPS.h"
+
+/* Owned by INTEGRATION_STUBS.c — redeclared here (rather than pulling in the whole
+ * INTEGRATION_STUBS.h chain) so the CPS input ISR can call CPS_tooth_event() directly,
+ * with zero indirection/trampoline between the edge and the driver. */
+extern CPS_instance_st cps_instance_s;
 
 STATIC HAL_BRD_nrf_func_type HAL_BRD_nrf_func_p;
 /*!
@@ -76,6 +82,28 @@ void HAL_BRD_init( void )
 	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_10MHz;
 	GPIO_Init( TJA1051_EN_PORT, &GPIO_InitStructure );
 	HAL_BRD_TJA1051_set_en_pin( LOW );
+
+	/* CPS input pin — edge-triggered on EXTI2, serviced directly by EXTI2_IRQHandler below */
+	GPIO_InitStructure.GPIO_Pin   = CPS_INPUT_PIN;
+	GPIO_InitStructure.GPIO_Mode  = GPIO_Mode_IPU;
+	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_10MHz;
+	GPIO_Init( CPS_INPUT_PORT, &GPIO_InitStructure );
+
+	GPIO_EXTILineConfig( GPIO_PortSourceGPIOC, GPIO_PinSource2 );
+
+	EXTI_InitTypeDef EXTI_InitStructure;
+	EXTI_InitStructure.EXTI_Line    = CPS_INPUT_EXTI_LINE;
+	EXTI_InitStructure.EXTI_Mode    = EXTI_Mode_Interrupt;
+	EXTI_InitStructure.EXTI_Trigger = EXTI_Trigger_Rising;
+	EXTI_InitStructure.EXTI_LineCmd = ENABLE;
+	EXTI_Init( &EXTI_InitStructure );
+
+	NVIC_InitTypeDef NVIC_InitStruct;
+	NVIC_InitStruct.NVIC_IRQChannel                   = EXTI2_IRQn;
+	NVIC_InitStruct.NVIC_IRQChannelPreemptionPriority = 0x00;
+	NVIC_InitStruct.NVIC_IRQChannelSubPriority        = 0x00;
+	NVIC_InitStruct.NVIC_IRQChannelCmd                = ENABLE;
+	NVIC_Init( &NVIC_InitStruct );
 }
 
 /*!
@@ -432,6 +460,29 @@ void EXTI15_10_IRQHandler(void)
 		}
 
 		EXTI_ClearITPendingBit( NRF24_IRQ_EXT_LINE );
+	}
+}
+
+/*!
+****************************************************************************************************
+*
+*   \brief         Interrupt Handler ( 2 ) — CPS input pin
+*
+*   \author        MS
+*
+*   \return        none
+*
+*   \note          Calls CPS_tooth_event() directly, by name — no registered callback, no
+*                  dispatch table, no trampoline. This pin is dedicated to CPS, so there is
+*                  nothing generic to abstract.
+*
+***************************************************************************************************/
+void EXTI2_IRQHandler(void)
+{
+	if( EXTI_GetFlagStatus( CPS_INPUT_EXTI_LINE ) != RESET )
+	{
+		EXTI_ClearITPendingBit( CPS_INPUT_EXTI_LINE );
+		CPS_tooth_event( &cps_instance_s );
 	}
 }
 

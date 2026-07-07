@@ -15,6 +15,18 @@ STATIC HAL_TIM_func_type HAL_TIM2_func_p = NULL_P;
 STATIC HAL_TIM_func_type HAL_TIM3_func_p = NULL_P;
 STATIC HAL_TIM_func_type HAL_TIM4_func_p = NULL_P;
 
+/* Input-capture callbacks, indexed by channel (1-4 -> index 0-3) */
+STATIC HAL_TIM_IC_callback_ft hal_tim2_ic_callback_s[4] = { NULL_P };
+STATIC HAL_TIM_IC_callback_ft hal_tim3_ic_callback_s[4] = { NULL_P };
+
+/***************************************************************************************************
+**                              Private Function Prototypes                                       **
+***************************************************************************************************/
+STATIC u16_t hal_tim_ic_channel_lookup( u8_t channel );
+STATIC u16_t hal_tim_ic_it_lookup( u8_t channel );
+STATIC u16_t hal_tim_ic_polarity_lookup( HAL_TIM_IC_edge_et edge );
+STATIC void  hal_tim_ic_dispatch( TIM_TypeDef* tim_p, HAL_TIM_IC_callback_ft* callback_table_p, u8_t channel );
+
 /***************************************************************************************************
 **                              Public Functions                                                  **
 ***************************************************************************************************/
@@ -413,6 +425,8 @@ void TIM1_UP_IRQHandler( void )
 ***************************************************************************************************/
 void TIM2_IRQHandler ( void )
 {
+	u8_t channel;
+
 	if( TIM_GetITStatus( TIM2, TIM_IT_Update ) )
 	{
 		HAL_TIM2_stop();
@@ -422,6 +436,11 @@ void TIM2_IRQHandler ( void )
 		{
 			HAL_TIM2_func_p();
 		}
+	}
+
+	for( channel = 1u; channel <= 4u; channel++ )
+	{
+		hal_tim_ic_dispatch( TIM2, hal_tim2_ic_callback_s, channel );
 	}
 }
 
@@ -437,9 +456,17 @@ void TIM2_IRQHandler ( void )
 ***************************************************************************************************/
 void TIM3_IRQHandler ( void )
 {
+	u8_t channel;
+
 	if( TIM_GetITStatus( TIM3, TIM_IT_Update ) )
 	{
 		TIM_ClearITPendingBit( TIM3, TIM_IT_Update );
+	}
+
+	/* Channel 4 excluded — reserved for the buzzer PWM output */
+	for( channel = 1u; channel <= 3u; channel++ )
+	{
+		hal_tim_ic_dispatch( TIM3, hal_tim3_ic_callback_s, channel );
 	}
 }
 
@@ -458,6 +485,135 @@ void TIM4_IRQHandler ( void )
 	if( TIM_GetITStatus( TIM4, TIM_IT_Update ) )
 	{
 		TIM_ClearITPendingBit( TIM4, TIM_IT_Update );
+	}
+}
+
+/*!
+****************************************************************************************************
+*
+*   \brief         Configure a TIM2/TIM3 channel in input-capture mode and register its callback
+*
+*   \author        mstewart
+*
+*   \note          TIM3 channel 4 is reserved for the buzzer PWM output and is rejected.
+*                  Enables the shared TIMx IRQ vector (idempotent — safe even if already enabled
+*                  by HAL_TIM2_init()/HAL_TIM3_init()) and starts the timer counter running.
+*
+*   \warning       TIM2 is otherwise driven as a one-shot delay by HAL_TIM2_start()/stop()
+*                  (which resets and halts the shared counter on each use). Do not use TIM2
+*                  for input capture on a build that also uses the TIM2 one-shot delay API —
+*                  use TIM3 instead, or dedicate TIM2 solely to input capture.
+*
+***************************************************************************************************/
+void HAL_TIM_IC_init( TIM_TypeDef* tim_p, u8_t channel, HAL_TIM_IC_edge_et edge, HAL_TIM_IC_callback_ft callback_p )
+{
+	TIM_ICInitTypeDef TIM_ICInitStructure;
+	NVIC_InitTypeDef  NVIC_InitStructure;
+	IRQn_Type         irqn;
+
+	if( ( callback_p != NULL_P ) && ( channel >= 1u ) && ( channel <= 4u ) &&
+	    ( ( tim_p == TIM2 ) || ( tim_p == TIM3 ) ) &&
+	    ( !( ( tim_p == TIM3 ) && ( channel == 4u ) ) ) )
+	{
+		if( tim_p == TIM2 )
+		{
+			hal_tim2_ic_callback_s[ channel - 1u ] = callback_p;
+			irqn = TIM2_IRQn;
+		}
+		else
+		{
+			hal_tim3_ic_callback_s[ channel - 1u ] = callback_p;
+			irqn = TIM3_IRQn;
+		}
+
+		TIM_ICInitStructure.TIM_Channel     = hal_tim_ic_channel_lookup( channel );
+		TIM_ICInitStructure.TIM_ICPolarity  = hal_tim_ic_polarity_lookup( edge );
+		TIM_ICInitStructure.TIM_ICSelection = TIM_ICSelection_DirectTI;
+		TIM_ICInitStructure.TIM_ICPrescaler = TIM_ICPSC_DIV1;
+		TIM_ICInitStructure.TIM_ICFilter    = 0x4u;
+		TIM_ICInit( tim_p, &TIM_ICInitStructure );
+
+		TIM_ITConfig( tim_p, hal_tim_ic_it_lookup( channel ), ENABLE );
+		TIM_Cmd( tim_p, ENABLE );
+
+		NVIC_InitStructure.NVIC_IRQChannel                   = irqn;
+		NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = 0x00;
+		NVIC_InitStructure.NVIC_IRQChannelSubPriority        = 0x00;
+		NVIC_InitStructure.NVIC_IRQChannelCmd                = ENABLE;
+		NVIC_Init( &NVIC_InitStructure );
+	}
+}
+
+/*!
+****************************************************************************************************
+*
+*   \brief         Map a 1-4 channel number to its TIM_Channel_x constant
+*
+***************************************************************************************************/
+STATIC u16_t hal_tim_ic_channel_lookup( u8_t channel )
+{
+	static const u16_t lookup[4] = { TIM_Channel_1, TIM_Channel_2, TIM_Channel_3, TIM_Channel_4 };
+
+	return( lookup[ channel - 1u ] );
+}
+
+/*!
+****************************************************************************************************
+*
+*   \brief         Map a 1-4 channel number to its TIM_IT_CCx constant
+*
+***************************************************************************************************/
+STATIC u16_t hal_tim_ic_it_lookup( u8_t channel )
+{
+	static const u16_t lookup[4] = { TIM_IT_CC1, TIM_IT_CC2, TIM_IT_CC3, TIM_IT_CC4 };
+
+	return( lookup[ channel - 1u ] );
+}
+
+/*!
+****************************************************************************************************
+*
+*   \brief         Map an edge selection to its TIM_ICPolarity_x constant
+*
+***************************************************************************************************/
+STATIC u16_t hal_tim_ic_polarity_lookup( HAL_TIM_IC_edge_et edge )
+{
+	u16_t polarity = TIM_ICPolarity_Rising;
+
+	if( edge == HAL_TIM_IC_EDGE_FALLING )
+	{
+		polarity = TIM_ICPolarity_Falling;
+	}
+	else if( edge == HAL_TIM_IC_EDGE_BOTH )
+	{
+		polarity = TIM_ICPolarity_BothEdge;
+	}
+	else
+	{
+		/* Rising — default */
+	}
+
+	return( polarity );
+}
+
+/*!
+****************************************************************************************************
+*
+*   \brief         Clear the CCx pending bit for `channel` and fire its registered callback
+*
+***************************************************************************************************/
+STATIC void hal_tim_ic_dispatch( TIM_TypeDef* tim_p, HAL_TIM_IC_callback_ft* callback_table_p, u8_t channel )
+{
+	u16_t it = hal_tim_ic_it_lookup( channel );
+
+	if( TIM_GetITStatus( tim_p, it ) != RESET )
+	{
+		TIM_ClearITPendingBit( tim_p, it );
+
+		if( callback_table_p[ channel - 1u ] != NULL_P )
+		{
+			callback_table_p[ channel - 1u ]();
+		}
 	}
 }
 

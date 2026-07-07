@@ -355,6 +355,7 @@ void mode_mgr_action_schedule_normal( void )
 		//ST7567_tick();
 		//NRF24_tick( &nrf24_instance_s );
     	ROTARY_MGR_tick();
+		CPS_tick( &cps_instance_s );
 	}
 
 	if( mode_mgr_check_time_interval( 20u ) == TRUE )

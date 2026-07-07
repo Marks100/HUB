@@ -23,6 +23,7 @@
 #include "RF_MGR.h"
 #include "PDUR.h"
 #include "MSG_SCHED.h"
+#include "CPS.h"
 
 extern const SYSTICK_cfg_st          systick_cfg_s;
 extern const hw_crc_config_st        hw_crc_cfg_s;
@@ -47,6 +48,8 @@ extern const RF_MGR_cfg_st           rf_mgr_cfg_s;
 extern const PDUR_rx_route_st        pdur_routing_table_s[];
 extern const u16_t                   pdur_num_routes_s;
 extern const MSG_SCHED_cfg_st        msg_sched_cfg_s;
+extern       CPS_instance_st         cps_instance_s;
+extern const CPS_cfg_st              cps_cfg_s;
 
 void esp01_uart_byte_rx( u8_t byte );
 void esp01_check_rx_timeout( void );
