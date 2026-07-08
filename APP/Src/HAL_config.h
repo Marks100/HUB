@@ -107,11 +107,11 @@
 #define CAN_RX_PORT                 GPIOA
 #define CAN_RX_PIN                  GPIO_Pin_11
 
-/* CPS input — free pin on GPIOC (entirely unused under SUPER_PILL).
- * Move freely — not a committed sensor pin yet.
- * Pin 2 -> dedicated EXTI2 vector (not the shared EXTI9_5 group) — see HAL_BRD.c. */
-#define CPS_INPUT_PORT              GPIOC
-#define CPS_INPUT_PIN               GPIO_Pin_2
-#define CPS_INPUT_EXTI_LINE         EXTI_Line2
+/* CPS input — PB3 (JTDO), free once JTAG-DP is disabled (see GPIO_Remap_SWJ_JTAGDisable
+ * in HAL_BRD_init) — not a committed sensor pin, move freely if needed.
+ * Pin 3 -> dedicated EXTI3 vector (not the shared EXTI9_5/EXTI15_10 groups) — see HAL_BRD.c. */
+#define CPS_INPUT_PORT              GPIOB
+#define CPS_INPUT_PIN               GPIO_Pin_3
+#define CPS_INPUT_EXTI_LINE         EXTI_Line3
 
 #endif /* HAL_CONFIG_H */

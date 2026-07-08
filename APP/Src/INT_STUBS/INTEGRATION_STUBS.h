@@ -50,6 +50,7 @@ extern const u16_t                   pdur_num_routes_s;
 extern const MSG_SCHED_cfg_st        msg_sched_cfg_s;
 extern       CPS_instance_st         cps_instance_s;
 extern const CPS_cfg_st              cps_cfg_s;
+extern       u32_t                   cps_tdc_count_s;
 
 void esp01_uart_byte_rx( u8_t byte );
 void esp01_check_rx_timeout( void );

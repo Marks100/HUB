@@ -32,7 +32,7 @@ void HAL_BRD_init( void )
 	/* Establish the board's interrupt priority scheme before any NVIC_Init() call.
 	 * Full 4 preemption-priority bits, 0 subpriority bits — every peripheral gets a
 	 * distinct preemption level rather than an undefined tie at the NVIC's reset default.
-	 *   0 (highest) - CPS input pin (EXTI2, configured below)
+	 *   0 (highest) - CPS input pin (EXTI3, configured below)
 	 *   1           - every other peripheral ISR (see HAL_TIM.c, HAL_CAN.c, HAL_UART.c)
 	 *   lowest      - SysTick (sets its own priority in SYSTICK_init() — see systick_driver.h) */
 	NVIC_PriorityGroupConfig( NVIC_PriorityGroup_4 );
@@ -91,13 +91,18 @@ void HAL_BRD_init( void )
 	GPIO_Init( TJA1051_EN_PORT, &GPIO_InitStructure );
 	HAL_BRD_TJA1051_set_en_pin( LOW );
 
-	/* CPS input pin — edge-triggered on EXTI2, serviced directly by EXTI2_IRQHandler below */
+	/* CPS input pin — edge-triggered on EXTI3, serviced directly by EXTI3_IRQHandler below.
+	 * Floating, not pulled — the source (hall sensor or, for bench testing, a signal
+	 * generator) actively drives both edges. The internal ~30-50k pull-up otherwise forms
+	 * an RC filter with any wiring/breadboard capacitance that rounds off edges at high
+	 * frequency, capping the apparent input rate well below what the ISR/EXTI chain can
+	 * actually track. */
 	GPIO_InitStructure.GPIO_Pin   = CPS_INPUT_PIN;
-	GPIO_InitStructure.GPIO_Mode  = GPIO_Mode_IPU;
+	GPIO_InitStructure.GPIO_Mode  = GPIO_Mode_IN_FLOATING;
 	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_10MHz;
 	GPIO_Init( CPS_INPUT_PORT, &GPIO_InitStructure );
 
-	GPIO_EXTILineConfig( GPIO_PortSourceGPIOC, GPIO_PinSource2 );
+	GPIO_EXTILineConfig( GPIO_PortSourceGPIOB, GPIO_PinSource3 );
 
 	EXTI_InitTypeDef EXTI_InitStructure;
 	EXTI_InitStructure.EXTI_Line    = CPS_INPUT_EXTI_LINE;
@@ -107,7 +112,7 @@ void HAL_BRD_init( void )
 	EXTI_Init( &EXTI_InitStructure );
 
 	NVIC_InitTypeDef NVIC_InitStruct;
-	NVIC_InitStruct.NVIC_IRQChannel                   = EXTI2_IRQn;
+	NVIC_InitStruct.NVIC_IRQChannel                   = EXTI3_IRQn;
 	/* Priority 0 — the highest in the system. Every other peripheral ISR is priority 1+
 	 * (see HAL_TIM.c, HAL_CAN.c, HAL_UART.c) and SysTick is priority 2, so this pin can
 	 * always preempt them and feed CPS with minimum latency. Requires
@@ -478,7 +483,7 @@ void EXTI15_10_IRQHandler(void)
 /*!
 ****************************************************************************************************
 *
-*   \brief         Interrupt Handler ( 2 ) — CPS input pin
+*   \brief         Interrupt Handler ( 3 ) — CPS input pin
 *
 *   \author        MS
 *
@@ -487,15 +492,15 @@ void EXTI15_10_IRQHandler(void)
 *   \note          Calls CPS_tooth_event() directly, by name — no registered callback, no
 *                  dispatch table, no trampoline. This pin is dedicated to CPS, so there is
 *                  nothing generic to abstract.
+*   \note          Direct EXTI->PR access (write-1-to-clear) instead of the SPL's
+*                  EXTI_ClearITPendingBit() — this build has no LTO, so that would be a real,
+*                  avoidable non-inlined function call on the hottest ISR in the system.
 *
 ***************************************************************************************************/
-void EXTI2_IRQHandler(void)
+void EXTI3_IRQHandler(void)
 {
-	if( EXTI_GetFlagStatus( CPS_INPUT_EXTI_LINE ) != RESET )
-	{
-		EXTI_ClearITPendingBit( CPS_INPUT_EXTI_LINE );
-		CPS_tooth_event( &cps_instance_s );
-	}
+	EXTI->PR = CPS_INPUT_EXTI_LINE;   /* write-1-to-clear */
+	CPS_tooth_event( &cps_instance_s );
 }
 
 /****************************** END OF FILE *******************************************************/

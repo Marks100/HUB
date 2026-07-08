@@ -41,8 +41,8 @@ void app_main( void )
     HAL_ADC_init();
     HAL_TIM3_init();
     HAL_TIM4_init_encoder();
-    HAL_USART1_init();
-    HAL_USART2_init();
+    //HAL_USART1_init();
+    //HAL_USART2_init();
     HAL_SPI1_init();
     CHKSUM_init_hw_crc( &hw_crc_cfg_s );
     UID_init();
@@ -63,6 +63,7 @@ void app_main( void )
     PDUR_init( pdur_routing_table_s, pdur_num_routes_s );
     MSG_SCHED_init( &msg_sched_cfg_s );
     CPS_init( &cps_instance_s, &cps_cfg_s, SystemCoreClock );
+
     MODE_MGR_init();
 
     SYSTICK_init( &systick_cfg_s, SystemCoreClock );

@@ -389,7 +389,7 @@ const MSG_SCHED_cfg_st msg_sched_cfg_s =
 **                              CPS                                                                **
 **  Feed a signal generator into CPS_INPUT_PIN (HAL_config.h) to find the max frequency            **
 **  this HAL/CPS chain can track without dropping edges.                                          **
-**  Pin setup + EXTI2_IRQHandler live in HAL_BRD.c, which calls CPS_tooth_event() directly —       **
+**  Pin setup + EXTI3_IRQHandler live in HAL_BRD.c, which calls CPS_tooth_event() directly —       **
 **  no generic dispatch layer. Wired directly in main(): CPS_init(&cps_instance_s, &cps_cfg_s,     **
 **  SystemCoreClock). Ticked directly via CPS_tick(&cps_instance_s) from MODE_MGR.                 **
 **  Watch cps_instance_s.rpm (== input Hz, see cfg comment) live in the debugger, or call          **
@@ -397,20 +397,57 @@ const MSG_SCHED_cfg_st msg_sched_cfg_s =
 ***************************************************************************************************/
 CPS_instance_st cps_instance_s;
 
-/* total_teeth = 60 makes CPS_get_rpm() read out directly in Hz:
- *   RPM = ticks_per_min / (avg_interval_ticks * total_teeth)  ->  with total_teeth=60, RPM == input Hz. */
+/* Counts CPS's per-revolution gap-sync event. NOT true per-cylinder TDC — a real V10 fires
+ * 10 times per 2 crank revolutions (every 72°), which needs cam-phase info CPS doesn't have.
+ * This is the crank's single once-per-revolution reference point, commonly used as the sync
+ * reference in simpler decoding schemes. Watch in the debugger. */
+u32_t cps_tdc_count_s = 0u;
+
+STATIC void cps_tdc_cbk( void )
+{
+    cps_tdc_count_s++;
+}
+
+/* Mask/unmask just the CPS tooth-edge line (EXTI3) around CPS_tick()'s ring-buffer read —
+ * narrower than a global __disable_irq(), so it doesn't add latency to any other interrupt
+ * in the system. See critical_enter_func_p/critical_exit_func_p doc in CPS.h: without this,
+ * a tooth edge landing mid-average (very likely at high input frequencies, since
+ * CPS_tooth_event() runs at priority 0 and can preempt CPS_tick() at any point) corrupts
+ * the RPM average with a torn mix of old/new samples. */
+STATIC void cps_critical_enter( void )
+{
+    NVIC_DisableIRQ( EXTI3_IRQn );
+}
+
+STATIC void cps_critical_exit( void )
+{
+    NVIC_EnableIRQ( EXTI3_IRQn );
+}
+
+/* Bench test: plain uniform square wave from a signal generator — no missing-tooth gap,
+ * so CPS_GAP_NONE runs from the very first interval (no gap-sync wait, no CPS_STATE_SYNCING).
+ * total_teeth=60 is kept (not a real wheel size) purely so the RPM formula
+ * ( ticks_per_min / (interval * total_teeth) ) cancels out to input Hz, matching the
+ * comment on cps_instance_s.rpm below. Swap gap_type back to CPS_GAP_2_MISSING (and
+ * total_teeth back to a real wheel size) once testing against an actual missing-tooth wheel. */
 const CPS_cfg_st cps_cfg_s =
 {
-    .total_teeth                     = 60u,
+    .total_teeth                     = CPS_TEETH_60_MINUS_2,
     .gap_type                        = CPS_GAP_NONE,
     .capture_edge                    = CPS_EDGE_RISING,
-    .filter_depth                    = 1u,     /* no averaging — most responsive for bench testing */
+    .filter_depth                    = CPS_RPM_FILTER_DEPTH_MAX, /* max averaging (8 samples) —
+                                                 * smooths out sample-to-sample jitter at high
+                                                 * input frequencies */
     .stall_timeout_us                = 500000u,
-    .rpm_max_credible                = 65535u, /* don't clamp — we want to see the real ceiling */
-    .rpm_min_credible                = 0u,
+    .rpm_max_credible                = 0xFFFFFFFFu, /* don't clamp — we want to see the real ceiling */
     .get_timer_ticks_func_p          = DWT_get_count, /* raw cycle counter — no conversion in the ISR */
-    .revolution_sync_callback_func_p = NULL_P,
+    .revolution_sync_callback_func_p = NULL_P, /* never fires under CPS_GAP_NONE — no gap to find */
     .stall_callback_func_p           = NULL_P,
+    .rpm_implausible_callback_func_p = NULL_P, /* rpm_max_credible is maxed out above for this
+                                                 * bench test, so this can never actually fire —
+                                                 * wire it up once a real credible ceiling is set */
+    .critical_enter_func_p           = cps_critical_enter,
+    .critical_exit_func_p            = cps_critical_exit,
 };
 
 /****************************** END OF FILE *******************************************************/

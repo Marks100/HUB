@@ -15,6 +15,10 @@ STATIC HAL_TIM_func_type HAL_TIM2_func_p = NULL_P;
 STATIC HAL_TIM_func_type HAL_TIM3_func_p = NULL_P;
 STATIC HAL_TIM_func_type HAL_TIM4_func_p = NULL_P;
 
+/* TRUE while TIM1 is running in periodic mode (HAL_TIM1_start_periodic()) — the update ISR
+ * checks this to decide whether to tear itself down (one-shot) or keep running (periodic). */
+STATIC false_true_et hal_tim1_periodic_s = FALSE;
+
 /* Input-capture callbacks, indexed by channel (1-4 -> index 0-3) */
 STATIC HAL_TIM_IC_callback_ft hal_tim2_ic_callback_s[4] = { NULL_P };
 STATIC HAL_TIM_IC_callback_ft hal_tim3_ic_callback_s[4] = { NULL_P };
@@ -227,6 +231,30 @@ void HAL_TIM4_register_callback( HAL_TIM_func_type HAL_TIM_func_p )
 /*!
 ****************************************************************************************************
 *
+*   \brief         Change TIM1's prescaler (tick rate) — takes effect immediately
+*
+*   \author        mstewart
+*
+*   \param[in]     prescaler  PSC register value. Tick rate = SystemCoreClock / (prescaler + 1).
+*                             e.g. 0 -> 72 MHz ticks (13.9ns each), 8000 -> ~8998.9 Hz (the
+*                             HAL_TIM1_init() default).
+*
+*   \return        none
+*
+*   \note          Call before HAL_TIM1_start()/HAL_TIM1_start_periodic() to change the
+*                  achievable period range — e.g. for stress-testing CPS at high simulated
+*                  frequencies, a small or zero prescaler gives fine-grained control over
+*                  very short periods that the default ~9kHz tick rate cannot express.
+*
+***************************************************************************************************/
+void HAL_TIM1_set_prescaler( u16_t prescaler )
+{
+	TIM_PrescalerConfig( TIM1, prescaler, TIM_PSCReloadMode_Immediate );
+}
+
+/*!
+****************************************************************************************************
+*
 *   \brief         Timer 1 Start
 *
 *   \author        MS
@@ -237,6 +265,8 @@ void HAL_TIM4_register_callback( HAL_TIM_func_type HAL_TIM_func_p )
 void HAL_TIM1_start( u16_t counter )
 {
 	counter == 0u ? counter = 1u : counter --;
+
+	hal_tim1_periodic_s = FALSE;
 
 	TIM_ClearITPendingBit( TIM1, TIM_IT_Update );
 	TIM_SetCounter( TIM1, 0u );
@@ -251,6 +281,74 @@ void HAL_TIM1_start( u16_t counter )
 	NVIC_Init( &NVIC_InitStruct );
 
 	TIM_Cmd( TIM1, ENABLE );
+}
+
+/*!
+****************************************************************************************************
+*
+*   \brief         Timer 1 Start — periodic (auto-reloading, does not disable itself in the ISR)
+*
+*   \author        mstewart
+*
+*   \param[in]     period  Autoreload period in TIM1 ticks (TIM1 runs at ~8998.9 Hz — see
+*                          HAL_TIM1_init(): 72MHz / (8000+1) prescaler)
+*
+*   \return        none
+*
+*   \note          Unlike HAL_TIM1_start(), the registered callback (HAL_TIM1_register_callback())
+*                  fires repeatedly, once per period, until HAL_TIM1_stop() or HAL_TIM1_disable()
+*                  is called — no re-arming needed.
+*
+***************************************************************************************************/
+void HAL_TIM1_start_periodic( u16_t period )
+{
+	period == 0u ? period = 1u : period --;
+
+	hal_tim1_periodic_s = TRUE;
+
+	TIM_ClearITPendingBit( TIM1, TIM_IT_Update );
+	TIM_SetCounter( TIM1, 0u );
+	TIM_SetAutoreload( TIM1, period );
+
+	NVIC_InitTypeDef NVIC_InitStruct;
+	NVIC_InitStruct.NVIC_IRQChannel                   = TIM1_UP_IRQn;
+	/* Priority 1 — below the CPS input ISR (EXTI2, priority 0) so it can preempt this */
+	NVIC_InitStruct.NVIC_IRQChannelPreemptionPriority = 0x01;
+	NVIC_InitStruct.NVIC_IRQChannelSubPriority        = 0x00;
+	NVIC_InitStruct.NVIC_IRQChannelCmd                = ENABLE;
+	NVIC_Init( &NVIC_InitStruct );
+
+	TIM_Cmd( TIM1, ENABLE );
+}
+
+/*!
+****************************************************************************************************
+*
+*   \brief         Change TIM1's period while running in periodic mode — no NVIC/RCC touched
+*
+*   \author        mstewart
+*
+*   \param[in]     period  New autoreload period in TIM1 ticks
+*
+*   \return        none
+*
+*   \note          Only valid after HAL_TIM1_start_periodic() — for a variable-period waveform
+*                  (e.g. a tooth-wheel simulator with a gap), call this from the registered
+*                  callback to arm the next interval. Unlike calling HAL_TIM1_start() again,
+*                  this does NOT re-run NVIC_Init()/toggle the peripheral clock — those only
+*                  need to be set up once, and redoing them on every period is real, avoidable
+*                  overhead that skews the timing being generated.
+*
+***************************************************************************************************/
+void HAL_TIM1_set_period( u16_t period )
+{
+	period == 0u ? period = 1u : period --;
+
+	/* Direct register access — TIM_SetCounter()/TIM_SetAutoreload() are both single-write
+	 * SPL wrappers; this function is called from the hottest point of a re-arming waveform
+	 * generator, so the call+return overhead is worth avoiding. */
+	TIM1->CNT = 0u;
+	TIM1->ARR = period;
 }
 
 /*!
@@ -402,10 +500,17 @@ void HAL_TIM4_stop( void )
 ***************************************************************************************************/
 void TIM1_UP_IRQHandler( void )
 {
-    if( TIM_GetITStatus( TIM1, TIM_IT_Update ) )
+    /* Direct register access — TIM_GetITStatus()/TIM_ClearITPendingBit() are real
+     * non-inlined SPL calls (no LTO in this build); this ISR is the entry point of a
+     * re-arming waveform generator, so their call+return overhead is worth avoiding. */
+    if( ( TIM1->SR & TIM_IT_Update ) && ( TIM1->DIER & TIM_IT_Update ) )
 	{
-    	TIM_ClearITPendingBit( TIM1, TIM_IT_Update );
-		HAL_TIM1_disable();
+    	TIM1->SR = (u16_t)~TIM_IT_Update;
+
+		if( hal_tim1_periodic_s == FALSE )
+		{
+			HAL_TIM1_disable();
+		}
 
 		if( HAL_TIM1_func_p != NULL_P )
 		{

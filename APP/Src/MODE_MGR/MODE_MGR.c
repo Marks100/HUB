@@ -347,10 +347,10 @@ void mode_mgr_action_schedule_normal( void )
 {	
 	if( mode_mgr_check_time_interval( 10u ) == TRUE )
 	{
-		esp01_check_rx_timeout();
-		ESP01_tick();
-        WIFI_tick();
-        TB_tick();
+		//esp01_check_rx_timeout();
+		//ESP01_tick();
+        //WIFI_tick();
+        //TB_tick();
 		
 		//ST7567_tick();
 		//NRF24_tick( &nrf24_instance_s );
