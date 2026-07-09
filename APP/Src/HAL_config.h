@@ -107,11 +107,19 @@
 #define CAN_RX_PORT                 GPIOA
 #define CAN_RX_PIN                  GPIO_Pin_11
 
-/* CPS input — PB3 (JTDO), free once JTAG-DP is disabled (see GPIO_Remap_SWJ_JTAGDisable
- * in HAL_BRD_init) — not a committed sensor pin, move freely if needed.
- * Pin 3 -> dedicated EXTI3 vector (not the shared EXTI9_5/EXTI15_10 groups) — see HAL_BRD.c. */
-#define CPS_INPUT_PORT              GPIOB
-#define CPS_INPUT_PIN               GPIO_Pin_3
-#define CPS_INPUT_EXTI_LINE         EXTI_Line3
+/* ABS wheel-speed sensor #1 input — PB3 (JTDO), free once JTAG-DP is disabled (see
+ * GPIO_Remap_SWJ_JTAGDisable in HAL_BRD_init) — not a committed sensor pin, move freely
+ * if needed. Pin 3 -> dedicated EXTI3 vector (not the shared EXTI9_5/EXTI15_10 groups) —
+ * see HAL_BRD.c. */
+#define ABS1_INPUT_PORT              GPIOB
+#define ABS1_INPUT_PIN               GPIO_Pin_3
+#define ABS1_INPUT_EXTI_LINE         EXTI_Line3
+
+/* ABS wheel-speed sensor #2 input — PA9, free (USART1 unused, see main.c). EXTI9 sits on
+ * the shared EXTI9_5 vector, but nothing else uses lines 5-9, so it behaves as its own
+ * dedicated vector in practice — see HAL_BRD.c. */
+#define ABS2_INPUT_PORT              GPIOA
+#define ABS2_INPUT_PIN               GPIO_Pin_9
+#define ABS2_INPUT_EXTI_LINE         EXTI_Line9
 
 #endif /* HAL_CONFIG_H */

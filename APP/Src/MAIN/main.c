@@ -63,6 +63,12 @@ void app_main( void )
     PDUR_init( pdur_routing_table_s, pdur_num_routes_s );
     MSG_SCHED_init( &msg_sched_cfg_s );
     CPS_init( &cps_instance_s, &cps_cfg_s, SystemCoreClock );
+    CPS_init( &cps_instance_2_s, &cps_cfg_2_s, SystemCoreClock );
+    SLIP_DETECT_init( &slip_detect_instance_s, &slip_detect_cfg_s );
+    REF_SPEED_CALC_init( &ref_speed_calc_instance_s, &ref_speed_calc_cfg_s );
+
+    /* TODO: placeholder tyre size (225/35/R19) — replace with this vehicle's actual size */
+    vehicle_tyre_circumference_mm_s = TYRE_CALC_get_circumference_mm( 225u, 35u, 19u );
 
     MODE_MGR_init();
 

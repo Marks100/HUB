@@ -9,9 +9,10 @@
 #include "CPS.h"
 
 /* Owned by INTEGRATION_STUBS.c — redeclared here (rather than pulling in the whole
- * INTEGRATION_STUBS.h chain) so the CPS input ISR can call CPS_tooth_event() directly,
+ * INTEGRATION_STUBS.h chain) so the ABS input ISRs can call CPS_tooth_event() directly,
  * with zero indirection/trampoline between the edge and the driver. */
 extern CPS_instance_st cps_instance_s;
+extern CPS_instance_st cps_instance_2_s;
 
 STATIC HAL_BRD_nrf_func_type HAL_BRD_nrf_func_p;
 /*!
@@ -32,7 +33,7 @@ void HAL_BRD_init( void )
 	/* Establish the board's interrupt priority scheme before any NVIC_Init() call.
 	 * Full 4 preemption-priority bits, 0 subpriority bits — every peripheral gets a
 	 * distinct preemption level rather than an undefined tie at the NVIC's reset default.
-	 *   0 (highest) - CPS input pin (EXTI3, configured below)
+	 *   0 (highest) - ABS wheel-speed sensor inputs (EXTI3, EXTI9_5, configured below)
 	 *   1           - every other peripheral ISR (see HAL_TIM.c, HAL_CAN.c, HAL_UART.c)
 	 *   lowest      - SysTick (sets its own priority in SYSTICK_init() — see systick_driver.h) */
 	NVIC_PriorityGroupConfig( NVIC_PriorityGroup_4 );
@@ -91,21 +92,21 @@ void HAL_BRD_init( void )
 	GPIO_Init( TJA1051_EN_PORT, &GPIO_InitStructure );
 	HAL_BRD_TJA1051_set_en_pin( LOW );
 
-	/* CPS input pin — edge-triggered on EXTI3, serviced directly by EXTI3_IRQHandler below.
+	/* ABS #1 input pin — edge-triggered on EXTI3, serviced directly by EXTI3_IRQHandler below.
 	 * Floating, not pulled — the source (hall sensor or, for bench testing, a signal
 	 * generator) actively drives both edges. The internal ~30-50k pull-up otherwise forms
 	 * an RC filter with any wiring/breadboard capacitance that rounds off edges at high
 	 * frequency, capping the apparent input rate well below what the ISR/EXTI chain can
 	 * actually track. */
-	GPIO_InitStructure.GPIO_Pin   = CPS_INPUT_PIN;
+	GPIO_InitStructure.GPIO_Pin   = ABS1_INPUT_PIN;
 	GPIO_InitStructure.GPIO_Mode  = GPIO_Mode_IN_FLOATING;
 	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_10MHz;
-	GPIO_Init( CPS_INPUT_PORT, &GPIO_InitStructure );
+	GPIO_Init( ABS1_INPUT_PORT, &GPIO_InitStructure );
 
 	GPIO_EXTILineConfig( GPIO_PortSourceGPIOB, GPIO_PinSource3 );
 
 	EXTI_InitTypeDef EXTI_InitStructure;
-	EXTI_InitStructure.EXTI_Line    = CPS_INPUT_EXTI_LINE;
+	EXTI_InitStructure.EXTI_Line    = ABS1_INPUT_EXTI_LINE;
 	EXTI_InitStructure.EXTI_Mode    = EXTI_Mode_Interrupt;
 	EXTI_InitStructure.EXTI_Trigger = EXTI_Trigger_Rising;
 	EXTI_InitStructure.EXTI_LineCmd = ENABLE;
@@ -117,6 +118,28 @@ void HAL_BRD_init( void )
 	 * (see HAL_TIM.c, HAL_CAN.c, HAL_UART.c) and SysTick is priority 2, so this pin can
 	 * always preempt them and feed CPS with minimum latency. Requires
 	 * NVIC_PriorityGroupConfig(NVIC_PriorityGroup_4) to have already run (see main.c). */
+	NVIC_InitStruct.NVIC_IRQChannelPreemptionPriority = 0x00;
+	NVIC_InitStruct.NVIC_IRQChannelSubPriority        = 0x00;
+	NVIC_InitStruct.NVIC_IRQChannelCmd                = ENABLE;
+	NVIC_Init( &NVIC_InitStruct );
+
+	/* ABS #2 input pin — edge-triggered on EXTI9, serviced directly by EXTI9_5_IRQHandler
+	 * below. Nothing else uses lines 5-9, so this shared vector behaves as a dedicated one
+	 * in practice. Same floating-input reasoning as ABS #1 above. */
+	GPIO_InitStructure.GPIO_Pin   = ABS2_INPUT_PIN;
+	GPIO_InitStructure.GPIO_Mode  = GPIO_Mode_IN_FLOATING;
+	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_10MHz;
+	GPIO_Init( ABS2_INPUT_PORT, &GPIO_InitStructure );
+
+	GPIO_EXTILineConfig( GPIO_PortSourceGPIOA, GPIO_PinSource9 );
+
+	EXTI_InitStructure.EXTI_Line    = ABS2_INPUT_EXTI_LINE;
+	EXTI_InitStructure.EXTI_Mode    = EXTI_Mode_Interrupt;
+	EXTI_InitStructure.EXTI_Trigger = EXTI_Trigger_Rising;
+	EXTI_InitStructure.EXTI_LineCmd = ENABLE;
+	EXTI_Init( &EXTI_InitStructure );
+
+	NVIC_InitStruct.NVIC_IRQChannel                   = EXTI9_5_IRQn;
 	NVIC_InitStruct.NVIC_IRQChannelPreemptionPriority = 0x00;
 	NVIC_InitStruct.NVIC_IRQChannelSubPriority        = 0x00;
 	NVIC_InitStruct.NVIC_IRQChannelCmd                = ENABLE;
@@ -483,15 +506,15 @@ void EXTI15_10_IRQHandler(void)
 /*!
 ****************************************************************************************************
 *
-*   \brief         Interrupt Handler ( 3 ) — CPS input pin
+*   \brief         Interrupt Handler ( 3 ) — ABS #1 input pin
 *
 *   \author        MS
 *
 *   \return        none
 *
 *   \note          Calls CPS_tooth_event() directly, by name — no registered callback, no
-*                  dispatch table, no trampoline. This pin is dedicated to CPS, so there is
-*                  nothing generic to abstract.
+*                  dispatch table, no trampoline. This pin is dedicated to ABS #1, so there
+*                  is nothing generic to abstract.
 *   \note          Direct EXTI->PR access (write-1-to-clear) instead of the SPL's
 *                  EXTI_ClearITPendingBit() — this build has no LTO, so that would be a real,
 *                  avoidable non-inlined function call on the hottest ISR in the system.
@@ -499,8 +522,30 @@ void EXTI15_10_IRQHandler(void)
 ***************************************************************************************************/
 void EXTI3_IRQHandler(void)
 {
-	EXTI->PR = CPS_INPUT_EXTI_LINE;   /* write-1-to-clear */
+	EXTI->PR = ABS1_INPUT_EXTI_LINE;   /* write-1-to-clear */
 	CPS_tooth_event( &cps_instance_s );
+}
+
+/*!
+****************************************************************************************************
+*
+*   \brief         Interrupt Handler ( 5-9, shared vector ) — ABS #2 input pin
+*
+*   \author        MS
+*
+*   \return        none
+*
+*   \note          Calls CPS_tooth_event() directly, same zero-indirection reasoning as
+*                  EXTI3_IRQHandler above. This is nominally a shared vector (lines 5-9),
+*                  but nothing else in this system uses any of those lines, so it is
+*                  unconditionally treated as line 9 — no need to check EXTI->PR for other
+*                  bits that will never be set.
+*
+***************************************************************************************************/
+void EXTI9_5_IRQHandler(void)
+{
+	EXTI->PR = ABS2_INPUT_EXTI_LINE;   /* write-1-to-clear */
+	CPS_tooth_event( &cps_instance_2_s );
 }
 
 /****************************** END OF FILE *******************************************************/

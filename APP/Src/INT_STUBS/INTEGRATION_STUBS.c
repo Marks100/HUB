@@ -386,29 +386,19 @@ const MSG_SCHED_cfg_st msg_sched_cfg_s =
 };
 
 /***************************************************************************************************
-**                              CPS                                                                **
-**  Feed a signal generator into CPS_INPUT_PIN (HAL_config.h) to find the max frequency            **
-**  this HAL/CPS chain can track without dropping edges.                                          **
-**  Pin setup + EXTI3_IRQHandler live in HAL_BRD.c, which calls CPS_tooth_event() directly —       **
-**  no generic dispatch layer. Wired directly in main(): CPS_init(&cps_instance_s, &cps_cfg_s,     **
-**  SystemCoreClock). Ticked directly via CPS_tick(&cps_instance_s) from MODE_MGR.                 **
-**  Watch cps_instance_s.rpm (== input Hz, see cfg comment) live in the debugger, or call          **
-**  CPS_get_rpm(&cps_instance_s).                                                                  **
+**                              CPS — 2x ABS wheel-speed sensors                                   **
+**  Uniform 48-tooth ABS rings (no missing-tooth gap) — CPS_GAP_NONE runs from the very first      **
+**  interval, no gap-sync wait, no CPS_STATE_SYNCING. Pin setup + EXTI3_IRQHandler /                **
+**  EXTI9_5_IRQHandler live in HAL_BRD.c, which call CPS_tooth_event() directly — no generic        **
+**  dispatch layer. Wired directly in main(): CPS_init(&cps_instance_s, &cps_cfg_s,                 **
+**  SystemCoreClock) / CPS_init(&cps_instance_2_s, &cps_cfg_2_s, SystemCoreClock). Ticked           **
+**  directly via CPS_tick() from MODE_MGR. Watch cps_instance_s.rpm / cps_instance_2_s.rpm live     **
+**  in the debugger, or call CPS_get_rpm().                                                        **
 ***************************************************************************************************/
 CPS_instance_st cps_instance_s;
+CPS_instance_st cps_instance_2_s;
 
-/* Counts CPS's per-revolution gap-sync event. NOT true per-cylinder TDC — a real V10 fires
- * 10 times per 2 crank revolutions (every 72°), which needs cam-phase info CPS doesn't have.
- * This is the crank's single once-per-revolution reference point, commonly used as the sync
- * reference in simpler decoding schemes. Watch in the debugger. */
-u32_t cps_tdc_count_s = 0u;
-
-STATIC void cps_tdc_cbk( void )
-{
-    cps_tdc_count_s++;
-}
-
-/* Mask/unmask just the CPS tooth-edge line (EXTI3) around CPS_tick()'s ring-buffer read —
+/* Mask/unmask just the ABS #1 tooth-edge line (EXTI3) around CPS_tick()'s ring-buffer read —
  * narrower than a global __disable_irq(), so it doesn't add latency to any other interrupt
  * in the system. See critical_enter_func_p/critical_exit_func_p doc in CPS.h: without this,
  * a tooth edge landing mid-average (very likely at high input frequencies, since
@@ -424,30 +414,131 @@ STATIC void cps_critical_exit( void )
     NVIC_EnableIRQ( EXTI3_IRQn );
 }
 
-/* Bench test: plain uniform square wave from a signal generator — no missing-tooth gap,
- * so CPS_GAP_NONE runs from the very first interval (no gap-sync wait, no CPS_STATE_SYNCING).
- * total_teeth=60 is kept (not a real wheel size) purely so the RPM formula
- * ( ticks_per_min / (interval * total_teeth) ) cancels out to input Hz, matching the
- * comment on cps_instance_s.rpm below. Swap gap_type back to CPS_GAP_2_MISSING (and
- * total_teeth back to a real wheel size) once testing against an actual missing-tooth wheel. */
+/* Same as above, but for ABS #2's tooth-edge line (EXTI9). Each instance masks only its own
+ * line — never the other sensor's — so a burst of edges on one wheel never delays the other. */
+STATIC void cps_critical_enter_2( void )
+{
+    NVIC_DisableIRQ( EXTI9_5_IRQn );
+}
+
+STATIC void cps_critical_exit_2( void )
+{
+    NVIC_EnableIRQ( EXTI9_5_IRQn );
+}
+
 const CPS_cfg_st cps_cfg_s =
 {
-    .total_teeth                     = CPS_TEETH_60_MINUS_2,
+    .total_teeth                     = CPS_TEETH_ABS_48,
     .gap_type                        = CPS_GAP_NONE,
     .capture_edge                    = CPS_EDGE_RISING,
     .filter_depth                    = CPS_RPM_FILTER_DEPTH_MAX, /* max averaging (8 samples) —
                                                  * smooths out sample-to-sample jitter at high
                                                  * input frequencies */
     .stall_timeout_us                = 500000u,
-    .rpm_max_credible                = 0xFFFFFFFFu, /* don't clamp — we want to see the real ceiling */
+    .rpm_max_credible                = 0xFFFFFFFFu, /* TODO: set a real credible ceiling for this
+                                                 * vehicle's wheel/tire combo once known */
     .get_timer_ticks_func_p          = DWT_get_count, /* raw cycle counter — no conversion in the ISR */
     .revolution_sync_callback_func_p = NULL_P, /* never fires under CPS_GAP_NONE — no gap to find */
     .stall_callback_func_p           = NULL_P,
-    .rpm_implausible_callback_func_p = NULL_P, /* rpm_max_credible is maxed out above for this
-                                                 * bench test, so this can never actually fire —
-                                                 * wire it up once a real credible ceiling is set */
+    .rpm_implausible_callback_func_p = NULL_P, /* rpm_max_credible is unclamped above, so this can
+                                                 * never actually fire — wire it up once a real
+                                                 * credible ceiling is set */
     .critical_enter_func_p           = cps_critical_enter,
     .critical_exit_func_p            = cps_critical_exit,
 };
+
+const CPS_cfg_st cps_cfg_2_s =
+{
+    .total_teeth                     = CPS_TEETH_ABS_48,
+    .gap_type                        = CPS_GAP_NONE,
+    .capture_edge                    = CPS_EDGE_RISING,
+    .filter_depth                    = CPS_RPM_FILTER_DEPTH_MAX,
+    .stall_timeout_us                = 500000u,
+    .rpm_max_credible                = 0xFFFFFFFFu, /* TODO: set a real credible ceiling for this
+                                                 * vehicle's wheel/tire combo once known */
+    .get_timer_ticks_func_p          = DWT_get_count,
+    .revolution_sync_callback_func_p = NULL_P,
+    .stall_callback_func_p           = NULL_P,
+    .rpm_implausible_callback_func_p = NULL_P,
+    .critical_enter_func_p           = cps_critical_enter_2,
+    .critical_exit_func_p            = cps_critical_exit_2,
+};
+
+/***************************************************************************************************
+**                              SLIP_DETECT                                                        **
+**  Compares ABS #1 vs ABS #2 wheel RPM directly (both 48-tooth rings, same tyre size, per          **
+**  SLIP_DETECT_AXLE_SAME) — the ratio math cancels out circumference, so no TYRE_CALC/SPEED_CONV   **
+**  conversion is needed here. Ticked alongside both CPS_tick() calls in MODE_MGR.                  **
+***************************************************************************************************/
+SLIP_DETECT_instance_st slip_detect_instance_s;
+
+/* TIME_get_cumulative_run_time_ms() returns u64_t; SLIP_DETECT_cfg_st's get_time_ms_func_p is
+ * u32_t, matching the wraparound-safe-arithmetic reasoning used throughout this codebase (e.g.
+ * ESC.c) — truncating to the low 32 bits is fine since only elapsed-time differences matter,
+ * never the absolute value. */
+STATIC u32_t slip_detect_get_time_ms( void )
+{
+    return( (u32_t)TIME_get_cumulative_run_time_ms() );
+}
+
+const SLIP_DETECT_cfg_st slip_detect_cfg_s =
+{
+    .axle_relation               = SLIP_DETECT_AXLE_SAME,
+    .min_speed                   = 50u,  /* RPM — placeholder gate below which readings are
+                                          * dominated by noise rather than real slip. Roughly
+                                          * walking-pace wheel speed for a typical road wheel;
+                                          * revisit once this vehicle's actual tyre size/gearing
+                                          * is known. */
+    .slip_enter_ratio_pct        = 10u,  /* 10% speed difference flags slip */
+    .slip_clear_ratio_pct        = 5u,   /* must drop back to <=5% before clearing (hysteresis) */
+    .slip_reinvoke_interval_ms   = 2000u, /* re-fire the onset callback every 2s while slip
+                                          * persists, as a "still slipping" heartbeat */
+    .get_time_ms_func_p          = slip_detect_get_time_ms,
+    .slip_detected_callback_func_p = NULL_P,
+    .slip_cleared_callback_func_p  = NULL_P,
+};
+
+/***************************************************************************************************
+**                              REF_SPEED_CALC + vehicle speed                                     **
+**  Fuses ABS #1 + #2 RPM into one reference RPM (currently just the two of them — degrades to a   **
+**  plain average once they diverge, per REF_SPEED_CALC's own doc; becomes a genuine outlier-       **
+**  rejecting fusion once a 3rd wheel/reference is added), then converts to kph via TYRE_CALC's     **
+**  circumference. Distinct purpose from SLIP_DETECT above: that flags/reports pairwise divergence, **
+**  this produces the actual speed estimate to use downstream.                                      **
+**  vehicle_tyre_circumference_mm_s is computed once in main() via TYRE_CALC_get_circumference_mm() **
+**  — TODO: placeholder 225/35/R19 size below, replace with this vehicle's real tyre size.           **
+**  vehicle_reference_rpm_s / vehicle_speed_kph_s updated every MODE_MGR tick (mode_mgr_action_      **
+**  schedule_normal, alongside the CPS_tick()/SLIP_DETECT_update() calls).                          **
+***************************************************************************************************/
+REF_SPEED_CALC_instance_st ref_speed_calc_instance_s;
+
+/* Same truncation reasoning as slip_detect_get_time_ms() above — separate wrapper per config
+ * rather than sharing one, matching this file's existing per-consumer pattern (see
+ * cps_critical_enter/cps_critical_enter_2). */
+STATIC u32_t ref_speed_calc_get_time_ms( void )
+{
+    return( (u32_t)TIME_get_cumulative_run_time_ms() );
+}
+
+const REF_SPEED_CALC_cfg_st ref_speed_calc_cfg_s =
+{
+    .reject_ratio_pct       = 15u,  /* a wheel >15% off the group median is excluded from the
+                              * fused reference — deliberately looser than slip_detect's 10%
+                              * enter threshold, since this is "is this wheel usable at all",
+                              * not "should we flag a pairwise fault" */
+    .min_speed              = 50u,  /* RPM — same placeholder gate as slip_detect_cfg_s; see its
+                              * comment */
+    .max_rpm_change_per_sec = 400u, /* TODO: rough placeholder assuming ~2m wheel circumference
+                              * and ~1.2g max plausible tyre accel/decel — recompute once this
+                              * vehicle's real tyre size is known (see REF_SPEED_CALC.h doc on
+                              * max_rpm_change_per_sec: this is what catches all wheels
+                              * slipping/locking together in sync, which median-rejection alone
+                              * can't). */
+    .get_time_ms_func_p     = ref_speed_calc_get_time_ms,
+};
+
+u16_t vehicle_tyre_circumference_mm_s = 0u; /* set once in main() via TYRE_CALC */
+u32_t vehicle_reference_rpm_s         = 0u; /* updated every MODE_MGR tick */
+u16_t vehicle_speed_kph_s             = 0u; /* updated every MODE_MGR tick */
 
 /****************************** END OF FILE *******************************************************/

@@ -344,18 +344,34 @@ MODE_MGR_mode_et MODE_MGR_get_mode( void )
 *
 ***************************************************************************************************/
 void mode_mgr_action_schedule_normal( void )
-{	
+{
+	u16_t wheel_rpms[2];
+
 	if( mode_mgr_check_time_interval( 10u ) == TRUE )
 	{
 		//esp01_check_rx_timeout();
 		//ESP01_tick();
         //WIFI_tick();
         //TB_tick();
-		
+
 		//ST7567_tick();
 		//NRF24_tick( &nrf24_instance_s );
     	ROTARY_MGR_tick();
 		CPS_tick( &cps_instance_s );
+		CPS_tick( &cps_instance_2_s );
+
+		wheel_rpms[0] = (u16_t)CPS_get_rpm( &cps_instance_s );
+		wheel_rpms[1] = (u16_t)CPS_get_rpm( &cps_instance_2_s );
+
+		/* Same-axle pair, same tyre size — raw RPM ratio works directly, no TYRE_CALC/
+		 * SPEED_CONV conversion needed (see slip_detect_cfg_s comment). */
+		SLIP_DETECT_update( &slip_detect_instance_s, wheel_rpms[0], wheel_rpms[1] );
+
+		/* Fuse both wheels into one reference RPM (excludes whichever is off the group
+		 * median beyond ref_speed_calc_cfg_s.reject_ratio_pct), then convert to real
+		 * road speed via TYRE_CALC's circumference — see comment above ref_speed_calc_cfg_s. */
+		vehicle_reference_rpm_s = REF_SPEED_CALC_get_reference_rpm( &ref_speed_calc_instance_s, wheel_rpms, 2u );
+		vehicle_speed_kph_s     = SPEED_CONV_rpm_to_kph( (u16_t)vehicle_reference_rpm_s, vehicle_tyre_circumference_mm_s );
 	}
 
 	if( mode_mgr_check_time_interval( 20u ) == TRUE )
