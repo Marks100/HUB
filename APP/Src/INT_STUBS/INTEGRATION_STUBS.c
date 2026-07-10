@@ -512,29 +512,24 @@ const SLIP_DETECT_cfg_st slip_detect_cfg_s =
 ***************************************************************************************************/
 REF_SPEED_CALC_instance_st ref_speed_calc_instance_s;
 
-/* Same truncation reasoning as slip_detect_get_time_ms() above — separate wrapper per config
- * rather than sharing one, matching this file's existing per-consumer pattern (see
- * cps_critical_enter/cps_critical_enter_2). */
-STATIC u32_t ref_speed_calc_get_time_ms( void )
-{
-    return( (u32_t)TIME_get_cumulative_run_time_ms() );
-}
-
 const REF_SPEED_CALC_cfg_st ref_speed_calc_cfg_s =
 {
-    .reject_ratio_pct       = 15u,  /* a wheel >15% off the group median is excluded from the
-                              * fused reference — deliberately looser than slip_detect's 10%
-                              * enter threshold, since this is "is this wheel usable at all",
-                              * not "should we flag a pairwise fault" */
-    .min_speed              = 50u,  /* RPM — same placeholder gate as slip_detect_cfg_s; see its
-                              * comment */
-    .max_rpm_change_per_sec = 400u, /* TODO: rough placeholder assuming ~2m wheel circumference
-                              * and ~1.2g max plausible tyre accel/decel — recompute once this
-                              * vehicle's real tyre size is known (see REF_SPEED_CALC.h doc on
-                              * max_rpm_change_per_sec: this is what catches all wheels
-                              * slipping/locking together in sync, which median-rejection alone
-                              * can't). */
-    .get_time_ms_func_p     = ref_speed_calc_get_time_ms,
+    .reject_ratio_pct = 15u, /* a wheel >15% off the group median is excluded from the fused
+                              * reference — deliberately looser than slip_detect's 10% enter
+                              * threshold, since this is "is this wheel usable at all", not
+                              * "should we flag a pairwise fault" */
+    .min_speed        = 50u, /* RPM — same placeholder gate as slip_detect_cfg_s; see its comment */
+    .ramp_cfg         =
+    {
+        /* TODO: rough placeholder assuming ~2m wheel circumference and ~1.2g max plausible
+         * tyre accel/decel (~400 RPM/sec) — recompute once this vehicle's real tyre size is
+         * known. Expressed per-call here (this is ticked every 10ms from MODE_MGR, i.e. 100
+         * calls/sec), so 400 RPM/sec / 100 = 4 RPM per call. See REF_SPEED_CALC.h doc on
+         * ramp_cfg: this is what catches all wheels slipping/locking together in sync, which
+         * median-rejection alone can't. */
+        .step_up   = 4,
+        .step_down = 4,
+    },
 };
 
 u16_t vehicle_tyre_circumference_mm_s = 0u; /* set once in main() via TYRE_CALC */
