@@ -201,11 +201,16 @@ const WDG_HW_STM32_config_st wdg_cfg_s =
 
 static u8_t                    esp01_rx_buf_s[ESP01_MAX_RX_SIZE];
 static volatile u16_t          esp01_rx_len_s       = 0u;
-static volatile u64_t          esp01_last_byte_ms_s = 0u;
+static volatile u32_t          esp01_last_byte_ms_s = 0u;
 static volatile false_true_et  esp01_rx_active_s    = FALSE;
 
-/* Called from UART ISR - buffer the byte and record when it arrived */
-OPTIMISE_O3 HOT void esp01_uart_byte_rx( u8_t byte )
+/* Called from UART ISR - buffer the byte and record when it arrived.
+ * Uses the 32-bit TIME_MGR accessor, not the u64_t one — genuinely cheaper (single-word read/
+ * return vs a 64-bit value) on a path that runs once per received byte. Safe here because
+ * ESP01_INTER_BYTE_TIMEOUT_MS is a few ms, vastly shorter than the ~49.7 day wrap period, and
+ * esp01_check_rx_timeout() below uses the wraparound-safe TIME_has_time_elapsed_ms_u32(), not a
+ * direct comparison — see TIME_MGR.h doc on the u32 accessor pair. */
+OPTIMISE_O3 void esp01_uart_byte_rx( u8_t byte )
 {
     if( esp01_rx_len_s < ESP01_MAX_RX_SIZE )
     {
@@ -216,7 +221,7 @@ OPTIMISE_O3 HOT void esp01_uart_byte_rx( u8_t byte )
         esp01_rx_len_s = 0u;
     }
 
-    esp01_last_byte_ms_s = TIME_get_cumulative_run_time_ms();
+    esp01_last_byte_ms_s = TIME_get_cumulative_run_time_ms_u32();
     esp01_rx_active_s    = TRUE;
 }
 
@@ -224,7 +229,7 @@ OPTIMISE_O3 HOT void esp01_uart_byte_rx( u8_t byte )
 void esp01_check_rx_timeout( void )
 {
     if( ( esp01_rx_active_s == TRUE ) &&
-        ( TIME_has_time_elapsed_ms( esp01_last_byte_ms_s, ESP01_INTER_BYTE_TIMEOUT_MS ) == TRUE ) )
+        ( TIME_has_time_elapsed_ms_u32( esp01_last_byte_ms_s, ESP01_INTER_BYTE_TIMEOUT_MS ) == TRUE ) )
     {
         ESP01_uart_frame_ready_callback( esp01_rx_buf_s, esp01_rx_len_s );
         esp01_rx_len_s    = 0u;

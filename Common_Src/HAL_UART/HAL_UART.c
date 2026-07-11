@@ -329,10 +329,14 @@ void HAL_USART2_send_string( const char* data )
 *
 ***************************************************************************************************/
 void USART1_IRQHandler( void )
-{	
+{
+	/* Direct USART1->DR read instead of the SPL's USART_ReceiveData() — this build has no
+	 * LTO, so that's a real, avoidable non-inlined function call (it's just a masked
+	 * register read) on every single received byte, same reasoning as CPS's direct
+	 * EXTI->PR access. */
 	if( HAL_USART1_func_p != NULL_P )
 	{
-		HAL_USART1_func_p( (u8_t)USART_ReceiveData( USART1 ) );
+		HAL_USART1_func_p( (u8_t)( USART1->DR & 0x01FFu ) );
 	}
 }
 
@@ -347,10 +351,14 @@ void USART1_IRQHandler( void )
 *
 ***************************************************************************************************/
 void USART2_IRQHandler( void )
-{	
+{
+	/* Direct USART2->DR read instead of the SPL's USART_ReceiveData() — this build has no
+	 * LTO, so that's a real, avoidable non-inlined function call (it's just a masked
+	 * register read) on every single received byte, same reasoning as CPS's direct
+	 * EXTI->PR access. */
 	if( HAL_USART2_func_p != NULL_P )
 	{
-		HAL_USART2_func_p( (u8_t)USART_ReceiveData( USART2 ) );
+		HAL_USART2_func_p( (u8_t)( USART2->DR & 0x01FFu ) );
 	}
 }
 
