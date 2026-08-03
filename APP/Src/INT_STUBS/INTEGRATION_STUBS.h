@@ -64,7 +64,4 @@ extern       u16_t                   vehicle_tyre_circumference_mm_s;
 extern       u32_t                   vehicle_reference_rpm_s;
 extern       u16_t                   vehicle_speed_kph_s;
 
-void esp01_uart_byte_rx( u8_t byte );
-void esp01_check_rx_timeout( void );
-
 #endif /* INTEGRATION_STUBS_H */

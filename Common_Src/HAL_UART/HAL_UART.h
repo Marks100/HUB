@@ -37,10 +37,10 @@ void HAL_USART1_close( void );
 void HAL_USART2_close( void );
 void HAL_USART1_set_rx_callback( HAL_USART_func_type func_p );
 void HAL_USART2_set_rx_callback( HAL_USART_func_type func_p );
-void HAL_USART1_send_data( const char* data, u16_t data_size );
-void HAL_USART2_send_data( const char* data, u16_t data_size );
-void HAL_USART1_send_string( const char* data );
-void HAL_USART2_send_string( const char* data );
+void HAL_USART1_send_data( u8_t* data, u16_t data_size );
+void HAL_USART2_send_data( u8_t* data, u16_t data_size );
+void HAL_USART1_send_string( u8_t* data );
+void HAL_USART2_send_string(u8_t* data );
 
 #endif /* HAL_UART_PUB_H multiple inclusion guard */
 

@@ -42,7 +42,7 @@ void app_main( void )
     HAL_TIM3_init();
     HAL_TIM4_init_encoder();
     //HAL_USART1_init();
-    //HAL_USART2_init();
+    HAL_USART2_init();
     HAL_SPI1_init();
     CHKSUM_init_hw_crc( &hw_crc_cfg_s );
     UID_init();
@@ -55,20 +55,13 @@ void app_main( void )
     NRF24_init( &nrf24_instance_s );
     RF_MGR_init( &rf_mgr_cfg_s );
     ESP01_init( &esp01_cfg_s );
-    HAL_USART2_set_rx_callback( esp01_uart_byte_rx );
+    HAL_USART2_set_rx_callback( ESP01_uart_byte_rx );
     WIFI_init( &wifi_cfg_s );
     TB_CBK_init( &tb_cfg_s );
     TB_init( &tb_cfg_s );
     TJA1051_init( &tja1051_func_s, &tja1051_cfg_s );
     PDUR_init( pdur_routing_table_s, pdur_num_routes_s );
-    MSG_SCHED_init( &msg_sched_cfg_s );
-    CPS_init( &cps_instance_s, &cps_cfg_s, SystemCoreClock );
-    CPS_init( &cps_instance_2_s, &cps_cfg_2_s, SystemCoreClock );
-    SLIP_DETECT_init( &slip_detect_instance_s, &slip_detect_cfg_s );
-    REF_SPEED_CALC_init( &ref_speed_calc_instance_s, &ref_speed_calc_cfg_s );
-
-    /* TODO: placeholder tyre size (225/35/R19) — replace with this vehicle's actual size */
-    vehicle_tyre_circumference_mm_s = TYRE_CALC_get_circumference_mm( 225u, 35u, 19u );
+    //MSG_SCHED_init( &msg_sched_cfg_s );
 
     MODE_MGR_init();
 

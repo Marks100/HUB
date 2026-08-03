@@ -130,13 +130,13 @@ void HAL_USART1_set_callback( HAL_USART_func_type func_p )
 *   \return        none
 *
 ***************************************************************************************************/
-void HAL_USART1_send_data( const char* data, u16_t data_size )
+void HAL_USART1_send_data( u8_t* data, u16_t data_size )
 {
 	u16_t byte_index = 0u;
 
     while( data_size )
     {
-        USART_SendData( USART1, data[byte_index++] );
+        USART_SendData( USART1, (u16_t)data[byte_index++] );
         while( USART_GetFlagStatus(USART1, USART_FLAG_TC) == RESET );
         data_size--;
     }
@@ -152,7 +152,7 @@ void HAL_USART1_send_data( const char* data, u16_t data_size )
 *   \return        none
 *
 ***************************************************************************************************/
-void HAL_USART1_send_string( const char* data )
+void HAL_USART1_send_string( u8_t* data )
 {
 	HAL_USART1_send_data( data, STDC_strlen(data) );
 }
@@ -287,14 +287,15 @@ void HAL_USART2_set_rx_callback( HAL_USART_func_type func_p )
 *   \return        none
 *
 ***************************************************************************************************/
-void HAL_USART2_send_data( const char* data, u16_t data_size )
+void HAL_USART2_send_data( u8_t* data, u16_t data_size )
 {
 	u16_t byte_index = 0u;
 
     while( data_size )
     {
-        USART_SendData( USART2, data[byte_index++] );
-        while( USART_GetFlagStatus(USART2, USART_FLAG_TC) == RESET );
+        USART_SendData( USART2, (u16_t)data[byte_index++] );
+        
+		while( USART_GetFlagStatus(USART2, USART_FLAG_TC) == RESET );
         data_size--;
     }
 }
@@ -309,7 +310,7 @@ void HAL_USART2_send_data( const char* data, u16_t data_size )
 *   \return        none
 *
 ***************************************************************************************************/
-void HAL_USART2_send_string( const char* data )
+void HAL_USART2_send_string( u8_t* data )
 {
 	HAL_USART2_send_data( data, STDC_strlen(data) );
 }
@@ -352,10 +353,7 @@ void USART1_IRQHandler( void )
 ***************************************************************************************************/
 void USART2_IRQHandler( void )
 {
-	/* Direct USART2->DR read instead of the SPL's USART_ReceiveData() — this build has no
-	 * LTO, so that's a real, avoidable non-inlined function call (it's just a masked
-	 * register read) on every single received byte, same reasoning as CPS's direct
-	 * EXTI->PR access. */
+	/* Direct USART2->DR read instead of the SPL's USART_ReceiveData() */
 	if( HAL_USART2_func_p != NULL_P )
 	{
 		HAL_USART2_func_p( (u8_t)( USART2->DR & 0x01FFu ) );

@@ -194,59 +194,20 @@ const WDG_HW_STM32_config_st wdg_cfg_s =
 **                              ESP01                                                            **
 ***************************************************************************************************/
 
-/* Must be strictly > 1 tick period: timestamp can be stale by up to 1 tick, so an exact
-   1x window can fire with near-zero actual silence. +1ms guarantees at least 1 full tick
-   of real inter-byte gap before the callback fires. */
+/* ESP01 now owns its RX buffer directly (ESP01_uart_byte_rx appends into it byte-by-byte,
+ * ESP01_tick() detects the inter-byte gap and analyses it) - no separate UART-owned buffer here.
+ *
+ * Must be strictly > 1 tick period: timestamp can be stale by up to 1 tick, so an exact
+ * 1x window can fire with near-zero actual silence. +1ms guarantees at least 1 full tick
+ * of real inter-byte gap before a frame is considered complete. */
 #define ESP01_INTER_BYTE_TIMEOUT_MS     ( APP_TIMER_TICK_RATE_MS + 1u )
-
-static u8_t                    esp01_rx_buf_s[ESP01_MAX_RX_SIZE];
-static volatile u16_t          esp01_rx_len_s       = 0u;
-static volatile u32_t          esp01_last_byte_ms_s = 0u;
-static volatile false_true_et  esp01_rx_active_s    = FALSE;
-
-/* Called from UART ISR - buffer the byte and record when it arrived.
- * Uses the 32-bit TIME_MGR accessor, not the u64_t one — genuinely cheaper (single-word read/
- * return vs a 64-bit value) on a path that runs once per received byte. Safe here because
- * ESP01_INTER_BYTE_TIMEOUT_MS is a few ms, vastly shorter than the ~49.7 day wrap period, and
- * esp01_check_rx_timeout() below uses the wraparound-safe TIME_has_time_elapsed_ms_u32(), not a
- * direct comparison — see TIME_MGR.h doc on the u32 accessor pair. */
-OPTIMISE_O3 void esp01_uart_byte_rx( u8_t byte )
-{
-    if( esp01_rx_len_s < ESP01_MAX_RX_SIZE )
-    {
-        esp01_rx_buf_s[esp01_rx_len_s++] = byte;
-    }
-    else
-    {
-        esp01_rx_len_s = 0u;
-    }
-
-    esp01_last_byte_ms_s = TIME_get_cumulative_run_time_ms_u32();
-    esp01_rx_active_s    = TRUE;
-}
-
-/* Called from tick context (before ESP01_tick) - fires callback once the inter-byte gap expires */
-void esp01_check_rx_timeout( void )
-{
-    if( ( esp01_rx_active_s == TRUE ) &&
-        ( TIME_has_time_elapsed_ms_u32( esp01_last_byte_ms_s, ESP01_INTER_BYTE_TIMEOUT_MS ) == TRUE ) )
-    {
-        ESP01_uart_frame_ready_callback( esp01_rx_buf_s, esp01_rx_len_s );
-        esp01_rx_len_s    = 0u;
-        esp01_rx_active_s = FALSE;
-    }
-}
-
-static void esp01_uart_tx( u8_t* data_p, u16_t len )
-{
-    HAL_USART2_send_data( (const char*)data_p, len );
-}
 
 const ESP01_cfg_st esp01_cfg_s =
 {
     .initial_mode                 = ESP01_STA,
-    .uart_tx_func_p               = esp01_uart_tx,
+    .uart_tx_func_p               = HAL_USART2_send_data,
     .network_packet_rx_callback_p = WIFI_esp01_rx_handler,
+    .inter_byte_timeout_ms        = ESP01_INTER_BYTE_TIMEOUT_MS,
 };
 
 /***************************************************************************************************
