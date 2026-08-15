@@ -14,7 +14,10 @@
 extern CPS_instance_st cps_instance_s;
 extern CPS_instance_st cps_instance_2_s;
 
+#if ( HW_VARIANT == HW_VARIANT_SUPER_PILL )
 STATIC HAL_BRD_nrf_func_type HAL_BRD_nrf_func_p;
+#endif /* HW_VARIANT == HW_VARIANT_SUPER_PILL */
+
 /*!
 ****************************************************************************************************
 *
@@ -47,16 +50,25 @@ void HAL_BRD_init( void )
 	GPIO_PinRemapConfig( GPIO_Remap_SWJ_JTAGDisable, ENABLE );
 
 	/* Configure the GPIOs */
-	GPIO_InitStructure.GPIO_Pin = PANEL_2_BTN_PIN;
-	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IPD;
+	/* SH1106 panel buttons - pulled up internally, switch pulls to GND, so LOW means pressed.
+	   All three share a port and mode, so one struct fill covers them. */
+	GPIO_InitStructure.GPIO_Pin   = PANEL_SELECT_BTN_PIN | PANEL_CONFIRM_BTN_PIN | PANEL_BACK_BTN_PIN;
+	GPIO_InitStructure.GPIO_Mode  = GPIO_Mode_IPU;
 	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_10MHz;
-	GPIO_Init( PANEL_2_BTN_PORT, &GPIO_InitStructure );
+	GPIO_Init( PANEL_SELECT_BTN_PORT, &GPIO_InitStructure );
 
-	GPIO_InitStructure.GPIO_Pin = PANEL_3_BTN_PIN;
-	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IPU;
+	/* Rotary encoder channels - TIM4 CH1/CH2 in quadrature mode. HAL_TIM4_init_encoder() sets up
+	   the timer but deliberately leaves the pins to the board layer, and this init runs before it.
+	   Pulled up rather than left floating: a mechanical encoder switches its channels to the
+	   common GND pin, so with a floating input an open contact has no defined level and the
+	   counter picks up noise instead of detents. If the encoder module carries its own pull-ups
+	   the internal ones simply sit in parallel, which is harmless. */
+	GPIO_InitStructure.GPIO_Pin   = ENC_CH1_PIN | ENC_CH2_PIN;
+	GPIO_InitStructure.GPIO_Mode  = GPIO_Mode_IPU;
 	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_10MHz;
-	GPIO_Init( PANEL_3_BTN_PORT, &GPIO_InitStructure );
+	GPIO_Init( ENC_PORT, &GPIO_InitStructure );
 	
+#if ( HW_VARIANT == HW_VARIANT_SUPER_PILL )
 	/* Configure the NRF24 CS pin */
 	GPIO_InitStructure.GPIO_Pin = NRF_CS_PIN;
 	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_Out_PP;
@@ -70,6 +82,7 @@ void HAL_BRD_init( void )
 	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_10MHz;
 	GPIO_Init( NRF_CE_PORT, &GPIO_InitStructure );
 	HAL_BRD_NRF24_set_ce_pin_state( LOW );
+#endif /* HW_VARIANT == HW_VARIANT_SUPER_PILL */
 
 	/* Configure the GPIO_LED pin and set LOW immediately */
 	GPIO_InitStructure.GPIO_Pin = ONBOARD_LED_PIN;
@@ -77,73 +90,6 @@ void HAL_BRD_init( void )
 	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_10MHz;
 	GPIO_Init( ONBOARD_LED_PORT, &GPIO_InitStructure );
 	HAL_BRD_set_onboard_led( OFF );
-
-	/* configure the debug mode led ( this lets us know we are in debug mode and will only be turned
-	on in debug mode */
-	GPIO_InitStructure.GPIO_Pin = DEBUG_MODE_LED_PIN;
-	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_Out_PP;
-	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_10MHz;
-	GPIO_Init( DEBUG_MODE_LED_PORT, &GPIO_InitStructure );
-
-	/* TJA1051 EN pin — hold low (standby) until CAN_MGR_init() drives it high */
-	GPIO_InitStructure.GPIO_Pin   = TJA1051_EN_PIN;
-	GPIO_InitStructure.GPIO_Mode  = GPIO_Mode_Out_PP;
-	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_10MHz;
-	GPIO_Init( TJA1051_EN_PORT, &GPIO_InitStructure );
-	HAL_BRD_TJA1051_set_en_pin( LOW );
-
-	/* ABS #1 input pin — edge-triggered on EXTI3, serviced directly by EXTI3_IRQHandler below.
-	 * Floating, not pulled — the source (hall sensor or, for bench testing, a signal
-	 * generator) actively drives both edges. The internal ~30-50k pull-up otherwise forms
-	 * an RC filter with any wiring/breadboard capacitance that rounds off edges at high
-	 * frequency, capping the apparent input rate well below what the ISR/EXTI chain can
-	 * actually track. */
-	GPIO_InitStructure.GPIO_Pin   = ABS1_INPUT_PIN;
-	GPIO_InitStructure.GPIO_Mode  = GPIO_Mode_IN_FLOATING;
-	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_10MHz;
-	GPIO_Init( ABS1_INPUT_PORT, &GPIO_InitStructure );
-
-	GPIO_EXTILineConfig( GPIO_PortSourceGPIOB, GPIO_PinSource3 );
-
-	EXTI_InitTypeDef EXTI_InitStructure;
-	EXTI_InitStructure.EXTI_Line    = ABS1_INPUT_EXTI_LINE;
-	EXTI_InitStructure.EXTI_Mode    = EXTI_Mode_Interrupt;
-	EXTI_InitStructure.EXTI_Trigger = EXTI_Trigger_Rising;
-	EXTI_InitStructure.EXTI_LineCmd = ENABLE;
-	EXTI_Init( &EXTI_InitStructure );
-
-	NVIC_InitTypeDef NVIC_InitStruct;
-	NVIC_InitStruct.NVIC_IRQChannel                   = EXTI3_IRQn;
-	/* Priority 0 — the highest in the system. Every other peripheral ISR is priority 1+
-	 * (see HAL_TIM.c, HAL_CAN.c, HAL_UART.c) and SysTick is priority 2, so this pin can
-	 * always preempt them and feed CPS with minimum latency. Requires
-	 * NVIC_PriorityGroupConfig(NVIC_PriorityGroup_4) to have already run (see main.c). */
-	NVIC_InitStruct.NVIC_IRQChannelPreemptionPriority = 0x00;
-	NVIC_InitStruct.NVIC_IRQChannelSubPriority        = 0x00;
-	NVIC_InitStruct.NVIC_IRQChannelCmd                = ENABLE;
-	NVIC_Init( &NVIC_InitStruct );
-
-	/* ABS #2 input pin — edge-triggered on EXTI9, serviced directly by EXTI9_5_IRQHandler
-	 * below. Nothing else uses lines 5-9, so this shared vector behaves as a dedicated one
-	 * in practice. Same floating-input reasoning as ABS #1 above. */
-	GPIO_InitStructure.GPIO_Pin   = ABS2_INPUT_PIN;
-	GPIO_InitStructure.GPIO_Mode  = GPIO_Mode_IN_FLOATING;
-	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_10MHz;
-	GPIO_Init( ABS2_INPUT_PORT, &GPIO_InitStructure );
-
-	GPIO_EXTILineConfig( GPIO_PortSourceGPIOA, GPIO_PinSource9 );
-
-	EXTI_InitStructure.EXTI_Line    = ABS2_INPUT_EXTI_LINE;
-	EXTI_InitStructure.EXTI_Mode    = EXTI_Mode_Interrupt;
-	EXTI_InitStructure.EXTI_Trigger = EXTI_Trigger_Rising;
-	EXTI_InitStructure.EXTI_LineCmd = ENABLE;
-	EXTI_Init( &EXTI_InitStructure );
-
-	NVIC_InitStruct.NVIC_IRQChannel                   = EXTI9_5_IRQn;
-	NVIC_InitStruct.NVIC_IRQChannelPreemptionPriority = 0x00;
-	NVIC_InitStruct.NVIC_IRQChannelSubPriority        = 0x00;
-	NVIC_InitStruct.NVIC_IRQChannelCmd                = ENABLE;
-	NVIC_Init( &NVIC_InitStruct );
 }
 
 /*!
@@ -166,6 +112,10 @@ void HAL_BRD_reset( void )
 	NVIC_SystemReset();
 }
 
+#if ( HW_VARIANT == HW_VARIANT_SUPER_PILL )
+/***************************************************************************************************
+**                              NRF24 (SUPER_PILL only - no radio on BLUE_PILL)                    **
+***************************************************************************************************/
 /*!
 ****************************************************************************************************
 *
@@ -261,38 +211,6 @@ void HAL_BRD_toggle_onboard_led( void )
 	HAL_BRD_toggle_pin_state( ONBOARD_LED_PORT, ONBOARD_LED_PIN );
 }
 
-
-/*!
-****************************************************************************************************
-*
-*   \brief         Sets the state of the debug mode the led
-*
-*   \author        MS
-*
-*   \return        None
-*
-***************************************************************************************************/
-void HAL_BRD_set_debug_mode_LED( off_on_et state )
-{
-	HAL_BRD_set_pin_state( DEBUG_MODE_LED_PORT, DEBUG_MODE_LED_PIN, (low_high_et)state );
-}
-
-/*!
-****************************************************************************************************
-*
-*   \brief         Toggles the debug led
-*
-*   \author        MS
-*
-*   \return        None
-*
-***************************************************************************************************/
-void HAL_BRD_toggle_debug_mode_led( void )
-{
-    HAL_BRD_toggle_pin_state( DEBUG_MODE_LED_PORT, DEBUG_MODE_LED_PIN );
-}
-
-
 /*!
 ****************************************************************************************************
 *
@@ -339,6 +257,7 @@ low_high_et HAL_BRD_NRF24_read_irq_pin( void )
 
 	return( state );
 }
+#endif /* HW_VARIANT == HW_VARIANT_SUPER_PILL */
 
 /*!
 ****************************************************************************************************
@@ -363,16 +282,7 @@ void HAL_BRD_setup_pins_for_low_power( void )
 	GPIO_Init( GPIOC, &GPIO_InitStructure );
 }
 
-low_high_et HAL_BRD_read_S1_pin( void )
-{
-	return HAL_BRD_read_pin_state( PANEL_2_BTN_PORT, PANEL_2_BTN_PIN );
-}
-
-low_high_et HAL_BRD_read_S2_pin( void )
-{
-	return HAL_BRD_read_pin_state( PANEL_3_BTN_PORT, PANEL_3_BTN_PIN );
-}
-
+#if ( HW_VARIANT == HW_VARIANT_SUPER_PILL )
 /*!
 ****************************************************************************************************
 *
@@ -382,57 +292,41 @@ low_high_et HAL_BRD_read_S2_pin( void )
 *
 *   \return        low_high_et state of the onboard button pin
 *
+*   \note          SUPER_PILL only - BLUE_PILL has no ONBOARD_BTN_PORT/PIN defined.
+*
 ***************************************************************************************************/
 low_high_et HAL_BRD_read_onboard_btn( void )
 {
 	return HAL_BRD_read_pin_state( ONBOARD_BTN_PORT, ONBOARD_BTN_PIN );
 }
+#endif /* HW_VARIANT == HW_VARIANT_SUPER_PILL */
 
-void HAL_BRD_set_lcd_a0_pin( low_high_et state )
+/*!
+****************************************************************************************************
+*
+*   \brief         SH1106 panel button reads
+*
+*   \author        MS
+*
+*   \return        low_high_et raw pin state - LOW while pressed, since the switches pull to GND
+*                  against the internal pull-up. Register these with inverted = TRUE so BTN_MGR
+*                  reads them the right way round.
+*
+***************************************************************************************************/
+low_high_et HAL_BRD_read_panel_select_btn( void )
 {
-	HAL_BRD_set_pin_state( LCD_A0_PORT, LCD_A0_PIN, state );
+	return HAL_BRD_read_pin_state( PANEL_SELECT_BTN_PORT, PANEL_SELECT_BTN_PIN );
 }
 
-void HAL_BRD_set_lcd_cs_pin( low_high_et state )
+low_high_et HAL_BRD_read_panel_confirm_btn( void )
 {
-	HAL_BRD_set_pin_state( LCD_CS_PORT, LCD_CS_PIN, state );
+	return HAL_BRD_read_pin_state( PANEL_CONFIRM_BTN_PORT, PANEL_CONFIRM_BTN_PIN );
 }
 
-void HAL_BRD_set_lcd_rst_pin( low_high_et state )
+low_high_et HAL_BRD_read_panel_back_btn( void )
 {
-	HAL_BRD_set_pin_state( LCD_RST_PORT, LCD_RST_PIN, state );
+	return HAL_BRD_read_pin_state( PANEL_BACK_BTN_PORT, PANEL_BACK_BTN_PIN );
 }
-
-
-// void HAL_BRD_WS2811_zero_pulse_direct( void )
-// {
-// 	/* T0H ~0.4 us: set then hold ~28 cycles */
-// 	WS2811_PORT->BSRR = WS2811_PIN;
-// 	__asm volatile(
-// 		"nop\nnop\nnop\nnop\nnop\nnop\nnop\nnop\n"
-// 		"nop\nnop\nnop\nnop\nnop\nnop\nnop\nnop\n"
-// 		"nop\nnop\nnop\nnop\nnop\nnop\n"
-// 	);
-// 	/* T0L ~0.85 us: clear; remainder consumed by caller loop overhead */
-// 	WS2811_PORT->BRR = WS2811_PIN;
-// }
-
-// void HAL_BRD_WS2811_one_pulse_direct( void )
-// {
-// 	/* T1H ~0.8 us: set then hold ~57 cycles */
-// 	WS2811_PORT->BSRR = WS2811_PIN;
-// 	__asm volatile(
-// 		"nop\nnop\nnop\nnop\nnop\nnop\nnop\nnop\n"
-// 		"nop\nnop\nnop\nnop\nnop\nnop\nnop\nnop\n"
-// 		"nop\nnop\nnop\nnop\nnop\nnop\nnop\nnop\n"
-// 		"nop\nnop\nnop\nnop\nnop\nnop\nnop\nnop\n"
-// 		"nop\nnop\nnop\nnop\nnop\nnop\nnop\nnop\n"
-// 		"nop\nnop\nnop\nnop\nnop\nnop\nnop\nnop\n"
-// 		"nop\nnop\nnop\nnop\nnop\nnop\nnop\n"
-// 	);
-// 	/* T1L ~0.45 us: clear; remainder consumed by caller loop overhead */
-// 	WS2811_PORT->BRR = WS2811_PIN;
-// }
 
 /*!
 ****************************************************************************************************
@@ -488,6 +382,7 @@ void EXTI1_IRQHandler(void)
 ***************************************************************************************************/
 void EXTI15_10_IRQHandler(void)
 {
+#if ( HW_VARIANT == HW_VARIANT_SUPER_PILL )
 	if( EXTI_GetFlagStatus( NRF24_IRQ_EXT_LINE ) != RESET )
 	{
 		if( HAL_BRD_nrf_func_p != NULL_P )
@@ -501,6 +396,7 @@ void EXTI15_10_IRQHandler(void)
 
 		EXTI_ClearITPendingBit( NRF24_IRQ_EXT_LINE );
 	}
+#endif /* HW_VARIANT == HW_VARIANT_SUPER_PILL */
 }
 
 /*!
@@ -522,8 +418,8 @@ void EXTI15_10_IRQHandler(void)
 ***************************************************************************************************/
 void EXTI3_IRQHandler(void)
 {
-	EXTI->PR = ABS1_INPUT_EXTI_LINE;   /* write-1-to-clear */
-	CPS_tooth_event( &cps_instance_s );
+	//EXTI->PR = ABS1_INPUT_EXTI_LINE;   /* write-1-to-clear */
+	//CPS_tooth_event( &cps_instance_s );
 }
 
 /*!
@@ -544,8 +440,8 @@ void EXTI3_IRQHandler(void)
 ***************************************************************************************************/
 void EXTI9_5_IRQHandler(void)
 {
-	EXTI->PR = ABS2_INPUT_EXTI_LINE;   /* write-1-to-clear */
-	CPS_tooth_event( &cps_instance_2_s );
+	//EXTI->PR = ABS2_INPUT_EXTI_LINE;   /* write-1-to-clear */
+	//CPS_tooth_event( &cps_instance_2_s );
 }
 
 /****************************** END OF FILE *******************************************************/

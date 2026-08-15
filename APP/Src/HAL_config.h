@@ -9,7 +9,6 @@
 ***************************************************************************************************/
 #define HW_VARIANT_BLUE_PILL    1u
 #define HW_VARIANT_SUPER_PILL   2u
-#define HW_VARIANT_CUSTOM_V1    3u
 
 #define HW_VARIANT              HW_VARIANT_SUPER_PILL
 
@@ -20,8 +19,6 @@
  
 #define ONBOARD_LED_PORT        GPIOC
 #define ONBOARD_LED_PIN         GPIO_Pin_13
-#define WS2811_PORT             GPIOA
-#define WS2811_PIN              GPIO_Pin_8
 
 #elif ( HW_VARIANT == HW_VARIANT_SUPER_PILL )
 
@@ -29,8 +26,6 @@
 #define ONBOARD_LED_PIN         GPIO_Pin_1
 #define ONBOARD_BTN_PORT        GPIOA
 #define ONBOARD_BTN_PIN         GPIO_Pin_8
-#define PANEL_3_BTN_PORT        GPIOA
-#define PANEL_3_BTN_PIN         GPIO_Pin_8
 
 /* USART2 - ESP8266 (PA2=TX, PA3=RX) */
 #define ESP_UART_PORT       GPIOA
@@ -46,9 +41,6 @@
 #define NRF_IRQ_PIN         GPIO_Pin_15
 #define NRF24_IRQ_EXT_LINE  EXTI_Line15
 
-#define WS2811_PORT             //GPIOA
-#define WS2811_PIN              //GPIO_Pin_8
-
 #else
 #error "No HW_VARIANT defined — set HW_VARIANT in HAL_config.h"
 #endif
@@ -62,21 +54,16 @@
 #define SPI1_MISO_PIN       GPIO_Pin_6
 #define SPI1_MOSI_PIN       GPIO_Pin_7
 
-/* Debug mode LED */
-#define DEBUG_MODE_LED_PORT GPIOB
-#define DEBUG_MODE_LED_PIN  GPIO_Pin_12
-
-/* Panel buttons (pull-down inputs) */
-#define PANEL_2_BTN_PORT    GPIOA
-#define PANEL_2_BTN_PIN     GPIO_Pin_0
-
-/* LCD control pins (ST7567) */
-#define LCD_A0_PORT         GPIOB
-#define LCD_A0_PIN          GPIO_Pin_4
-#define LCD_CS_PORT         GPIOB
-#define LCD_CS_PIN          GPIO_Pin_5
-#define LCD_RST_PORT        GPIOB
-#define LCD_RST_PIN         GPIO_Pin_6
+/* SH1106 OLED panel buttons - wired to GND, internal pull-ups, so LOW means pressed.
+ * PB13-15 chosen because they are the only contiguous free block on this part: SPI2 is unused,
+ * they carry no alternate function this project needs, and they avoid PA13/PA14 (SWDIO/SWCLK)
+ * which must stay available for the debugger. */
+#define PANEL_SELECT_BTN_PORT   GPIOB
+#define PANEL_SELECT_BTN_PIN    GPIO_Pin_13
+#define PANEL_CONFIRM_BTN_PORT  GPIOB
+#define PANEL_CONFIRM_BTN_PIN   GPIO_Pin_14
+#define PANEL_BACK_BTN_PORT     GPIOB
+#define PANEL_BACK_BTN_PIN      GPIO_Pin_15
 
 /* TIM3 CH4 buzzer output pin */
 #define BUZZER_TIM_PORT     GPIOB
@@ -107,19 +94,6 @@
 #define CAN_RX_PORT                 GPIOA
 #define CAN_RX_PIN                  GPIO_Pin_11
 
-/* ABS wheel-speed sensor #1 input — PB3 (JTDO), free once JTAG-DP is disabled (see
- * GPIO_Remap_SWJ_JTAGDisable in HAL_BRD_init) — not a committed sensor pin, move freely
- * if needed. Pin 3 -> dedicated EXTI3 vector (not the shared EXTI9_5/EXTI15_10 groups) —
- * see HAL_BRD.c. */
-#define ABS1_INPUT_PORT              GPIOB
-#define ABS1_INPUT_PIN               GPIO_Pin_3
-#define ABS1_INPUT_EXTI_LINE         EXTI_Line3
-
-/* ABS wheel-speed sensor #2 input — PA9, free (USART1 unused, see main.c). EXTI9 sits on
- * the shared EXTI9_5 vector, but nothing else uses lines 5-9, so it behaves as its own
- * dedicated vector in practice — see HAL_BRD.c. */
-#define ABS2_INPUT_PORT              GPIOA
-#define ABS2_INPUT_PIN               GPIO_Pin_9
-#define ABS2_INPUT_EXTI_LINE         EXTI_Line9
-
 #endif /* HAL_CONFIG_H */
+
+/****************************** END OF FILE *******************************************************/

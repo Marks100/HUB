@@ -7,6 +7,10 @@
 ***************************************************************************************************/
 #include "C_defs.h"
 #include "COMPILER_defs.h"
+#include "stm32f10x_rcc.h"
+#include "stm32f10x_i2c.h"
+#include "stm32f10x_gpio.h"
+#include "HAL_config.h"
 
 /***************************************************************************************************
 **                              Defines                                                           **
@@ -17,7 +21,6 @@
 **                              Constants                                                         **
 ***************************************************************************************************/
 /* None */
-
 
 /***************************************************************************************************
 **                              Data Types and Enums                                              **
@@ -32,13 +35,10 @@
 /***************************************************************************************************
 **                              Function Prototypes                                               **
 ***************************************************************************************************/
-void HAL_I2C1_init( void );
-void HAL_I2C1_de_init( void );
-pass_fail_et HAL_I2C1_write_single_register( u8_t dev_add, u8_t reg_address, u8_t* data );
-pass_fail_et HAL_I2C_write_multiple_registers( u8_t dev_add, u8_t reg_address, u8_t* data, u8_t num_bytes );
-pass_fail_et HAL_I2C1_read_single_register( u8_t dev_add, u8_t reg_address, u8_t* data );
-pass_fail_et HAL_I2C_read_multiple_registers( u8_t dev_add, u8_t reg_address, u8_t* data, u8_t num_bytes );
-pass_fail_et HAL_I2C_raw_read( u8_t dev_add, u8_t* data, u8_t num_bytes );
+void         HAL_I2C1_init( void );
+void         HAL_I2C1_de_init( void );
+pass_fail_et HAL_I2C_write_registers( u8_t dev_add, u8_t reg_address, u8_t* data, u8_t num_bytes );
+pass_fail_et HAL_I2C_read_registers( u8_t dev_add, u8_t reg_address, u8_t* data, u8_t num_bytes );
 pass_fail_et HAL_I2C_check_event( u32_t event );
 
 #endif /* HAL_I2C_H multiple inclusion guard */

@@ -5,26 +5,13 @@
 /***************************************************************************************************
 **                              Includes                                                          **
 ***************************************************************************************************/
-/***************************************************************************************************
-**                              Includes                                                          **
-***************************************************************************************************/
-#include "stm32f10x_rcc.h"
-#include "stm32f10x_i2c.h"
-#include "stm32f10x_gpio.h"
-#include "misc.h"
-
-#include "C_defs.h"
-#include "STDC.h"
-#include "COMPILER_defs.h"
-#include "HAL_config.h"
-#include "HAL_BRD.h"
-#include "DBG_MGR.h"
 #include "HAL_I2C.h"
 
 /***************************************************************************************************
 **                              Data declarations and definitions                                 **
 ***************************************************************************************************/
 u32_t HAL_I2C1_timeout_s;
+
 /***************************************************************************************************
 **                              Public Functions                                                  **
 ***************************************************************************************************/
@@ -45,7 +32,13 @@ void HAL_I2C1_init( void )
 	/* Enable I2C and GPIOA clock, should be enabled anyway but just in case */
 	RCC_APB1PeriphClockCmd( RCC_APB1Periph_I2C1, ENABLE );
 	RCC_APB2PeriphClockCmd( RCC_APB2Periph_GPIOB, ENABLE );
- 
+	RCC_APB2PeriphClockCmd( RCC_APB2Periph_AFIO,  ENABLE );
+
+	/* I2C1 defaults to PB6/PB7 on this part. Those are TIM4's encoder channels here, so the
+	   peripheral MUST be remapped onto PB8/PB9 - without this the I2C engine drives the encoder
+	   pins and the pins actually wired to the display are left connected to nothing. */
+	GPIO_PinRemapConfig( GPIO_Remap_I2C1, ENABLE );
+
 	I2C_SoftwareResetCmd( I2C1, ENABLE );
 	I2C_SoftwareResetCmd( I2C1, DISABLE );
 
@@ -54,7 +47,7 @@ void HAL_I2C1_init( void )
 
 	/* Configure I2C_EE pins: SCL and SDA */
 	GPIO_InitStructure.GPIO_Pin = I2C1_SDA_PIN | I2C1_SCL_PIN;
-	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_10MHz;
+	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
 	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AF_OD;
 	GPIO_Init( I2C1_PORT, &GPIO_InitStructure );
 
@@ -66,7 +59,10 @@ void HAL_I2C1_init( void )
 	I2C_InitStructure.I2C_OwnAddress1 = 0x38;
 	I2C_InitStructure.I2C_Ack = I2C_Ack_Enable;
 	I2C_InitStructure.I2C_AcknowledgedAddress = I2C_AcknowledgedAddress_7bit;
-	I2C_InitStructure.I2C_ClockSpeed = 100000u;
+	/* 400kHz fast mode. The SH1106 pushes a 128-byte page per transfer and SH1106_tick() may send
+	   two of them in one 10ms slot; at 100kHz a single page is ~11.5ms of bus time on its own and
+	   would overrun the slot. 400kHz brings that to ~2.9ms per page. */
+	I2C_InitStructure.I2C_ClockSpeed = 400000u;
 
 	/* I2C Peripheral Enable */
 	I2C_Cmd( I2C1, ENABLE );
@@ -78,7 +74,6 @@ void HAL_I2C1_init( void )
 
 	HAL_I2C1_timeout_s = 0u;
 }
-
 
 /*!
 ****************************************************************************************************
@@ -107,28 +102,6 @@ void HAL_I2C1_de_init( void )
 /*!
 ****************************************************************************************************
 *
-*   \brief         Writes a single register
-*
-*   \author        MS
-*
-*   \return        none
-*
-*   \note
-*
-***************************************************************************************************/
-pass_fail_et HAL_I2C1_write_single_register( u8_t dev_add, u8_t reg_add, u8_t* data )
-{
-	pass_fail_et status = PASS;
-
-	status = HAL_I2C_write_multiple_registers( dev_add, reg_add, data, 1u );
-
-	return( status );
-}
-
-
-/*!
-****************************************************************************************************
-*
 *   \brief         Writes multiple registers
 *
 *   \author        MS
@@ -138,7 +111,7 @@ pass_fail_et HAL_I2C1_write_single_register( u8_t dev_add, u8_t reg_add, u8_t* d
 *   \note
 *
 ***************************************************************************************************/
-pass_fail_et HAL_I2C_write_multiple_registers( u8_t dev_add, u8_t reg_address, u8_t* data, u8_t num_bytes )
+pass_fail_et HAL_I2C_write_registers( u8_t dev_add, u8_t reg_address, u8_t* data, u8_t num_bytes )
 {
 	u8_t i = 0u;
 	pass_fail_et status = PASS;
@@ -162,31 +135,8 @@ pass_fail_et HAL_I2C_write_multiple_registers( u8_t dev_add, u8_t reg_address, u
 	I2C_GenerateSTOP(I2C1,ENABLE);
 	status = HAL_I2C_check_event(I2C_EVENT_MASTER_BYTE_TRANSMITTED);
 
-	return status;
+	return( status );
 }
-
-
-/*!
-****************************************************************************************************
-*
-*   \brief         Read single register
-*
-*   \author        MS
-*
-*   \return        none
-*
-*   \note
-*
-***************************************************************************************************/
-pass_fail_et HAL_I2C1_read_single_register( u8_t dev_add, u8_t reg_add, u8_t* data )
-{
-	pass_fail_et status = PASS;
-
-	status = HAL_I2C_read_multiple_registers( dev_add, reg_add, data, 1u );
-
-	return status;
-}
-
 
 /*!
 ****************************************************************************************************
@@ -200,7 +150,7 @@ pass_fail_et HAL_I2C1_read_single_register( u8_t dev_add, u8_t reg_add, u8_t* da
 *   \note
 *
 ***************************************************************************************************/
-pass_fail_et HAL_I2C_read_multiple_registers( u8_t dev_add, u8_t reg_address, u8_t* data, u8_t num_bytes )
+pass_fail_et HAL_I2C_read_registers( u8_t dev_add, u8_t reg_address, u8_t* data, u8_t num_bytes )
 {
 	u8_t i = 0u;
 	pass_fail_et status = PASS;
@@ -237,7 +187,6 @@ pass_fail_et HAL_I2C_read_multiple_registers( u8_t dev_add, u8_t reg_address, u8
 
 	return( status );
 }
-
 
 /*!
 ****************************************************************************************************
@@ -295,24 +244,38 @@ pass_fail_et HAL_I2C_raw_read( u8_t dev_add, u8_t* data, u8_t num_bytes )
 *
 *   \return        none
 *
-*   \note
+*   \note          Also polled for I2C_FLAG_AF (acknowledge failure, ie. a NACK) so a missing
+*                  device fails as soon as hardware reports it rather than only once the 1000
+*                  iteration budget runs out. AF is cleared here when seen - it is sticky in
+*                  hardware and would otherwise persist into whatever the caller does next.
 *
 ***************************************************************************************************/
 pass_fail_et HAL_I2C_check_event( u32_t event )
 {
-	pass_fail_et status = PASS;
+	pass_fail_et status;
 
-	while( !I2C_CheckEvent(I2C1, (uint32_t)event) )
+	while( ( !I2C_CheckEvent(I2C1, (uint32_t)event) ) &&
+	       ( I2C_GetFlagStatus(I2C1, I2C_FLAG_AF) != SET ) &&
+	       ( HAL_I2C1_timeout_s < 1000u ) )
 	{
 		HAL_I2C1_timeout_s++;
+	}
 
-		if( HAL_I2C1_timeout_s == 1000u )
+	if( I2C_CheckEvent(I2C1, (uint32_t)event) == SUCCESS )
+	{
+		status = PASS;
+	}
+	else
+	{
+		status = FAIL;
+
+		if( I2C_GetFlagStatus(I2C1, I2C_FLAG_AF) == SET )
 		{
-			HAL_BRD_reset();
+			I2C_ClearFlag( I2C1, I2C_FLAG_AF );
 		}
 	}
 
-	return status;
+	return( status );
 }
 
 ///***************************************************************************************************

@@ -8,6 +8,7 @@
 #include "MODE_MGR.h"
 #include "INTEGRATION_STUBS.h"
 #include "MSG_SCHED.h"
+#include "HMI_SH1106.h"   /* This module owns the panel's tick slot - see mode_mgr_action_schedule_normal() */
 
 /***************************************************************************************************
 **                              Data declarations and definitions                                 **
@@ -112,41 +113,10 @@ void MODE_MGR_power_cbk( void )
 {
 }
 
-/*!
-****************************************************************************************************
-*
-*   \brief         Callback
-*
-*   \author        MS
-*
-*   \return        none
-*
-*   \note
-*
-***************************************************************************************************/
-void MODE_MGR_ccw_scroll_cbk( void )
-{
-	BUZZER_short_beep( &buzzer_instance_s );
-	ST7567_cursor_up();
-}
-
-/*!
-****************************************************************************************************
-*
-*   \brief         Callback
-*
-*   \author        MS
-*
-*   \return        none
-*
-*   \note
-*
-***************************************************************************************************/
-void MODE_MGR_cw_scroll_cbk( void )
-{
-	BUZZER_short_beep( &buzzer_instance_s );
-	ST7567_cursor_down();
-}
+/* MODE_MGR_ccw_scroll_cbk / MODE_MGR_cw_scroll_cbk removed with the ST7567 integration - they
+   existed only to drive that display's cursor from the encoder. HMI_SH1106 owns the encoder now
+   and reports HMI_SH1106_INPUT_CW/_CCW through on_input_func_p, wired to MENU_NAV_on_input() in
+   INTEGRATION_STUBS.c - MENU_NAV decides whether the cursor moves. */
 
 /*!
 ****************************************************************************************************
@@ -353,14 +323,15 @@ void mode_mgr_action_schedule_normal( void )
         WIFI_tick();
         TB_tick();
 
-		//ST7567_tick();
-    	ROTARY_MGR_tick();
+    	/* Drives the panel's encoder, buttons and OLED refresh in one call. Its tick_rate_ms is
+    	   configured as 10 to match this slot - change one and you must change the other. */
+    	HMI_SH1106_tick();
 	}
 
 	if( mode_mgr_check_time_interval( 20u ) == TRUE )
 	{
 		BUZZER_tick( &buzzer_instance_s );
-		BTN_MGR_tick();
+		BTN_MGR_tick( &btm_mgr_instance_s );
 		NRF24_tick( &nrf24_instance_s );
 		RF_MGR_tick();
 		MSG_SCHED_tick();

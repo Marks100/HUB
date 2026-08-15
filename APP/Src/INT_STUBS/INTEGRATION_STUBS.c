@@ -10,6 +10,7 @@
 #include "HAL_ADC.h"
 #include "HAL_TIM.h"
 #include "HAL_SPI.h"
+#include "HAL_I2C.h"
 #include "HAL_UART.h"
 #include "MODE_MGR.h"
 #include "RF_MGR.h"
@@ -19,6 +20,8 @@
 #include "TB_CBK.h"
 #include "TJA1051.h"
 #include "CPS.h"
+#include "HMI_SH1106.h"
+#include "MENU_NAV.h"
 
 /***************************************************************************************************
 **                              APP HEADER                                                        **
@@ -89,15 +92,74 @@ const BTN_MGR_func_table_st btm_mgr_func_table_s[3] =
     { "ONBOARD", TRUE,  HAL_BRD_read_onboard_btn, onboard_btn_short_press, NULL_P },
 };
 
+/* System buttons get their own BTN_MGR instance. Any panel (see HMI) owns a separate instance
+   with its own buttons, so the two sets are scanned independently and neither can form a
+   combination with the other. Storage is declared here because BTN_MGR allocates none itself. */
+BTN_MGR_control_st  btm_mgr_control_s[BTM_MGR_FUNC_TABLE_SIZE( btm_mgr_func_table_s )];
+BTN_MGR_instance_st btm_mgr_instance_s;
+
 /***************************************************************************************************
-**                              ROTARY_MGR                                                        **
+**                              HMI_SH1106 (OLED + encoder + buttons panel)                       **
+**  This board's wiring for the panel. What is actually on screen and how you move between        **
+**  screens is MENU_NAV's - see APP/Src/MENU_NAV/. Nothing menu-related lives here, only the       **
+**  same kind of board wiring every other cfg struct in this file has.                             **
 ***************************************************************************************************/
-const ROTARY_MGR_func_p_st rotary_mgr_func_table_s =
+/* TIM4's encoder belongs to this panel. There is only one on the board, so there is deliberately
+   no standalone ROTARY_MGR instance - two instances polling the same counter would each see every
+   detent and both fire. */
+
+/* Press feedback is board policy, not navigation logic - a different board might want an LED
+   flash or nothing at all. Keeping it in this wrapper is what lets MENU_NAV stay unaware that a
+   buzzer exists. */
+STATIC void hmi_on_input( HMI_SH1106_input_et input )
 {
-    .rotary_mgr_ccw_func = MODE_MGR_ccw_scroll_cbk,
-    .rotary_mgr_cw_func  = MODE_MGR_cw_scroll_cbk,
-    .get_cnt_func_p      = HAL_TIM_ENC_get_counter,
-    .get_dir_func_p      = HAL_TIM_ENC_get_dir
+    BUZZER_short_beep( &buzzer_instance_s );
+
+    MENU_NAV_on_input( input );
+}
+
+const HMI_SH1106_cfg_st hmi_sh1106_cfg_s =
+{
+    /* Display - HAL_I2C_write_registers matches i2c_write_func_p's signature exactly
+       (dev_addr, reg_addr, data_p, len -> pass_fail_et), so no adapter is needed */
+    .i2c_write_func_p       = HAL_I2C_write_registers,
+    .i2c_address            = SH1106_I2C_ADDR_DEFAULT,
+    .contrast               = SH1106_DEFAULT_CONTRAST,
+    /* Panel is mounted rotated 180 degrees on this board - flipping both axes together rotates
+       the image, rather than mirroring it the way flipping just one axis would. */
+    .flip_horizontal        = TRUE,
+    .flip_vertical          = TRUE,
+
+    /* Encoder - hardware quadrature on TIM4. HAL_TIM4_init_encoder() configures
+       TIM_EncoderMode_TI12 (full x4 decode - counts both edges of both channels), so one
+       mechanical detent reports as 4 raw counts, not 1. */
+    .mode                   = ROTARY_MODE_HARDWARE_TIMER,
+    .enc_get_count_func_p   = HAL_TIM_ENC_get_counter,
+    .reverse_direction      = FALSE,
+    .enc_counts_per_detent  = 4u,
+
+    /* Buttons - active low against internal pull-ups */
+    .btn_read_select_func_p  = HAL_BRD_read_panel_select_btn,
+    .btn_read_confirm_func_p = HAL_BRD_read_panel_confirm_btn,
+    .btn_read_back_func_p    = HAL_BRD_read_panel_back_btn,
+    .btn_inverted            = TRUE,
+
+    /* Behaviour - tick_rate_ms must match the MODE_MGR slot HMI_SH1106_tick() runs in */
+    .tick_rate_ms           = 10u,
+
+    /* Repaint twice a second regardless, so a screen showing live values (the status page reading
+       the input counters) keeps up without having to notice its own data changing. */
+    .refresh_period_ms      = 500u,
+
+    /* HMI_SH1106_tick() runs from MODE_MGR_tick(), the SysTick ISR - guards
+       HMI_SH1106_get_stats() against reading the counters mid-increment */
+    .stats_critical_enter_func_p = NVIC_DisableGlobalIRQ,
+    .stats_critical_exit_func_p  = NVIC_EnableGlobalIRQ,
+
+    /* Input goes through a local wrapper purely to add the buzzer; drawing goes straight to
+       MENU_NAV, which has nothing board-specific to add. */
+    .on_input_func_p        = hmi_on_input,
+    .draw_func_p            = MENU_NAV_draw,
 };
 
 /***************************************************************************************************
@@ -125,18 +187,6 @@ WS2811_instance_st ws2811_instance_s =
     //.one_pulse_func_p   = HAL_BRD_WS2811_one_pulse_direct,
     .disable_irq_func_p = NVIC_DisableGlobalIRQ,
     .enable_irq_func_p  = NVIC_EnableGlobalIRQ,
-};
-
-/***************************************************************************************************
-**                              ST7567                                                            **
-***************************************************************************************************/
-const ST7567_func_table_st st7567_func_table_s =
-{
-    .run_func_p     = NULL_P,
-    .a0_pin_func_p  = HAL_BRD_set_lcd_a0_pin,
-    .cs_pin_func_p  = HAL_BRD_set_lcd_cs_pin,
-    .rst_pin_func_p = HAL_BRD_set_lcd_rst_pin,
-    .spi_func_p     = HAL_SPI1_send_byte,
 };
 
 /***************************************************************************************************
@@ -215,8 +265,19 @@ const ESP01_cfg_st esp01_cfg_s =
 ***************************************************************************************************/
 static void on_wifi_send_complete( pass_fail_et result )
 {
-    (void)result;
-    TB_notify_event( TB_EVENT_SEND_COMPLETE );
+    if( result == PASS )
+    {
+        TB_notify_event( TB_EVENT_SEND_COMPLETE );
+    }
+    else
+    {
+        /* Send failed (e.g. ESP8266 "link is not valid" - the TCP connection has already
+           died and the driver didn't know). Feed this into the same connection-lost path
+           used for a refused CONNACK, so TB stops trying to send on a dead link instead of
+           silently discarding the failure and only recovering once the 90s staleness
+           timeout in tb_handle_connected_state() eventually trips. */
+        TB_notify_event( TB_EVENT_CONNECTION_LOST );
+    }
 }
 
 const WIFI_config_st wifi_cfg_s =
@@ -229,7 +290,7 @@ const WIFI_config_st wifi_cfg_s =
     .ap_encryption            = 3u,   /* WPA2_PSK */
     .rx_callback_p            = tb_mqtt_rx_handler,
     .send_complete_callback_p = on_wifi_send_complete,
-    .rssi_polling_enabled     = FALSE,
+    .rssi_polling_enabled     = TRUE,
 };
 
 /***************************************************************************************************

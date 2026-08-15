@@ -23,7 +23,6 @@
 #include "WDG.h"
 #include "RF_MGR.h"
 #include "WS2811.h"
-#include "ST7567.h"
 #include "NRF24.h"
 
 /***************************************************************************************************
@@ -76,8 +75,6 @@ void  MODE_MGR_init( void );
 void  MODE_MGR_tick( void );
 void  MODE_MGR_handle_settings( void );
 void  MODE_MGR_power_cbk( void );
-void  MODE_MGR_ccw_scroll_cbk( void );
-void  MODE_MGR_cw_scroll_cbk( void );
 void  MODE_MGR_enter_pressed_cbk( void );
 void  MODE_MGR_reset_pressed_cbk( void );
 void  MODE_MGR_enter_long_pressed_cbk( void );

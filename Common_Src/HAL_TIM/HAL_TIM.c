@@ -728,7 +728,8 @@ STATIC void hal_tim_ic_dispatch( TIM_TypeDef* tim_p, HAL_TIM_IC_callback_ft* cal
 ****************************************************************************************************
 *
 *   \brief         Initialise TIM4 in quadrature encoder interface mode
-*                  CH1=PB6, CH2=PB7 — configure these pins as floating inputs before calling
+*                  CH1=PB6, CH2=PB7. The pins belong to the board layer, not here - HAL_BRD_init()
+*                  configures them (pulled up, see the note there) and must run first.
 *
 *   \return        none
 *
