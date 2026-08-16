@@ -58,6 +58,10 @@ typedef enum
     MENU_NAV_SCREEN_MAIN_MENU,
     MENU_NAV_SCREEN_STATUS,
     MENU_NAV_SCREEN_BRIGHTNESS,
+    MENU_NAV_SCREEN_BUZZER,
+    MENU_NAV_SCREEN_WIFI,
+    MENU_NAV_SCREEN_TB,
+    MENU_NAV_SCREEN_SENSORS,
     MENU_NAV_SCREEN_ABOUT,
     MENU_NAV_SCREEN_NOT_IMPLEMENTED,
     MENU_NAV_NUM_SCREENS                /*!< Not a screen - array bound, keep last */
@@ -104,11 +108,16 @@ typedef struct
     void (*draw_func_p)( void );
 
     /*!< Optional. Takes over input handling for this screen, replacing the default behaviour of
-     *   its kind (below). A long BACK press is handled before this and never reaches it.
+     *   its kind (below).
      *
      *   Default for a list screen: the encoder moves the cursor, SELECT/CONFIRM open the row's
      *   target, BACK goes to back_screen.
-     *   Default for a free-form screen: SELECT/CONFIRM/BACK all go to back_screen. */
+     *   Default for a free-form screen: SELECT/CONFIRM/BACK all go to back_screen.
+     *
+     *   HMI_SH1106_INPUT_BACK_LONG is a special case: this still sees it first (so a screen with
+     *   state to unwind - a value mid-edit - gets the chance to revert it), but the jump to
+     *   MENU_NAV_SCREEN_HOME that follows happens unconditionally and cannot be redirected or
+     *   suppressed from here, unlike every other input. */
     void (*handle_func_p)( HMI_SH1106_input_et input );
 
     /*!< Optional. Called as this screen becomes the current one - for a screen that has to
@@ -133,6 +142,12 @@ void MENU_NAV_draw( void );
 /*!< The entire navigation mechanism. Also public so the application can drive the display from
  *   outside the panel - jumping to a fault screen when something goes wrong, for instance. */
 void MENU_NAV_goto( MENU_NAV_screen_et screen );
+
+/*!< The Buzzer/Beep Time screens' current values. The board layer reads these before it beeps
+ *   (see hmi_on_input() in INTEGRATION_STUBS.c) so button-press feedback stays board policy, not
+ *   something this module has to know how to trigger. */
+false_true_et MENU_NAV_buzzer_enabled( void );
+u16_t         MENU_NAV_get_beep_duration_ms( void );
 
 #endif /* MENU_NAV_H multiple inclusion guard */
 

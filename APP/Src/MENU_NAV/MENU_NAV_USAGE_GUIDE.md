@@ -214,16 +214,16 @@ is genuinely detected (counted, any board-level feedback fires), but nothing vis
 because "navigate to `back_screen`" and "navigate to yourself" are the same call. Any screen where
 `back_screen` points at itself needs a `handle_func_p` that does something other than the default.
 
-### Long BACK bypasses every screen, including one mid-edit
+### Long BACK still ends up at home no matter what a screen does
 
-`MENU_NAV_on_input()` checks `BACK_LONG` before consulting the current screen at all - no
-`handle_func_p` ever sees it. That's deliberate (it's the guaranteed way out of anywhere), but it
-means a screen like a value editor that reverts state on a *short* BACK does not get the chance to
-revert on a *long* one - the screen changes, whatever was mid-edit is left as it last was, not
-rolled back. If a screen's edits need to survive a long BACK too, that has to be handled by making
-the change take effect immediately (as the brightness screen does - it pushes the value to
-hardware on every step, so there is nothing left to "commit" or "lose") rather than deferred to an
-explicit commit step.
+`MENU_NAV_on_input()` gives the current screen's `handle_func_p` a look at `BACK_LONG` before
+navigating - so a value editor gets the chance to revert, the same way it would on a short BACK -
+but the jump to the root screen happens unconditionally straight afterwards regardless of what
+`handle_func_p` did or didn't do with it. A screen cannot redirect it elsewhere and cannot cancel
+it; the only thing `handle_func_p` controls is what state gets cleaned up on the way out. Forgetting
+a `case HMI_SH1106_INPUT_BACK_LONG:` on a screen with revertible state (see
+`menu_nav_handle_brightness()`) means the panic-button exit silently keeps whatever was mid-edit
+instead of cancelling it like every other way of leaving that screen does.
 
 ### An unfilled screen table row is silently blank, not a compile error
 

@@ -10,6 +10,11 @@
 ***************************************************************************************************/
 #include "MENU_NAV.h"
 #include "VER.h"
+#include "WIFI.h"
+#include "RF_MGR.h"
+#include "TIME_MGR.h"
+#include "BUZZER.h"
+#include "TB.h"
 
 /***************************************************************************************************
 **                              Defines                                                           **
@@ -35,11 +40,19 @@ STATIC const char* menu_nav_get_label( u8_t index );
 STATIC void menu_nav_draw_home( void );
 STATIC void menu_nav_handle_home( HMI_SH1106_input_et input );
 STATIC void menu_nav_draw_status( void );
+STATIC void menu_nav_draw_wifi( void );
+STATIC void menu_nav_draw_tb( void );
+STATIC void menu_nav_draw_sensors( void );
+STATIC void menu_nav_handle_sensors( HMI_SH1106_input_et input );
+STATIC void menu_nav_enter_sensors( void );
 STATIC void menu_nav_draw_about( void );
 STATIC void menu_nav_draw_not_implemented( void );
 STATIC void menu_nav_draw_brightness( void );
 STATIC void menu_nav_handle_brightness( HMI_SH1106_input_et input );
 STATIC void menu_nav_enter_brightness( void );
+STATIC void menu_nav_draw_buzzer( void );
+STATIC void menu_nav_handle_buzzer( HMI_SH1106_input_et input );
+STATIC void menu_nav_enter_buzzer( void );
 
 /***************************************************************************************************
 **                              Screen contents                                                   **
@@ -50,13 +63,13 @@ STATIC const MENU_NAV_item_st menu_nav_main_items_s[] =
 {
     { "Status",     MENU_NAV_SCREEN_STATUS          },
     { "Brightness", MENU_NAV_SCREEN_BRIGHTNESS      },
-    { "WiFi",       MENU_NAV_SCREEN_NOT_IMPLEMENTED },
-    { "RF Link",    MENU_NAV_SCREEN_NOT_IMPLEMENTED },
+    { "WiFi",       MENU_NAV_SCREEN_WIFI            },
+    { "TB",         MENU_NAV_SCREEN_TB              },
     { "Vehicle",    MENU_NAV_SCREEN_NOT_IMPLEMENTED },
     { "CAN Bus",    MENU_NAV_SCREEN_NOT_IMPLEMENTED },
     { "LEDs",       MENU_NAV_SCREEN_NOT_IMPLEMENTED },
-    { "Buzzer",     MENU_NAV_SCREEN_NOT_IMPLEMENTED },
-    { "Sensors",    MENU_NAV_SCREEN_NOT_IMPLEMENTED },
+    { "Buzzer",     MENU_NAV_SCREEN_BUZZER          },
+    { "Sensors",    MENU_NAV_SCREEN_SENSORS         },
     { "About",      MENU_NAV_SCREEN_ABOUT           },
 };
 
@@ -74,6 +87,30 @@ STATIC u8_t menu_nav_brightness_saved_s = 75u;
 #define MENU_NAV_BRIGHTNESS_MIN         ( 5u )
 #define MENU_NAV_BRIGHTNESS_MAX         ( 100u )
 #define MENU_NAV_BRIGHTNESS_STEP        ( 5u )
+
+/* ===== Buzzer - one screen, two fields: whether a press beeps, and for how long. Both revert
+   together if BACK cancels; the knob edits whichever field is currently selected. ===== */
+STATIC false_true_et menu_nav_buzzer_enabled_s = TRUE;
+STATIC false_true_et menu_nav_buzzer_saved_s   = TRUE;
+
+STATIC u16_t menu_nav_beep_time_ms_s    = BUZZER_SHORT_BEEP_MS;
+STATIC u16_t menu_nav_beep_time_saved_s = BUZZER_SHORT_BEEP_MS;
+
+#define MENU_NAV_BEEP_TIME_MIN_MS       ( 10u )
+#define MENU_NAV_BEEP_TIME_MAX_MS       ( 500u )
+#define MENU_NAV_BEEP_TIME_STEP_MS      ( 10u )
+
+typedef enum
+{
+    MENU_NAV_BUZZER_FIELD_STATE = 0u,
+    MENU_NAV_BUZZER_FIELD_TIME,
+    MENU_NAV_BUZZER_NUM_FIELDS
+} menu_nav_buzzer_field_et;
+
+STATIC menu_nav_buzzer_field_et menu_nav_buzzer_field_s = MENU_NAV_BUZZER_FIELD_STATE;
+
+/* ===== Sensors - which sensor slot the knob is currently showing ===== */
+STATIC u8_t menu_nav_sensor_index_s = 0u;
 
 /***************************************************************************************************
 **                              Screen table                                                      **
@@ -106,6 +143,34 @@ STATIC const MENU_NAV_screen_st menu_nav_screens_s[MENU_NAV_NUM_SCREENS] =
         .draw_func_p     = menu_nav_draw_brightness,
         .handle_func_p   = menu_nav_handle_brightness,   /* The knob edits rather than navigates */
         .on_enter_func_p = menu_nav_enter_brightness,    /* Remember what to revert to */
+        .back_screen     = MENU_NAV_SCREEN_MAIN_MENU,
+    },
+
+    [MENU_NAV_SCREEN_BUZZER] =
+    {
+        .draw_func_p     = menu_nav_draw_buzzer,
+        .handle_func_p   = menu_nav_handle_buzzer,   /* SELECT swaps field, the knob edits it */
+        .on_enter_func_p = menu_nav_enter_buzzer,    /* Remember what to revert to */
+        .back_screen     = MENU_NAV_SCREEN_MAIN_MENU,
+    },
+
+    [MENU_NAV_SCREEN_WIFI] =
+    {
+        .draw_func_p  = menu_nav_draw_wifi,
+        .back_screen  = MENU_NAV_SCREEN_MAIN_MENU,
+    },
+
+    [MENU_NAV_SCREEN_TB] =
+    {
+        .draw_func_p  = menu_nav_draw_tb,
+        .back_screen  = MENU_NAV_SCREEN_MAIN_MENU,
+    },
+
+    [MENU_NAV_SCREEN_SENSORS] =
+    {
+        .draw_func_p     = menu_nav_draw_sensors,
+        .handle_func_p   = menu_nav_handle_sensors,   /* The knob steps through sensor slots */
+        .on_enter_func_p = menu_nav_enter_sensors,    /* Always start back at slot 0 */
         .back_screen     = MENU_NAV_SCREEN_MAIN_MENU,
     },
 
@@ -244,8 +309,11 @@ void MENU_NAV_draw( void )
 *
 *   \return        none
 *
-*   \note          A long BACK press is dealt with here rather than passed on, so no screen can
-*                  swallow it - it is the one gesture guaranteed to get the user out of anywhere.
+*   \note          A long BACK press always ends at MENU_NAV_SCREEN_HOME - no screen can redirect
+*                  it elsewhere or suppress the jump. A screen with handle_func_p does still see it
+*                  first, purely so it can react (a value editor reverting to what it captured on
+*                  entry, for instance) before it is navigated away from - see the note on
+*                  MENU_NAV_screen_st.handle_func_p.
 *
 ***************************************************************************************************/
 void MENU_NAV_on_input( HMI_SH1106_input_et input )
@@ -254,6 +322,11 @@ void MENU_NAV_on_input( HMI_SH1106_input_et input )
 
     if( input == HMI_SH1106_INPUT_BACK_LONG )
     {
+        if( screen_p->handle_func_p != NULL_P )
+        {
+            screen_p->handle_func_p( input );
+        }
+
         MENU_NAV_goto( MENU_NAV_SCREEN_HOME );
     }
     else if( screen_p->handle_func_p != NULL_P )
@@ -576,6 +649,238 @@ STATIC void menu_nav_draw_status( void )
 /*!
 ****************************************************************************************************
 *
+*   \brief         WiFi - live status straight off the WIFI module
+*
+*   \author        MS
+*
+*   \return        none
+*
+*   \note          Repainted by the panel's own refresh timer, same as Status - RSSI and connection
+*                  state keep updating while the screen is open.
+*
+***************************************************************************************************/
+STATIC void menu_nav_draw_wifi( void )
+{
+    char        line[MENU_NAV_LINE_CHARS];
+    const char* status_str;
+
+    switch( WIFI_get_sta_connection_status() )
+    {
+        case WIFI_STA_CONNECTED_TO_AP:
+            status_str = "Connected";
+        break;
+
+        case WIFI_STA_CONNECTING_TO_AP:
+            status_str = "Connecting";
+        break;
+
+        default:
+            status_str = "Disconnected";
+        break;
+    }
+
+    HMI_SH1106_draw_text( 0u, 0u, "WIFI" );
+
+    (void)STDC_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "Status %s", status_str );
+    HMI_SH1106_draw_text( 2u, 0u, line );
+
+    (void)STDC_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "IP %s", (const char*)WIFI_get_ip_address() );
+    HMI_SH1106_draw_text( 3u, 0u, line );
+
+    (void)STDC_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "RSSI %d dBm", (int)WIFI_get_rssi() );
+    HMI_SH1106_draw_text( 4u, 0u, line );
+
+    (void)STDC_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "MAC %s", (const char*)WIFI_get_mac_address() );
+    HMI_SH1106_draw_text( 5u, 0u, line );
+
+    (void)STDC_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "Disconnects %lu", (unsigned long)WIFI_get_disconnect_count() );
+    HMI_SH1106_draw_text( 6u, 0u, line );
+}
+
+/*!
+****************************************************************************************************
+*
+*   \brief         TB - live message counts straight off the TB module
+*
+*   \author        MS
+*
+*   \return        none
+*
+*   \note          Repainted by the panel's own refresh timer, same as Status/WiFi - the counts
+*                  keep climbing while the screen is open.
+*
+***************************************************************************************************/
+STATIC void menu_nav_draw_tb( void )
+{
+    char        line[MENU_NAV_LINE_CHARS];
+    const char* status_str;
+
+    switch( TB_get_state() )
+    {
+        case TB_STATE_CONNECTED:
+            status_str = "Connected";
+        break;
+
+        case TB_STATE_DISCONNECTED:
+            status_str = "Disconnected";
+        break;
+
+        case TB_STATE_ERROR:
+            status_str = "Error";
+        break;
+
+        default:
+            status_str = "Connecting";
+        break;
+    }
+
+    HMI_SH1106_draw_text( 0u, 0u, "TB" );
+
+    (void)STDC_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "Status %s", status_str );
+    HMI_SH1106_draw_text( 2u, 0u, line );
+
+    (void)STDC_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "Sent %lu", (unsigned long)TB_get_messages_sent_count() );
+    HMI_SH1106_draw_text( 3u, 0u, line );
+
+    (void)STDC_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "Recv %lu", (unsigned long)TB_get_messages_received_count() );
+    HMI_SH1106_draw_text( 4u, 0u, line );
+
+    (void)STDC_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "Dropped %u", (unsigned int)TB_get_dropped_count() );
+    HMI_SH1106_draw_text( 5u, 0u, line );
+}
+
+/*!
+****************************************************************************************************
+*
+*   \brief         Sensors - reset to the first sensor slot on the way in
+*
+*   \author        MS
+*
+*   \return        none
+*
+***************************************************************************************************/
+STATIC void menu_nav_enter_sensors( void )
+{
+    menu_nav_sensor_index_s = 0u;
+}
+
+/*!
+****************************************************************************************************
+*
+*   \brief         Sensors - the sensor DB slot the knob is currently showing
+*
+*   \author        MS
+*
+*   \return        none
+*
+*   \note          Repainted by the panel's own refresh timer, so a node's readings and RX count
+*                  keep updating while it stays on screen. Steps through every slot in
+*                  RF_MGR_get_sensor_db(), not just ones that have reported in - an empty slot is
+*                  shown as such rather than being skipped, so the count in the title always matches
+*                  RF_MGR_MAX_SENSORS and turning the knob never appears to do nothing.
+*
+***************************************************************************************************/
+STATIC void menu_nav_draw_sensors( void )
+{
+    const RF_MGR_sensor_data_st* node_p = &RF_MGR_get_sensor_db()[menu_nav_sensor_index_s];
+    char                          line[MENU_NAV_LINE_CHARS];
+
+    (void)STDC_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "SENSOR %u/%u",
+                         (unsigned int)( menu_nav_sensor_index_s + 1u ), (unsigned int)RF_MGR_MAX_SENSORS );
+    HMI_SH1106_draw_text( 0u, 0u, line );
+
+    if( node_p->valid == TRUE )
+    {
+        s16_t       temp_whole = (s16_t)( node_p->temperature_centidegC / 100 );
+        s16_t       temp_frac  = (s16_t)( node_p->temperature_centidegC % 100 );
+        s16_t       hum_whole  = (s16_t)( node_p->humidity_tenths_pct / 10 );
+        s16_t       hum_frac   = (s16_t)( node_p->humidity_tenths_pct % 10 );
+        u32_t       age_secs   = (u32_t)( ( TIME_get_cumulative_run_time_ms() - node_p->last_rx_time_ms ) / MSECS_PER_SEC );
+        const char* batt_str;
+
+        temp_frac = ( temp_frac < 0 ) ? (s16_t)-temp_frac : temp_frac;
+        hum_frac  = ( hum_frac  < 0 ) ? (s16_t)-hum_frac  : hum_frac;
+
+        if( ( node_p->battery_flags & (u8_t)( 1u << RF_MGR_BAT_FLAG_CRITICAL_BIT ) ) != 0u )
+        {
+            batt_str = "CRIT";
+        }
+        else if( ( node_p->battery_flags & (u8_t)( 1u << RF_MGR_BAT_FLAG_LOW_BIT ) ) != 0u )
+        {
+            batt_str = "LOW";
+        }
+        else
+        {
+            batt_str = "OK";
+        }
+
+        (void)STDC_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "ID 0x%08lX", (unsigned long)node_p->sensor_id );
+        HMI_SH1106_draw_text( 2u, 0u, line );
+
+        (void)STDC_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "T %d.%02dC  H %d.%01d%%",
+                             (int)temp_whole, (int)temp_frac, (int)hum_whole, (int)hum_frac );
+        HMI_SH1106_draw_text( 3u, 0u, line );
+
+        (void)STDC_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "Batt %umV %s",
+                             (unsigned int)node_p->battery_voltage_mv, batt_str );
+        HMI_SH1106_draw_text( 4u, 0u, line );
+
+        (void)STDC_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "RX %lu  %s",
+                             (unsigned long)node_p->rx_frame_count, ( node_p->comms_lost == TRUE ) ? "LOST" : "OK" );
+        HMI_SH1106_draw_text( 5u, 0u, line );
+
+        (void)STDC_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "Age %lus", (unsigned long)age_secs );
+        HMI_SH1106_draw_text( 6u, 0u, line );
+    }
+    else
+    {
+        HMI_SH1106_draw_text( 3u, 0u, "Empty slot" );
+    }
+}
+
+/*!
+****************************************************************************************************
+*
+*   \brief         Sensors - the knob steps through sensor slots instead of moving a cursor
+*
+*   \author        MS
+*
+*   \param         input - What the panel reported
+*
+*   \return        none
+*
+***************************************************************************************************/
+STATIC void menu_nav_handle_sensors( HMI_SH1106_input_et input )
+{
+    switch( input )
+    {
+        case HMI_SH1106_INPUT_CW:
+            menu_nav_sensor_index_s = ( menu_nav_sensor_index_s >= (u8_t)( RF_MGR_MAX_SENSORS - 1u ) )
+                                     ? 0u : (u8_t)( menu_nav_sensor_index_s + 1u );
+            HMI_SH1106_request_redraw();
+        break;
+
+        case HMI_SH1106_INPUT_CCW:
+            menu_nav_sensor_index_s = ( menu_nav_sensor_index_s == 0u )
+                                     ? (u8_t)( RF_MGR_MAX_SENSORS - 1u ) : (u8_t)( menu_nav_sensor_index_s - 1u );
+            HMI_SH1106_request_redraw();
+        break;
+
+        case HMI_SH1106_INPUT_SELECT:
+        case HMI_SH1106_INPUT_CONFIRM:
+        case HMI_SH1106_INPUT_BACK:
+            MENU_NAV_goto( menu_nav_screens_s[MENU_NAV_SCREEN_SENSORS].back_screen );
+        break;
+
+        default:
+            /* Long select/confirm mean nothing here */
+        break;
+    }
+}
+
+/*!
+****************************************************************************************************
+*
 *   \brief         About - real build metadata from the VER module
 *
 *   \author        MS
@@ -681,6 +986,12 @@ STATIC void menu_nav_draw_brightness( void )
 *                  brightens as it is turned. Cancelling re-applies the value captured on entry,
 *                  which is what makes BACK feel like an undo rather than just an exit.
 *
+*                  BACK_LONG reverts the same way rather than leaving the edit applied - without
+*                  this case it would fall through to default and do nothing, and the panic-button
+*                  escape to home would silently keep whatever value was last turned to rather than
+*                  cancelling like every other exit from this screen does. MENU_NAV_on_input() calls
+*                  this before it navigates away, and navigates away regardless of what happens here.
+*
 ***************************************************************************************************/
 STATIC void menu_nav_handle_brightness( HMI_SH1106_input_et input )
 {
@@ -716,10 +1027,176 @@ STATIC void menu_nav_handle_brightness( HMI_SH1106_input_et input )
             MENU_NAV_goto( menu_nav_screens_s[MENU_NAV_SCREEN_BRIGHTNESS].back_screen );
         break;
 
+        case HMI_SH1106_INPUT_BACK_LONG:
+            /* MENU_NAV_on_input() navigates home right after this returns - just revert */
+            menu_nav_brightness_pct_s = menu_nav_brightness_saved_s;
+            HMI_SH1106_set_brightness_pct( menu_nav_brightness_pct_s );
+        break;
+
         default:
-            /* Long presses mean nothing while editing */
+            /* Long select/confirm mean nothing while editing */
         break;
     }
+}
+
+/*!
+****************************************************************************************************
+*
+*   \brief         Buzzer - capture the starting value so BACK can put it back
+*
+*   \author        MS
+*
+*   \return        none
+*
+***************************************************************************************************/
+STATIC void menu_nav_enter_buzzer( void )
+{
+    menu_nav_buzzer_saved_s    = menu_nav_buzzer_enabled_s;
+    menu_nav_beep_time_saved_s = menu_nav_beep_time_ms_s;
+    menu_nav_buzzer_field_s    = MENU_NAV_BUZZER_FIELD_STATE;
+}
+
+/*!
+****************************************************************************************************
+*
+*   \brief         Buzzer - show both fields, with a marker on the one the knob edits
+*
+*   \author        MS
+*
+*   \return        none
+*
+***************************************************************************************************/
+STATIC void menu_nav_draw_buzzer( void )
+{
+    char line[MENU_NAV_LINE_CHARS];
+
+    HMI_SH1106_draw_text( 0u, 0u, "BUZZER" );
+
+    (void)STDC_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "%c State %s",
+                         ( menu_nav_buzzer_field_s == MENU_NAV_BUZZER_FIELD_STATE ) ? '>' : ' ',
+                         ( menu_nav_buzzer_enabled_s == TRUE ) ? "ON" : "OFF" );
+    HMI_SH1106_draw_text( 2u, 0u, line );
+
+    (void)STDC_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "%c Time  %u ms",
+                         ( menu_nav_buzzer_field_s == MENU_NAV_BUZZER_FIELD_TIME ) ? '>' : ' ',
+                         (unsigned int)menu_nav_beep_time_ms_s );
+    HMI_SH1106_draw_text( 3u, 0u, line );
+
+    HMI_SH1106_draw_text( 6u, 0u, "SEL field, CFM keep" );
+    HMI_SH1106_draw_text( 7u, 0u, "BACK cancels" );
+}
+
+/*!
+****************************************************************************************************
+*
+*   \brief         Buzzer - the knob edits whichever field SELECT last landed on
+*
+*   \author        MS
+*
+*   \param         input - What the panel reported
+*
+*   \return        none
+*
+*   \note          SELECT swaps which field the knob edits rather than navigating, so CONFIRM is the
+*                  only way to leave and keep - a shape this screen needs precisely because it has
+*                  two fields, unlike every single-value editor elsewhere that overloads SELECT and
+*                  CONFIRM the same way. CW always means ON for the state field rather than toggling
+*                  back and forth - a fast spin lands where it visibly stopped either way.
+*
+***************************************************************************************************/
+STATIC void menu_nav_handle_buzzer( HMI_SH1106_input_et input )
+{
+    switch( input )
+    {
+        case HMI_SH1106_INPUT_CW:
+            if( menu_nav_buzzer_field_s == MENU_NAV_BUZZER_FIELD_STATE )
+            {
+                menu_nav_buzzer_enabled_s = TRUE;
+            }
+            else if( menu_nav_beep_time_ms_s <= (u16_t)( MENU_NAV_BEEP_TIME_MAX_MS - MENU_NAV_BEEP_TIME_STEP_MS ) )
+            {
+                menu_nav_beep_time_ms_s += MENU_NAV_BEEP_TIME_STEP_MS;
+            }
+            else
+            {
+                /* Already at MENU_NAV_BEEP_TIME_MAX_MS - nothing to step */
+            }
+            HMI_SH1106_request_redraw();
+        break;
+
+        case HMI_SH1106_INPUT_CCW:
+            if( menu_nav_buzzer_field_s == MENU_NAV_BUZZER_FIELD_STATE )
+            {
+                menu_nav_buzzer_enabled_s = FALSE;
+            }
+            else if( menu_nav_beep_time_ms_s >= (u16_t)( MENU_NAV_BEEP_TIME_MIN_MS + MENU_NAV_BEEP_TIME_STEP_MS ) )
+            {
+                menu_nav_beep_time_ms_s -= MENU_NAV_BEEP_TIME_STEP_MS;
+            }
+            else
+            {
+                /* Already at MENU_NAV_BEEP_TIME_MIN_MS - nothing to step */
+            }
+            HMI_SH1106_request_redraw();
+        break;
+
+        case HMI_SH1106_INPUT_SELECT:
+            menu_nav_buzzer_field_s = ( menu_nav_buzzer_field_s == MENU_NAV_BUZZER_FIELD_STATE )
+                                     ? MENU_NAV_BUZZER_FIELD_TIME : MENU_NAV_BUZZER_FIELD_STATE;
+            HMI_SH1106_request_redraw();
+        break;
+
+        case HMI_SH1106_INPUT_CONFIRM:
+            /* Keep both - they are already live, there is nothing to commit */
+            MENU_NAV_goto( menu_nav_screens_s[MENU_NAV_SCREEN_BUZZER].back_screen );
+        break;
+
+        case HMI_SH1106_INPUT_BACK:
+            menu_nav_buzzer_enabled_s = menu_nav_buzzer_saved_s;
+            menu_nav_beep_time_ms_s   = menu_nav_beep_time_saved_s;
+            MENU_NAV_goto( menu_nav_screens_s[MENU_NAV_SCREEN_BUZZER].back_screen );
+        break;
+
+        case HMI_SH1106_INPUT_BACK_LONG:
+            /* MENU_NAV_on_input() navigates home right after this returns - just revert */
+            menu_nav_buzzer_enabled_s = menu_nav_buzzer_saved_s;
+            menu_nav_beep_time_ms_s   = menu_nav_beep_time_saved_s;
+        break;
+
+        default:
+            /* Long select/confirm mean nothing while editing */
+        break;
+    }
+}
+
+/*!
+****************************************************************************************************
+*
+*   \brief         Whether the panel should beep on a press
+*
+*   \author        MS
+*
+*   \return        Current Buzzer screen value
+*
+***************************************************************************************************/
+false_true_et MENU_NAV_buzzer_enabled( void )
+{
+    return( menu_nav_buzzer_enabled_s );
+}
+
+/*!
+****************************************************************************************************
+*
+*   \brief         How long that beep should last
+*
+*   \author        MS
+*
+*   \return        Current Beep Time screen value, in milliseconds
+*
+***************************************************************************************************/
+u16_t MENU_NAV_get_beep_duration_ms( void )
+{
+    return( menu_nav_beep_time_ms_s );
 }
 
 /****************************** END OF FILE *******************************************************/

@@ -110,10 +110,14 @@ BTN_MGR_instance_st btm_mgr_instance_s;
 
 /* Press feedback is board policy, not navigation logic - a different board might want an LED
    flash or nothing at all. Keeping it in this wrapper is what lets MENU_NAV stay unaware that a
-   buzzer exists. */
+   buzzer exists; it only owns whether the user wants one and for how long, via the Buzzer and
+   Beep Time screens. */
 STATIC void hmi_on_input( HMI_SH1106_input_et input )
 {
-    BUZZER_short_beep( &buzzer_instance_s );
+    if( MENU_NAV_buzzer_enabled() == TRUE )
+    {
+        BUZZER_beep( &buzzer_instance_s, (u64_t)MENU_NAV_get_beep_duration_ms() );
+    }
 
     MENU_NAV_on_input( input );
 }
