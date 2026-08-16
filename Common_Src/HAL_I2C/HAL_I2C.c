@@ -115,7 +115,6 @@ pass_fail_et HAL_I2C_write_registers( u8_t dev_add, u8_t reg_address, u8_t* data
 {
 	u8_t i = 0u;
 	pass_fail_et status = PASS;
-	HAL_I2C1_timeout_s = 0u;
 
 	I2C_GenerateSTART(I2C1,ENABLE);
 	status = HAL_I2C_check_event(I2C_EVENT_MASTER_MODE_SELECT);
@@ -154,7 +153,6 @@ pass_fail_et HAL_I2C_read_registers( u8_t dev_add, u8_t reg_address, u8_t* data,
 {
 	u8_t i = 0u;
 	pass_fail_et status = PASS;
-	HAL_I2C1_timeout_s = 0u;
 
 	I2C_AcknowledgeConfig(I2C1,ENABLE);
 
@@ -210,8 +208,6 @@ pass_fail_et HAL_I2C_raw_read( u8_t dev_add, u8_t* data, u8_t num_bytes )
     u8_t         i      = 0u;
     pass_fail_et status = PASS;
 
-    HAL_I2C1_timeout_s = 0u;
-
     I2C_AcknowledgeConfig( I2C1, ENABLE );
 
     I2C_GenerateSTART( I2C1, ENABLE );
@@ -249,10 +245,19 @@ pass_fail_et HAL_I2C_raw_read( u8_t dev_add, u8_t* data, u8_t num_bytes )
 *                  iteration budget runs out. AF is cleared here when seen - it is sticky in
 *                  hardware and would otherwise persist into whatever the caller does next.
 *
+*                  HAL_I2C1_timeout_s is reset here rather than once per multi-byte transaction -
+*                  every wait gets its own full budget instead of a long transfer's later bytes
+*                  drawing down whatever earlier bytes left behind. Deliberately the only change
+*                  from this function's previous shape: callers still ignore the returned status
+*                  and carry on to the next step regardless, exactly as before - that turned out to
+*                  be load-bearing (see sh1106_write_data() in SH1106.c for the story), so it stays.
+*
 ***************************************************************************************************/
 pass_fail_et HAL_I2C_check_event( u32_t event )
 {
 	pass_fail_et status;
+
+	HAL_I2C1_timeout_s = 0u;
 
 	while( ( !I2C_CheckEvent(I2C1, (uint32_t)event) ) &&
 	       ( I2C_GetFlagStatus(I2C1, I2C_FLAG_AF) != SET ) &&
