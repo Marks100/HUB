@@ -15,6 +15,8 @@
 #include "TIME_MGR.h"
 #include "BUZZER.h"
 #include "TB.h"
+#include "PRESS_CONV.h"
+#include "GFX.h"
 
 /***************************************************************************************************
 **                              Defines                                                           **
@@ -25,6 +27,22 @@
  *   HMI_SH1106_draw_text() renders into the framebuffer before returning, so a local of this size
  *   is all any screen needs - no static row buffers held between repaints. */
 #define MENU_NAV_LINE_CHARS            ( HMI_SH1106_MAX_ITEM_CHARS + 1u )
+
+/***************************************************************************************************
+**                              Data Types                                                        **
+***************************************************************************************************/
+/*!
+ * \brief One tire's reading for the Vehicle screen
+ *
+ * Placeholder data - there is no tire pressure sensor anywhere in this codebase yet (RF_MGR's
+ * sensor DB has no pressure field and no FL/FR/RL/RR mapping). Replace menu_nav_tire_fl_s etc.
+ * with real readings once that data source exists.
+ */
+typedef struct
+{
+    s8_t temp_c;
+    u8_t pressure_psi;
+} menu_nav_tire_reading_st;
 
 /***************************************************************************************************
 **                              Private Function Prototypes                                       **
@@ -45,6 +63,8 @@ STATIC void menu_nav_draw_tb( void );
 STATIC void menu_nav_draw_sensors( void );
 STATIC void menu_nav_handle_sensors( HMI_SH1106_input_et input );
 STATIC void menu_nav_enter_sensors( void );
+STATIC void menu_nav_draw_vehicle( void );
+STATIC void menu_nav_draw_tire( u8_t tire_x, u8_t tire_y, u8_t label_col, u8_t label_page, const menu_nav_tire_reading_st* reading_p );
 STATIC void menu_nav_draw_about( void );
 STATIC void menu_nav_draw_not_implemented( void );
 STATIC void menu_nav_draw_brightness( void );
@@ -65,7 +85,7 @@ STATIC const MENU_NAV_item_st menu_nav_main_items_s[] =
     { "Brightness", MENU_NAV_SCREEN_BRIGHTNESS      },
     { "WiFi",       MENU_NAV_SCREEN_WIFI            },
     { "TB",         MENU_NAV_SCREEN_TB              },
-    { "Vehicle",    MENU_NAV_SCREEN_NOT_IMPLEMENTED },
+    { "Vehicle",    MENU_NAV_SCREEN_VEHICLE         },
     { "CAN Bus",    MENU_NAV_SCREEN_NOT_IMPLEMENTED },
     { "LEDs",       MENU_NAV_SCREEN_NOT_IMPLEMENTED },
     { "Buzzer",     MENU_NAV_SCREEN_BUZZER          },
@@ -79,6 +99,30 @@ STATIC const MENU_NAV_list_st menu_nav_main_list_s =
     .items_p    = menu_nav_main_items_s,
     .item_count = MENU_NAV_ITEM_COUNT( menu_nav_main_items_s ),
 };
+
+/* ===== Vehicle - placeholder tire readings, see menu_nav_tire_reading_st ===== */
+STATIC const menu_nav_tire_reading_st menu_nav_tire_fl_s = { 22, 32 };
+STATIC const menu_nav_tire_reading_st menu_nav_tire_fr_s = { 23, 33 };
+STATIC const menu_nav_tire_reading_st menu_nav_tire_rl_s = { 21, 31 };
+STATIC const menu_nav_tire_reading_st menu_nav_tire_rr_s = { 21, 30 };
+
+#define MENU_NAV_TIRE_WIDTH           ( 12u )
+#define MENU_NAV_TIRE_HEIGHT          ( 18u )
+#define MENU_NAV_TIRE_CORNER_RADIUS   ( 4u )
+
+/* Top-left corner of the left/right tires - see menu_nav_draw_vehicle() */
+#define MENU_NAV_TIRE_LEFT_X          ( 42u )
+#define MENU_NAV_TIRE_RIGHT_X         ( 70u )
+#define MENU_NAV_FRONT_TIRE_Y         ( 12u )
+#define MENU_NAV_REAR_TIRE_Y          ( 40u )
+
+/* Axles run between the tires' inner edges, at each pair's vertical centre; the driveshaft runs
+   between the two axles' midpoints - see menu_nav_draw_vehicle() */
+#define MENU_NAV_AXLE_LEFT_X    ( MENU_NAV_TIRE_LEFT_X + MENU_NAV_TIRE_WIDTH )
+#define MENU_NAV_AXLE_RIGHT_X   ( MENU_NAV_TIRE_RIGHT_X )
+#define MENU_NAV_FRONT_AXLE_Y   ( MENU_NAV_FRONT_TIRE_Y + ( MENU_NAV_TIRE_HEIGHT / 2u ) )
+#define MENU_NAV_REAR_AXLE_Y    ( MENU_NAV_REAR_TIRE_Y  + ( MENU_NAV_TIRE_HEIGHT / 2u ) )
+#define MENU_NAV_DRIVESHAFT_X   ( ( MENU_NAV_AXLE_LEFT_X + MENU_NAV_AXLE_RIGHT_X ) / 2u )
 
 /* ===== Brightness - the value this screen edits, and what it reverts to if BACK cancels ===== */
 STATIC u8_t menu_nav_brightness_pct_s   = 75u;
@@ -172,6 +216,12 @@ STATIC const MENU_NAV_screen_st menu_nav_screens_s[MENU_NAV_NUM_SCREENS] =
         .handle_func_p   = menu_nav_handle_sensors,   /* The knob steps through sensor slots */
         .on_enter_func_p = menu_nav_enter_sensors,    /* Always start back at slot 0 */
         .back_screen     = MENU_NAV_SCREEN_MAIN_MENU,
+    },
+
+    [MENU_NAV_SCREEN_VEHICLE] =
+    {
+        .draw_func_p  = menu_nav_draw_vehicle,
+        .back_screen  = MENU_NAV_SCREEN_MAIN_MENU,
     },
 
     [MENU_NAV_SCREEN_ABOUT] =
@@ -876,6 +926,79 @@ STATIC void menu_nav_handle_sensors( HMI_SH1106_input_et input )
             /* Long select/confirm mean nothing here */
         break;
     }
+}
+
+/*!
+****************************************************************************************************
+*
+*   \brief         Vehicle - one tire's outline plus its temp/pressure readout
+*
+*   \author        MS
+*
+*   \param         tire_x, tire_y - Top-left corner of the tire outline, raw pixel coordinates
+*   \param         label_col      - Logical column for both text lines (see HMI_SH1106_draw_text -
+*                                    the actual pixel start is this plus one character cell)
+*   \param         label_page     - Page (row) the temperature line lands on; the pressure line
+*                                    uses the next page down
+*   \param         reading_p      - What to print beside the tire
+*
+*   \return        none
+*
+***************************************************************************************************/
+STATIC void menu_nav_draw_tire( u8_t tire_x, u8_t tire_y, u8_t label_col, u8_t label_page,
+                                const menu_nav_tire_reading_st* reading_p )
+{
+    char          line[MENU_NAV_LINE_CHARS];
+    GFX_target_st target           = HMI_SH1106_get_target();
+    u16_t         press_mbar       = PRESS_CONV_psi_to_mbar( reading_p->pressure_psi );
+    u16_t         press_bar_tenths = (u16_t)( ( press_mbar + 50u ) / 100u );  /* Rounded to nearest 0.1 bar */
+
+    GFX_draw_rect_rounded( &target, tire_x, tire_y, MENU_NAV_TIRE_WIDTH, MENU_NAV_TIRE_HEIGHT, MENU_NAV_TIRE_CORNER_RADIUS );
+
+    (void)STDC_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "%dC", (int)reading_p->temp_c );
+    HMI_SH1106_draw_text( label_page, label_col, line );
+
+    /* Tire pressure is conventionally quoted to one decimal place in bar - PRESS_CONV itself only
+       deals in whole units (see PRESS_CONV_mbar_to_bar), so the one decimal digit is split out
+       here rather than in PRESS_CONV, the same way this function already owns its own formatting
+       for temperature. */
+    (void)STDC_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "%u.%ubar",
+                         (unsigned int)( press_bar_tenths / 10u ), (unsigned int)( press_bar_tenths % 10u ) );
+    HMI_SH1106_draw_text( (u8_t)( label_page + 1u ), label_col, line );
+}
+
+/*!
+****************************************************************************************************
+*
+*   \brief         Vehicle - four tires laid out like they sit on a real car, seen from above
+*
+*   \author        MS
+*
+*   \return        none
+*
+*   \note          Front axle top, rear axle bottom, tires hugging the left/right edges the way
+*                  they actually sit either side of the centreline. Readings run along the outer
+*                  edges, outside the tire they belong to - see menu_nav_draw_tire(). Placeholder
+*                  data (menu_nav_tire_fl_s etc.) until a real tire pressure sensor exists to read
+*                  from. Front/rear axles and the driveshaft between them are drawn straight -
+*                  simple lines, no attempt at a differential or anything closer to a real
+*                  drivetrain layout.
+*
+***************************************************************************************************/
+STATIC void menu_nav_draw_vehicle( void )
+{
+    GFX_target_st target = HMI_SH1106_get_target();
+
+    HMI_SH1106_draw_text( 0u, 0u, "VEHICLE" );
+
+    menu_nav_draw_tire( MENU_NAV_TIRE_LEFT_X,  MENU_NAV_FRONT_TIRE_Y, 0u,  2u, &menu_nav_tire_fl_s );
+    menu_nav_draw_tire( MENU_NAV_TIRE_RIGHT_X, MENU_NAV_FRONT_TIRE_Y, 82u, 2u, &menu_nav_tire_fr_s );
+    menu_nav_draw_tire( MENU_NAV_TIRE_LEFT_X,  MENU_NAV_REAR_TIRE_Y,  0u,  5u, &menu_nav_tire_rl_s );
+    menu_nav_draw_tire( MENU_NAV_TIRE_RIGHT_X, MENU_NAV_REAR_TIRE_Y,  82u, 5u, &menu_nav_tire_rr_s );
+
+    GFX_draw_line( &target, MENU_NAV_AXLE_LEFT_X, MENU_NAV_FRONT_AXLE_Y, MENU_NAV_AXLE_RIGHT_X, MENU_NAV_FRONT_AXLE_Y );
+    GFX_draw_line( &target, MENU_NAV_AXLE_LEFT_X, MENU_NAV_REAR_AXLE_Y,  MENU_NAV_AXLE_RIGHT_X, MENU_NAV_REAR_AXLE_Y );
+    GFX_draw_line( &target, MENU_NAV_DRIVESHAFT_X, MENU_NAV_FRONT_AXLE_Y, MENU_NAV_DRIVESHAFT_X, MENU_NAV_REAR_AXLE_Y );
 }
 
 /*!

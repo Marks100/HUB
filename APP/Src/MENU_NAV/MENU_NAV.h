@@ -62,6 +62,7 @@ typedef enum
     MENU_NAV_SCREEN_WIFI,
     MENU_NAV_SCREEN_TB,
     MENU_NAV_SCREEN_SENSORS,
+    MENU_NAV_SCREEN_VEHICLE,
     MENU_NAV_SCREEN_ABOUT,
     MENU_NAV_SCREEN_NOT_IMPLEMENTED,
     MENU_NAV_NUM_SCREENS                /*!< Not a screen - array bound, keep last */
