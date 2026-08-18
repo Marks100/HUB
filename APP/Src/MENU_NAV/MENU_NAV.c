@@ -70,6 +70,9 @@ STATIC void menu_nav_draw_not_implemented( void );
 STATIC void menu_nav_draw_brightness( void );
 STATIC void menu_nav_handle_brightness( HMI_SH1106_input_et input );
 STATIC void menu_nav_enter_brightness( void );
+STATIC void menu_nav_draw_fan_speed( void );
+STATIC void menu_nav_handle_fan_speed( HMI_SH1106_input_et input );
+STATIC void menu_nav_enter_fan_speed( void );
 STATIC void menu_nav_draw_buzzer( void );
 STATIC void menu_nav_handle_buzzer( HMI_SH1106_input_et input );
 STATIC void menu_nav_enter_buzzer( void );
@@ -83,6 +86,7 @@ STATIC const MENU_NAV_item_st menu_nav_main_items_s[] =
 {
     { "Status",     MENU_NAV_SCREEN_STATUS          },
     { "Brightness", MENU_NAV_SCREEN_BRIGHTNESS      },
+    { "Fan Speed",  MENU_NAV_SCREEN_FAN_SPEED       },
     { "WiFi",       MENU_NAV_SCREEN_WIFI            },
     { "TB",         MENU_NAV_SCREEN_TB              },
     { "Vehicle",    MENU_NAV_SCREEN_VEHICLE         },
@@ -131,6 +135,16 @@ STATIC u8_t menu_nav_brightness_saved_s = 75u;
 #define MENU_NAV_BRIGHTNESS_MIN         ( 5u )
 #define MENU_NAV_BRIGHTNESS_MAX         ( 100u )
 #define MENU_NAV_BRIGHTNESS_STEP        ( 5u )
+
+/* ===== Fan Speed - placeholder, same shape as Brightness. There is no fan/PWM driver wired into
+   this product yet (see PWM.c, unused anywhere in APP), so unlike Brightness this only edits a
+   stored value - nothing downstream to apply it to until real hardware exists. ===== */
+STATIC u8_t menu_nav_fan_speed_pct_s   = 0u;
+STATIC u8_t menu_nav_fan_speed_saved_s = 0u;
+
+#define MENU_NAV_FAN_SPEED_MIN          ( 0u )
+#define MENU_NAV_FAN_SPEED_MAX          ( 100u )
+#define MENU_NAV_FAN_SPEED_STEP         ( 5u )
 
 /* ===== Buzzer - one screen, two fields: whether a press beeps, and for how long. Both revert
    together if BACK cancels; the knob edits whichever field is currently selected. ===== */
@@ -187,6 +201,14 @@ STATIC const MENU_NAV_screen_st menu_nav_screens_s[MENU_NAV_NUM_SCREENS] =
         .draw_func_p     = menu_nav_draw_brightness,
         .handle_func_p   = menu_nav_handle_brightness,   /* The knob edits rather than navigates */
         .on_enter_func_p = menu_nav_enter_brightness,    /* Remember what to revert to */
+        .back_screen     = MENU_NAV_SCREEN_MAIN_MENU,
+    },
+
+    [MENU_NAV_SCREEN_FAN_SPEED] =
+    {
+        .draw_func_p     = menu_nav_draw_fan_speed,
+        .handle_func_p   = menu_nav_handle_fan_speed,   /* The knob edits rather than navigates */
+        .on_enter_func_p = menu_nav_enter_fan_speed,    /* Remember what to revert to */
         .back_screen     = MENU_NAV_SCREEN_MAIN_MENU,
     },
 
@@ -789,13 +811,13 @@ STATIC void menu_nav_draw_tb( void )
     (void)STDC_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "Status %s", status_str );
     HMI_SH1106_draw_text( 2u, 0u, line );
 
-    (void)STDC_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "Sent %lu", (unsigned long)TB_get_messages_sent_count() );
+//    (void)STDC_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "Sent %lu", (unsigned long)TB_get_messages_sent_count() );
     HMI_SH1106_draw_text( 3u, 0u, line );
 
-    (void)STDC_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "Recv %lu", (unsigned long)TB_get_messages_received_count() );
+   // (void)STDC_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "Recv %lu", (unsigned long)TB_get_messages_received_count() );
     HMI_SH1106_draw_text( 4u, 0u, line );
 
-    (void)STDC_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "Dropped %u", (unsigned int)TB_get_dropped_count() );
+    //(void)STDC_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "Dropped %u", (unsigned int)TB_get_dropped_count() );
     HMI_SH1106_draw_text( 5u, 0u, line );
 }
 
@@ -845,7 +867,11 @@ STATIC void menu_nav_draw_sensors( void )
         s16_t       temp_frac  = (s16_t)( node_p->temperature_centidegC % 100 );
         s16_t       hum_whole  = (s16_t)( node_p->humidity_tenths_pct / 10 );
         s16_t       hum_frac   = (s16_t)( node_p->humidity_tenths_pct % 10 );
-        u32_t       age_secs   = (u32_t)( ( TIME_get_cumulative_run_time_ms() - node_p->last_rx_time_ms ) / MSECS_PER_SEC );
+        /* Cast to u32_t before dividing, not after - dividing while still u64_t pulls the ~700-byte
+           __aeabi_uldivmod helper into the link for this one call site. Safe to truncate: comms_lost
+           already trips after RF_MGR_COMMS_LOST_TIMEOUT_SECS (30 minutes), so this age is never
+           anywhere near the ~49.7 days a 32-bit millisecond difference can hold before wrapping. */
+        u32_t       age_secs   = (u32_t)( TIME_get_cumulative_run_time_ms() - node_p->last_rx_time_ms ) / MSECS_PER_SEC;
         const char* batt_str;
 
         temp_frac = ( temp_frac < 0 ) ? (s16_t)-temp_frac : temp_frac;
@@ -1154,6 +1180,102 @@ STATIC void menu_nav_handle_brightness( HMI_SH1106_input_et input )
             /* MENU_NAV_on_input() navigates home right after this returns - just revert */
             menu_nav_brightness_pct_s = menu_nav_brightness_saved_s;
             HMI_SH1106_set_brightness_pct( menu_nav_brightness_pct_s );
+        break;
+
+        default:
+            /* Long select/confirm mean nothing while editing */
+        break;
+    }
+}
+
+/*!
+****************************************************************************************************
+*
+*   \brief         Fan Speed - capture the starting value so BACK can put it back
+*
+*   \author        MS
+*
+*   \return        none
+*
+***************************************************************************************************/
+STATIC void menu_nav_enter_fan_speed( void )
+{
+    menu_nav_fan_speed_saved_s = menu_nav_fan_speed_pct_s;
+}
+
+/*!
+****************************************************************************************************
+*
+*   \brief         Fan Speed - show the value being edited
+*
+*   \author        MS
+*
+*   \return        none
+*
+***************************************************************************************************/
+STATIC void menu_nav_draw_fan_speed( void )
+{
+    char line[MENU_NAV_LINE_CHARS];
+
+    HMI_SH1106_draw_text( 0u, 0u, "FAN SPEED" );
+
+    (void)STDC_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "%u%%", (unsigned int)menu_nav_fan_speed_pct_s );
+    HMI_SH1106_draw_text( 3u, 0u, line );
+
+    HMI_SH1106_draw_text( 6u, 0u, "BACK cancels" );
+}
+
+/*!
+****************************************************************************************************
+*
+*   \brief         Fan Speed - the knob edits the value instead of moving a cursor
+*
+*   \author        MS
+*
+*   \param         input - What the panel reported
+*
+*   \return        none
+*
+*   \note          Same shape as menu_nav_handle_brightness(), minus the hardware-apply call - there
+*                  is no fan/PWM driver wired into this product yet, so this only edits the stored
+*                  value. Cancelling still reverts it, the same way Brightness cancels a value that
+*                  happens to also be live on hardware.
+*
+***************************************************************************************************/
+STATIC void menu_nav_handle_fan_speed( HMI_SH1106_input_et input )
+{
+    switch( input )
+    {
+        case HMI_SH1106_INPUT_CW:
+            if( menu_nav_fan_speed_pct_s <= (u8_t)( MENU_NAV_FAN_SPEED_MAX - MENU_NAV_FAN_SPEED_STEP ) )
+            {
+                menu_nav_fan_speed_pct_s += MENU_NAV_FAN_SPEED_STEP;
+                HMI_SH1106_request_redraw();
+            }
+        break;
+
+        case HMI_SH1106_INPUT_CCW:
+            if( menu_nav_fan_speed_pct_s >= (u8_t)( MENU_NAV_FAN_SPEED_MIN + MENU_NAV_FAN_SPEED_STEP ) )
+            {
+                menu_nav_fan_speed_pct_s -= MENU_NAV_FAN_SPEED_STEP;
+                HMI_SH1106_request_redraw();
+            }
+        break;
+
+        case HMI_SH1106_INPUT_SELECT:
+        case HMI_SH1106_INPUT_CONFIRM:
+            /* Keep it */
+            MENU_NAV_goto( menu_nav_screens_s[MENU_NAV_SCREEN_FAN_SPEED].back_screen );
+        break;
+
+        case HMI_SH1106_INPUT_BACK:
+            menu_nav_fan_speed_pct_s = menu_nav_fan_speed_saved_s;
+            MENU_NAV_goto( menu_nav_screens_s[MENU_NAV_SCREEN_FAN_SPEED].back_screen );
+        break;
+
+        case HMI_SH1106_INPUT_BACK_LONG:
+            /* MENU_NAV_on_input() navigates home right after this returns - just revert */
+            menu_nav_fan_speed_pct_s = menu_nav_fan_speed_saved_s;
         break;
 
         default:

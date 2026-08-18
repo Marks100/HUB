@@ -379,7 +379,10 @@ u16_t tb_telemetry_heartbeat_callback( u8_t* buffer_p, u16_t buffer_size )
 
     if( ( NULL_P != buffer_p ) && ( buffer_size > 0u ) )
     {
-        u32_t  uptime_s = TIME_get_cumulative_run_time_ms() / 1000u;
+        /* TIME_get_cumulative_run_time_secs() is a running counter maintained by addition, not a
+           division on the millisecond total - avoids pulling libgcc's 64-bit divide helper into
+           the link just for this heartbeat field. */
+        u32_t  uptime_s = (u32_t)TIME_get_cumulative_run_time_secs();
         char*  p        = (char*)buffer_p;
         p = append( p, "{\"uptime\":" );     p = append_u32( p, uptime_s );
         p = append( p, ",\"heartbeat\":" );  p = append_u32( p, heartbeat_count_s );
