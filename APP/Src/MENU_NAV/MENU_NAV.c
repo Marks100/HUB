@@ -67,6 +67,67 @@ typedef struct
     MENU_NAV_screen_et  screen;
 } menu_nav_pct_editor_st;
 
+/*!
+ * \brief The part of a gauge that isn't drawing - a live value plus how the knob moves it
+ *
+ * Shared by every gauge shape (needle, vertical bar, whatever comes next) via
+ * menu_nav_value_edit_handle() - CW/CCW clamp-and-step this exactly the same way regardless of how
+ * the value ends up on screen, so a new gauge shape reuses this rather than re-writing the same
+ * clamp/step/navigate switch. Unlike menu_nav_pct_editor_st there is no saved_p/apply_func_p - a
+ * gauge's value is live and immediate, nothing to revert if BACK is pressed.
+ */
+typedef struct
+{
+    u16_t*              value_p;    /*!< Live value - drawn and knob-edited in place */
+    u16_t                min;
+    u16_t                max;
+    u16_t                knob_step;  /*!< How far one detent moves the value; clamped, not wrapped */
+    MENU_NAV_screen_et   screen;    /*!< Looked up in menu_nav_screens_s for back_screen */
+} menu_nav_value_edit_st;
+
+/*!
+ * \brief Config for a needle-and-bar gauge screen (Rev Counter, and any future one)
+ *
+ * Same idea as menu_nav_pct_editor_st - one draw implementation (menu_nav_gauge_draw()) parameterised
+ * by this, rather than a copy per gauge. The shapes themselves (needle, ticks, bar) are
+ * GFX_draw_gauge()'s job, not this module's - gfx_cfg is handed straight to it. What lives here
+ * instead is everything GFX can't own: the title and digital readout (GFX has no text/font
+ * capability - see HMI_SH1106_draw_text()), and the "what does the RPM needle table actually mean"
+ * label text per tick (label_table_p, parallel to gfx_cfg.tick_table_p).
+ */
+typedef struct
+{
+    u8_t        col;    /*!< See HMI_SH1106_draw_text() - pixel column */
+    u8_t        row;    /*!< See HMI_SH1106_draw_text() - 8px page, not a pixel row */
+    const char* text_p;
+} menu_nav_gauge_label_st;
+
+typedef struct
+{
+    const char*                    title_p;
+    menu_nav_value_edit_st         edit;          /*!< Value + knob feel - see menu_nav_value_edit_st.
+                                                         edit.knob_step must be a whole multiple of
+                                                         gfx_cfg.value_step */
+    GFX_gauge_cfg_st                gfx_cfg;       /*!< Shapes - see GFX_draw_gauge() */
+    const menu_nav_gauge_label_st* label_table_p;  /*!< gfx_cfg.num_ticks entries, parallel to
+                                                         gfx_cfg.tick_table_p */
+} menu_nav_gauge_cfg_st;
+
+/*!
+ * \brief Config for a vertical-bar gauge screen (Rev Counter (Bar), and any future one)
+ *
+ * The bar-shaped sibling of menu_nav_gauge_cfg_st - GFX_draw_bar() (the real vertical fill-from-
+ * bottom primitive, not the outline+fill rect GFX_draw_gauge() builds for a horizontal bar) is
+ * exactly what a vertical gauge wants, so this is a much thinner config than the needle one: no
+ * needle/tick/label tables, just where the bar sits.
+ */
+typedef struct
+{
+    const char*             title_p;
+    menu_nav_value_edit_st  edit;      /*!< Value + knob feel - see menu_nav_value_edit_st */
+    GFX_bar_cfg_st          bar_cfg;   /*!< Shape - see GFX_draw_bar() */
+} menu_nav_bar_gauge_cfg_st;
+
 /***************************************************************************************************
 **                              Private Function Prototypes                                       **
 ***************************************************************************************************/
@@ -102,6 +163,15 @@ STATIC void menu_nav_enter_fan_speed( void );
 STATIC void menu_nav_draw_buzzer( void );
 STATIC void menu_nav_handle_buzzer( HMI_SH1106_input_et input );
 STATIC void menu_nav_enter_buzzer( void );
+STATIC void menu_nav_value_edit_handle( const menu_nav_value_edit_st* cfg_p, HMI_SH1106_input_et input );
+STATIC void menu_nav_gauge_draw( const menu_nav_gauge_cfg_st* cfg_p );
+STATIC void menu_nav_gauge_handle( const menu_nav_gauge_cfg_st* cfg_p, HMI_SH1106_input_et input );
+STATIC void menu_nav_draw_rev_counter( void );
+STATIC void menu_nav_handle_rev_counter( HMI_SH1106_input_et input );
+STATIC void menu_nav_bar_gauge_draw( const menu_nav_bar_gauge_cfg_st* cfg_p );
+STATIC void menu_nav_bar_gauge_handle( const menu_nav_bar_gauge_cfg_st* cfg_p, HMI_SH1106_input_et input );
+STATIC void menu_nav_draw_rev_counter_bar( void );
+STATIC void menu_nav_handle_rev_counter_bar( HMI_SH1106_input_et input );
 
 /***************************************************************************************************
 **                              Screen contents                                                   **
@@ -116,6 +186,8 @@ STATIC const MENU_NAV_item_st menu_nav_main_items_s[] =
     { "WiFi",       MENU_NAV_SCREEN_WIFI            },
     { "TB",         MENU_NAV_SCREEN_TB              },
     { "Vehicle",    MENU_NAV_SCREEN_VEHICLE         },
+    { "Rev Counter", MENU_NAV_SCREEN_REV_COUNTER    },
+    { "Rev Ctr Bar", MENU_NAV_SCREEN_REV_COUNTER_BAR },
     { "CAN Bus",    MENU_NAV_SCREEN_NOT_IMPLEMENTED },
     { "LEDs",       MENU_NAV_SCREEN_NOT_IMPLEMENTED },
     { "Buzzer",     MENU_NAV_SCREEN_BUZZER          },
@@ -153,6 +225,168 @@ STATIC const menu_nav_tire_reading_st menu_nav_tire_rr_s = { 21, 30 };
 #define MENU_NAV_FRONT_AXLE_Y   ( MENU_NAV_FRONT_TIRE_Y + ( MENU_NAV_TIRE_HEIGHT / 2u ) )
 #define MENU_NAV_REAR_AXLE_Y    ( MENU_NAV_REAR_TIRE_Y  + ( MENU_NAV_TIRE_HEIGHT / 2u ) )
 #define MENU_NAV_DRIVESHAFT_X   ( ( MENU_NAV_AXLE_LEFT_X + MENU_NAV_AXLE_RIGHT_X ) / 2u )
+
+/* ===== Rev Counter - placeholder, knob-driven. cps_instance_s/cps_instance_2_s (INTEGRATION_STUBS.c)
+   are wheel-speed ABS tone rings wired through the CPS tooth-counter, not an engine crank/cam
+   sensor - there is no real engine RPM source anywhere in this codebase, so like Fan Speed this
+   only edits a stored value. The knob steps it in MENU_NAV_TACHO_KNOB_STEP_RPM increments rather
+   than moving a cursor, same shape as menu_nav_handle_sensors() - but drawing/input both go through
+   the generic menu_nav_gauge_draw()/menu_nav_gauge_handle(), configured by menu_nav_rev_counter_gauge_s
+   below, rather than Rev Counter having its own copy - see menu_nav_gauge_cfg_st.
+
+   Needle tip and tick mark positions are precomputed pixel offsets from the pivot, one entry per
+   MENU_NAV_TACHO_RPM_STEP RPM, rather than computed with sinf/cosf at draw time - the STM32F103
+   has no FPU, and libm trig measured ~7KB of the 44K flash budget on this part; this table is
+   under 200 bytes. ===== */
+#define MENU_NAV_TACHO_MIN_RPM      ( 0u )
+#define MENU_NAV_TACHO_MAX_RPM      ( 9000u )
+#define MENU_NAV_TACHO_RPM_STEP     ( 100u )    /* Needle table resolution - see menu_nav_tacho_needle_s */
+#define MENU_NAV_TACHO_NUM_POINTS   ( (u8_t)( ( ( MENU_NAV_TACHO_MAX_RPM - MENU_NAV_TACHO_MIN_RPM ) / MENU_NAV_TACHO_RPM_STEP ) + 1u ) )
+
+/* How far one detent moves the value - deliberately coarser than the table step above, so a
+   couple of clicks sweeps the whole band for a visible needle swing instead of nudging it one
+   table entry at a time. Must stay a whole multiple of MENU_NAV_TACHO_RPM_STEP - the index into
+   menu_nav_tacho_needle_s (see menu_nav_gauge_draw()) assumes every reachable RPM value lands
+   exactly on a table entry. */
+#define MENU_NAV_TACHO_KNOB_STEP_RPM ( 500u )
+
+#define MENU_NAV_TACHO_PIVOT_X       ( 64u )
+#define MENU_NAV_TACHO_PIVOT_Y       ( 54u )
+#define MENU_NAV_TACHO_PIVOT_RADIUS  ( 2u )
+
+/* Horizontal bar, bottom row - sits beside the "NNNN" digital readout rather than under it, so
+   the needle gauge above doesn't have to give up a row. x/y are raw pixel coordinates (unlike the
+   needle/tick tables, this isn't relative to the pivot), y=56 lands it flush with row 7's top
+   edge. Width includes the 1px border GFX_draw_rect_square()/GFX_fill_rect_square() draw at. */
+#define MENU_NAV_TACHO_BAR_X         ( 28u )
+#define MENU_NAV_TACHO_BAR_Y         ( 56u )
+#define MENU_NAV_TACHO_BAR_WIDTH     ( 98u )
+#define MENU_NAV_TACHO_BAR_HEIGHT    ( 8u )
+
+/* Needle tip offset from the pivot - index 0 is MENU_NAV_TACHO_MIN_RPM, each entry after that
+   MENU_NAV_TACHO_RPM_STEP RPM further, last entry MENU_NAV_TACHO_MAX_RPM. -60 to +60 degrees off
+   vertical, radius 30px - generated for this sweep/radius, not hand-tuned, so regenerate the whole
+   table if either changes. */
+STATIC const GFX_gauge_point_st menu_nav_tacho_needle_s[MENU_NAV_TACHO_NUM_POINTS] =
+{
+    {-26,-15 },{-26,-16 },{-25,-16 },{-25,-17 },{-24,-17 },{-24,-18 },
+    {-24,-18 },{-23,-19 },{-23,-20 },{-22,-20 },{-22,-21 },{-21,-21 },
+    {-21,-22 },{-20,-22 },{-20,-23 },{-19,-23 },{-19,-23 },{-18,-24 },
+    {-18,-24 },{-17,-25 },{-16,-25 },{-16,-25 },{-15,-26 },{-15,-26 },
+    {-14,-26 },{-13,-27 },{-13,-27 },{-12,-27 },{-12,-28 },{-11,-28 },
+    {-10,-28 },{-10,-28 },{ -9,-29 },{ -8,-29 },{ -8,-29 },{ -7,-29 },
+    { -6,-29 },{ -6,-29 },{ -5,-30 },{ -4,-30 },{ -3,-30 },{ -3,-30 },
+    { -2,-30 },{ -1,-30 },{ -1,-30 },{  0,-30 },{  1,-30 },{  1,-30 },
+    {  2,-30 },{  3,-30 },{  3,-30 },{  4,-30 },{  5,-30 },{  6,-29 },
+    {  6,-29 },{  7,-29 },{  8,-29 },{  8,-29 },{  9,-29 },{ 10,-28 },
+    { 10,-28 },{ 11,-28 },{ 12,-28 },{ 12,-27 },{ 13,-27 },{ 13,-27 },
+    { 14,-26 },{ 15,-26 },{ 15,-26 },{ 16,-25 },{ 16,-25 },{ 17,-25 },
+    { 18,-24 },{ 18,-24 },{ 19,-23 },{ 19,-23 },{ 20,-23 },{ 20,-22 },
+    { 21,-22 },{ 21,-21 },{ 22,-21 },{ 22,-20 },{ 23,-20 },{ 23,-19 },
+    { 24,-18 },{ 24,-18 },{ 24,-17 },{ 25,-17 },{ 25,-16 },{ 26,-16 },
+    { 26,-15 },
+};
+
+/* Tick marks every 1000 RPM (outer point, inner point) - same sweep as the needle table above,
+   radius 34px outer / 27px inner. */
+STATIC const GFX_gauge_tick_st menu_nav_tacho_ticks_s[] =
+{
+    { -29, -17, -23, -14 },  /* 0 RPM */
+    { -25, -23, -20, -19 },  /* 1000 RPM */
+    { -19, -28, -15, -23 },  /* 2000 RPM */
+    { -12, -32,  -9, -25 },  /* 3000 RPM */
+    {  -4, -34,  -3, -27 },  /* 4000 RPM */
+    {   4, -34,   3, -27 },  /* 5000 RPM */
+    {  12, -32,   9, -25 },  /* 6000 RPM */
+    {  19, -28,  15, -23 },  /* 7000 RPM */
+    {  25, -23,  20, -19 },  /* 8000 RPM */
+    {  29, -17,  23, -14 },  /* 9000 RPM */
+};
+
+/* "x1000" digit positions for the Rev Counter dial - col/row rather than a pixel offset from the
+   pivot like the tables above, since HMI_SH1106_draw_text() places text on 8px page boundaries,
+   not arbitrary pixels, so a label's position is only ever accurate to the nearest row. Radius
+   43px, just outside the tick marks' 34px outer radius, same sweep - computed from the same
+   sin/cos as the tick/needle tables, except 3/4/5/6 are nudged onto the same row (the raw sweep
+   puts 3 and 6 one row lower than 4 and 5, which reads as uneven) - re-check against the real
+   display if the sweep/radius changes again. */
+STATIC const menu_nav_gauge_label_st menu_nav_tacho_labels_s[MENU_NAV_ITEM_COUNT( menu_nav_tacho_ticks_s )] =
+{
+    { 25u, 4u, "0" },  /* 0 RPM */
+    { 31u, 3u, "1" },  /* 1000 RPM */
+    { 38u, 2u, "2" },  /* 2000 RPM */
+    { 47u, 1u, "3" },  /* 3000 RPM */
+    { 57u, 1u, "4" },  /* 4000 RPM */
+    { 67u, 1u, "5" },  /* 5000 RPM */
+    { 77u, 1u, "6" },  /* 6000 RPM */
+    { 86u, 2u, "7" },  /* 7000 RPM */
+    { 93u, 3u, "8" },  /* 8000 RPM */
+    { 99u, 4u, "9" },  /* 9000 RPM */
+};
+
+STATIC u16_t menu_nav_tacho_rpm_s = MENU_NAV_TACHO_MIN_RPM;
+
+/* The Rev Counter's own instance of the generic gauge mechanism - see menu_nav_gauge_cfg_st. Any
+   future needle gauge (boost, coolant temp, ...) is another one of these plus its own tables,
+   pivot and bar rect - not a copy of menu_nav_draw_rev_counter()/menu_nav_handle_rev_counter(). */
+STATIC const menu_nav_gauge_cfg_st menu_nav_rev_counter_gauge_s =
+{
+    .title_p = "REV COUNTER",
+    .edit    =
+    {
+        .value_p   = &menu_nav_tacho_rpm_s,
+        .min       = MENU_NAV_TACHO_MIN_RPM,
+        .max       = MENU_NAV_TACHO_MAX_RPM,
+        .knob_step = MENU_NAV_TACHO_KNOB_STEP_RPM,
+        .screen    = MENU_NAV_SCREEN_REV_COUNTER,
+    },
+    .gfx_cfg =
+    {
+        .needle_table_p = menu_nav_tacho_needle_s,
+        .tick_table_p   = menu_nav_tacho_ticks_s,
+        .num_ticks      = MENU_NAV_ITEM_COUNT( menu_nav_tacho_ticks_s ),
+        .value_step     = MENU_NAV_TACHO_RPM_STEP,
+        .pivot_x        = MENU_NAV_TACHO_PIVOT_X,
+        .pivot_y        = MENU_NAV_TACHO_PIVOT_Y,
+        .pivot_radius   = MENU_NAV_TACHO_PIVOT_RADIUS,
+        .bar_x          = MENU_NAV_TACHO_BAR_X,
+        .bar_y          = MENU_NAV_TACHO_BAR_Y,
+        .bar_width      = MENU_NAV_TACHO_BAR_WIDTH,
+        .bar_height     = MENU_NAV_TACHO_BAR_HEIGHT,
+    },
+    .label_table_p = menu_nav_tacho_labels_s,
+};
+
+/* ===== Rev Counter (Bar) - the same placeholder RPM value as the needle Rev Counter
+   (menu_nav_tacho_rpm_s), just drawn as a vertical fill bar via GFX_draw_bar() instead of a needle
+   dial - turning the knob on either screen moves the same number, so they're two views of one
+   reading rather than two independent placeholders. GFX_draw_bar() scales against (max - min), not
+   raw max, the same way the needle Rev Counter's horizontal bar does - value == min reads as
+   empty, which with MENU_NAV_TACHO_MIN_RPM at 0 is also value == 0. ===== */
+#define MENU_NAV_TACHO_BAR_V_X         ( 49u )
+#define MENU_NAV_TACHO_BAR_V_WIDTH     ( 30u )
+#define MENU_NAV_TACHO_BAR_V_TOP_PAGE  ( 1u )
+#define MENU_NAV_TACHO_BAR_V_BOT_PAGE  ( 6u )
+
+STATIC const menu_nav_bar_gauge_cfg_st menu_nav_rev_counter_bar_gauge_s =
+{
+    .title_p = "REV COUNTER (BAR)",
+    .edit    =
+    {
+        .value_p   = &menu_nav_tacho_rpm_s,
+        .min       = MENU_NAV_TACHO_MIN_RPM,
+        .max       = MENU_NAV_TACHO_MAX_RPM,
+        .knob_step = MENU_NAV_TACHO_KNOB_STEP_RPM,
+        .screen    = MENU_NAV_SCREEN_REV_COUNTER_BAR,
+    },
+    .bar_cfg =
+    {
+        .x_col    = MENU_NAV_TACHO_BAR_V_X,
+        .width    = MENU_NAV_TACHO_BAR_V_WIDTH,
+        .top_page = MENU_NAV_TACHO_BAR_V_TOP_PAGE,
+        .bot_page = MENU_NAV_TACHO_BAR_V_BOT_PAGE,
+    },
+};
 
 /* ===== Brightness - the value this screen edits, and what it reverts to if BACK cancels ===== */
 STATIC u8_t menu_nav_brightness_pct_s   = 75u;
@@ -194,6 +428,18 @@ STATIC const menu_nav_pct_editor_st menu_nav_fan_speed_editor_s =
     .step          = MENU_NAV_FAN_SPEED_STEP,
     .apply_func_p  = NULL_P,       /* no fan/PWM driver wired in yet */
     .screen        = MENU_NAV_SCREEN_FAN_SPEED,
+};
+
+/* Fan icon, right side of the Fan Speed screen, clear of the editor's text (col 0-72 at most, for
+   "BACK cancels") and the cursor-margin-free text this screen already draws - see
+   menu_nav_draw_fan_speed(). Static, not spun by pct - GFX has no cheap way to draw at an
+   arbitrary angle (see GFX_fan_cfg_st on why 4 blades avoids trig only at fixed N/E/S/W). */
+STATIC const GFX_fan_cfg_st menu_nav_fan_speed_icon_s =
+{
+    .hub_x        = 100u,
+    .hub_y        = 36u,
+    .hub_radius   = 4u,
+    .blade_length = 14u,
 };
 
 /* ===== Buzzer - one screen, two fields: whether a press beeps, and for how long. Both revert
@@ -294,6 +540,20 @@ STATIC const MENU_NAV_screen_st menu_nav_screens_s[MENU_NAV_NUM_SCREENS] =
     {
         .draw_func_p  = menu_nav_draw_vehicle,
         .back_screen  = MENU_NAV_SCREEN_MAIN_MENU,
+    },
+
+    [MENU_NAV_SCREEN_REV_COUNTER] =
+    {
+        .draw_func_p   = menu_nav_draw_rev_counter,
+        .handle_func_p = menu_nav_handle_rev_counter,   /* The knob steps the value, not a cursor */
+        .back_screen   = MENU_NAV_SCREEN_MAIN_MENU,
+    },
+
+    [MENU_NAV_SCREEN_REV_COUNTER_BAR] =
+    {
+        .draw_func_p   = menu_nav_draw_rev_counter_bar,
+        .handle_func_p = menu_nav_handle_rev_counter_bar,   /* The knob steps the value, not a cursor */
+        .back_screen   = MENU_NAV_SCREEN_MAIN_MENU,
     },
 
     [MENU_NAV_SCREEN_ABOUT] =
@@ -1081,6 +1341,225 @@ STATIC void menu_nav_draw_vehicle( void )
 /*!
 ****************************************************************************************************
 *
+*   \brief         Value edit - the knob steps a live value instead of moving a cursor
+*
+*   \author        MS
+*
+*   \param         cfg_p - Value, range and knob feel - see menu_nav_value_edit_st
+*   \param         input - What the panel reported
+*
+*   \return        none
+*
+*   \note          Shared by every gauge shape (needle, vertical bar, ...) - CW/CCW/clamp/navigate
+*                  don't care how the value ends up on screen, only menu_nav_gauge_draw()/
+*                  menu_nav_bar_gauge_draw() differ on that. Clamped, not wrapped - CW past max or
+*                  CCW past min just holds there rather than snapping to the other end, the way a
+*                  real gauge would.
+*
+***************************************************************************************************/
+STATIC void menu_nav_value_edit_handle( const menu_nav_value_edit_st* cfg_p, HMI_SH1106_input_et input )
+{
+    switch( input )
+    {
+        case HMI_SH1106_INPUT_CW:
+        {
+            u16_t next = (u16_t)( *cfg_p->value_p + cfg_p->knob_step );
+            *cfg_p->value_p = ( next > cfg_p->max ) ? cfg_p->max : next;
+            HMI_SH1106_request_redraw();
+        }
+        break;
+
+        case HMI_SH1106_INPUT_CCW:
+            *cfg_p->value_p = ( *cfg_p->value_p <= (u16_t)( cfg_p->min + cfg_p->knob_step ) )
+                             ? cfg_p->min
+                             : (u16_t)( *cfg_p->value_p - cfg_p->knob_step );
+            HMI_SH1106_request_redraw();
+        break;
+
+        case HMI_SH1106_INPUT_SELECT:
+        case HMI_SH1106_INPUT_CONFIRM:
+        case HMI_SH1106_INPUT_BACK:
+            MENU_NAV_goto( menu_nav_screens_s[cfg_p->screen].back_screen );
+        break;
+
+        default:
+            /* Long select/confirm mean nothing here */
+        break;
+    }
+}
+
+/*!
+****************************************************************************************************
+*
+*   \brief         Gauge - needle, ticks, dial labels and a linear bar, knob-driven
+*
+*   \author        MS
+*
+*   \param         cfg_p - Which gauge (Rev Counter, ...) is being drawn - see menu_nav_gauge_cfg_st
+*
+*   \return        none
+*
+*   \note          The shapes (ticks, needle, bar) are entirely GFX_draw_gauge()'s job - this only
+*                   adds what GFX can't draw itself: the title, the tick labels and the digital
+*                   readout, all text (see menu_nav_gauge_cfg_st for why that split exists).
+*
+***************************************************************************************************/
+STATIC void menu_nav_gauge_draw( const menu_nav_gauge_cfg_st* cfg_p )
+{
+    GFX_target_st target = HMI_SH1106_get_target();
+    char          line[MENU_NAV_LINE_CHARS];
+    u8_t          i;
+
+    HMI_SH1106_draw_text( 0u, 0u, cfg_p->title_p, FALSE );
+
+    GFX_draw_gauge( &target, &cfg_p->gfx_cfg, *cfg_p->edit.value_p, cfg_p->edit.min, cfg_p->edit.max );
+
+    for( i = 0u; i < cfg_p->gfx_cfg.num_ticks; i++ )
+    {
+        HMI_SH1106_draw_text( cfg_p->label_table_p[i].row, cfg_p->label_table_p[i].col,
+                               cfg_p->label_table_p[i].text_p, FALSE );
+    }
+
+    (void)PRINTF_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "%u", (unsigned int)*cfg_p->edit.value_p );
+    HMI_SH1106_draw_text( 7u, 0u, line, FALSE );
+}
+
+/*!
+****************************************************************************************************
+*
+*   \brief         Gauge - the knob steps the value instead of moving a cursor
+*
+*   \author        MS
+*
+*   \param         cfg_p - Which gauge (Rev Counter, ...) is being driven
+*   \param         input - What the panel reported
+*
+*   \return        none
+*
+***************************************************************************************************/
+STATIC void menu_nav_gauge_handle( const menu_nav_gauge_cfg_st* cfg_p, HMI_SH1106_input_et input )
+{
+    menu_nav_value_edit_handle( &cfg_p->edit, input );
+}
+
+/*!
+****************************************************************************************************
+*
+*   \brief         Rev Counter - needle gauge plus a linear bar, knob-driven placeholder value
+*
+*   \author        MS
+*
+*   \return        none
+*
+***************************************************************************************************/
+STATIC void menu_nav_draw_rev_counter( void )
+{
+    menu_nav_gauge_draw( &menu_nav_rev_counter_gauge_s );
+}
+
+/*!
+****************************************************************************************************
+*
+*   \brief         Rev Counter - the knob steps the value instead of moving a cursor
+*
+*   \author        MS
+*
+*   \param         input - What the panel reported
+*
+*   \return        none
+*
+***************************************************************************************************/
+STATIC void menu_nav_handle_rev_counter( HMI_SH1106_input_et input )
+{
+    menu_nav_gauge_handle( &menu_nav_rev_counter_gauge_s, input );
+}
+
+/*!
+****************************************************************************************************
+*
+*   \brief         Bar gauge - title, GFX_draw_bar() and a digital readout, knob-driven
+*
+*   \author        MS
+*
+*   \param         cfg_p - Which bar gauge (Rev Counter (Bar), ...) is being drawn
+*
+*   \return        none
+*
+*   \note          value - min is what GFX_draw_bar() scales against, not the raw value - see
+*                   menu_nav_bar_gauge_cfg_st's comment on why an empty bar has to mean value == min.
+*
+***************************************************************************************************/
+STATIC void menu_nav_bar_gauge_draw( const menu_nav_bar_gauge_cfg_st* cfg_p )
+{
+    GFX_target_st target = HMI_SH1106_get_target();
+    char          line[MENU_NAV_LINE_CHARS];
+
+    HMI_SH1106_draw_text( 0u, 0u, cfg_p->title_p, FALSE );
+
+    GFX_draw_bar( &target, &cfg_p->bar_cfg,
+                  (u16_t)( *cfg_p->edit.value_p - cfg_p->edit.min ),
+                  (u16_t)( cfg_p->edit.max - cfg_p->edit.min ) );
+
+    (void)PRINTF_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "%u", (unsigned int)*cfg_p->edit.value_p );
+    HMI_SH1106_draw_text( 7u, 0u, line, FALSE );
+}
+
+/*!
+****************************************************************************************************
+*
+*   \brief         Bar gauge - the knob steps the value instead of moving a cursor
+*
+*   \author        MS
+*
+*   \param         cfg_p - Which bar gauge (Rev Counter (Bar), ...) is being driven
+*   \param         input - What the panel reported
+*
+*   \return        none
+*
+***************************************************************************************************/
+STATIC void menu_nav_bar_gauge_handle( const menu_nav_bar_gauge_cfg_st* cfg_p, HMI_SH1106_input_et input )
+{
+    menu_nav_value_edit_handle( &cfg_p->edit, input );
+}
+
+/*!
+****************************************************************************************************
+*
+*   \brief         Rev Counter (Bar) - vertical fill bar, knob-driven placeholder value
+*
+*   \author        MS
+*
+*   \return        none
+*
+*   \note          Shares menu_nav_tacho_rpm_s with the needle Rev Counter - see the data section's
+*                   comment for why.
+*
+***************************************************************************************************/
+STATIC void menu_nav_draw_rev_counter_bar( void )
+{
+    menu_nav_bar_gauge_draw( &menu_nav_rev_counter_bar_gauge_s );
+}
+
+/*!
+****************************************************************************************************
+*
+*   \brief         Rev Counter (Bar) - the knob steps the value instead of moving a cursor
+*
+*   \author        MS
+*
+*   \param         input - What the panel reported
+*
+*   \return        none
+*
+***************************************************************************************************/
+STATIC void menu_nav_handle_rev_counter_bar( HMI_SH1106_input_et input )
+{
+    menu_nav_bar_gauge_handle( &menu_nav_rev_counter_bar_gauge_s, input );
+}
+
+/*!
+****************************************************************************************************
+*
 *   \brief         About - real build metadata from the VER module
 *
 *   \author        MS
@@ -1316,16 +1795,24 @@ STATIC void menu_nav_enter_fan_speed( void )
 /*!
 ****************************************************************************************************
 *
-*   \brief         Fan Speed - show the value being edited
+*   \brief         Fan Speed - show the value being edited, plus a fan icon
 *
 *   \author        MS
 *
 *   \return        none
 *
+*   \note          The icon is drawn on top of the shared percent-editor layout rather than that
+*                   function taking an optional icon - Brightness has no equivalent, so this stays
+*                   a one-line addition on the Fan Speed side instead of a new field every other
+*                   percent-editor screen has to leave NULL_P.
+*
 ***************************************************************************************************/
 STATIC void menu_nav_draw_fan_speed( void )
 {
+    GFX_target_st target = HMI_SH1106_get_target();
+
     menu_nav_pct_editor_draw( &menu_nav_fan_speed_editor_s );
+    GFX_draw_fan( &target, &menu_nav_fan_speed_icon_s );
 }
 
 /*!
