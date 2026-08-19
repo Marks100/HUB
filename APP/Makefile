@@ -63,6 +63,12 @@ APP_HEADER_ADDR              := $(APP_FLASH_START)
 APP_CODE_START               := $(shell printf '0x%08X' $$(( $(APP_FLASH_START) + 0x100 )))
 APP_CODE_END                 := $(APP_FLASH_END)
 
+# Must match what BM's hardware CRC peripheral actually computes, not just be "a CRC32" - see
+# app_crc_injector's --crc-type help text and xCOMMON_MODULES/Src/CHKSUM/CRC_HW_STM32F103.c.
+# STM32F1's CRC unit has no reflect/complement capability, unlike S32K144's (which is configured
+# to match plain crc32 - see CRC_HW_S32K144.c), so this target needs its own algorithm.
+APP_CRC_TYPE                 := stm32-hw-crc32
+
 BM_IMAGE                     := ../BM/$(BUILD_OUT_DIR)/BM.hex
 FBL_IMAGE                    := ../FBL/$(BUILD_OUT_DIR)/FBL.hex
 COMBINED_IMAGE               := $(BUILD_OUT_DIR)/BM_FBL_APP_combined.hex
@@ -185,7 +191,7 @@ $(FBL_IMAGE):
 #	@$(MAKE) $(MAKE_FLAGS) -C ../FBL fbl_build
 
 all: $(BM_IMAGE) app_build
-	@$(SREC) $(BM_IMAGE) -Intel --multiple $(APP_HEX_WITH_CRC_FILE) -Intel --multiple -o $(COMBINED_IMAGE) -intel
+	@$(SREC) $(BM_IMAGE) -Intel --multiple $(APP_HEX_SIGNED_FILE) -Intel --multiple -o $(COMBINED_IMAGE) -intel
 	@echo "--> Combined image created: $(COMBINED_IMAGE)"
 	@echo "    Contains: BM ($(BM_FLASH_START)-$(BM_FLASH_END)) + APP ($(APP_FLASH_START)-$(APP_FLASH_END))"
 	@echo "--> Generating flash pack..."
@@ -248,7 +254,7 @@ $(APP_ELF_FILE): build_banner autoversion $(APP_OBJ_DIR) #$(BearSSL_LIB)
 	@$(SREC) $(APP_HEX_FILE) -Intel -o $(BUILD_OUT_DIR)/$(PROJECT_NAME).srec -Motorola
 	@echo ""
 	@echo "--> Injecting CRC32 into APP header (HEX file)..."
-	@$(BUILD_ENV_BIN)/app_crc_injector $(APP_HEX_FILE) --output=$(APP_HEX_WITH_CRC_FILE) --header-addr=$(APP_HEADER_ADDR) --code-start=$(APP_CODE_START) --code-end=$(APP_CODE_END)
+	@$(BUILD_ENV_BIN)/app_crc_injector $(APP_HEX_FILE) --output=$(APP_HEX_WITH_CRC_FILE) --header-addr=$(APP_HEADER_ADDR) --code-start=$(APP_CODE_START) --code-end=$(APP_CODE_END) --crc-type=$(APP_CRC_TYPE)
 	@echo ""
 	@echo "--> Signing firmware with ECDSA..."
 	@$(BUILD_ENV_BIN)/app_signer $(APP_HEX_WITH_CRC_FILE) --output=$(APP_HEX_SIGNED_FILE) --header-addr=$(APP_HEADER_ADDR) --code-start=$(APP_CODE_START) --code-end=$(APP_CODE_END)

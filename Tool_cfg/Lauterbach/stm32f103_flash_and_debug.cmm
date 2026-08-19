@@ -5,6 +5,14 @@
 ;   BM  : 0x08000000 - 0x08000FFF   4 KB
 ;   APP : 0x08005000 - 0x0800FFFF  44 KB  (vectors at 0x08005100)
 ;
+; BM is no longer an unconditional jump to APP - it validates the APP header's presence pattern
+; and hardware CRC (xCOMMON_MODULES/Src/BM/BM.c's BM_run()) before jumping, so "Go.direct app_main"
+; below is no longer guaranteed to complete just because the flash succeeded. A breakpoint at
+; BM_jump_to_fbl catches the failure path (bad CRC/presence - there is no FBL image to actually
+; land in yet, so without this breakpoint a failed validation looks like Go just hanging, with no
+; indication of why). Signature checking is currently disabled (signature_enabled = FALSE in
+; BM/Src/bm_main.c - see its signature_verify_not_implemented()), so that path can't trap yet.
+;
 ; Required environment variables:
 ;   LAUTERBACH_APP_EXE      path to APP/Build/APP.elf
 ;   LAUTERBACH_BM_EXE       path to BM/Build/BM.elf
@@ -49,8 +57,11 @@ Data.LOAD.auto &app_exe /nocode /noclear
 
 Mode.Hll
 
-; Run through BM jump, halt at app_main entry
-Go.direct app_main
+; Go.direct only stops at the address(es) given to it and ignores other breakpoints along the
+; way - so catching BM's validation-failure path means giving Go.direct BM_jump_to_fbl as a
+; second target, not a separate Break.Set (which Go.direct would just skip past). Runs through
+; BM's validation, halts at whichever is reached first: app_main (accepted) or BM_jump_to_fbl
+; (rejected - bad presence pattern or CRC mismatch, see BM_run() in xCOMMON_MODULES/Src/BM/BM.c).
 WAIT !STATE.RUN()
 
 ; --------------------------------------------------------------------------------

@@ -18,7 +18,6 @@ MENU.ReProgram
 		(
 			SYStem.down
 			SYStem.up
-			Go.Direct main
 			List.auto
 		)
 		SEPARATOR
