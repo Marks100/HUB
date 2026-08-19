@@ -10,6 +10,7 @@
 #include "TIME_MGR.h"
 #include "STDC.h"
 #include "RF_MGR.h"
+#include "MENU_NAV.h"
 
 /* Module Identification for STDC_assert functionality */
 #define STDC_MODULE_ID STDC_MOD_TB_CBK
@@ -32,12 +33,14 @@ TB_rpc_handler_entry_st tb_rpc_handlers_s[] =
     { "switch2getval",    TB_CBK_rpc_switch2_get_val,   TRUE },
     { "getsentxvalue",    TB_CBK_rpc_get_sen_tx_value,  TRUE },
     { "tbgetposttime",    TB_CBK_rpc_tb_get_post_time,  TRUE },
+    { "getFanSpeed",      TB_CBK_rpc_get_fan_speed,     TRUE },
 
     /* Setter RPCs */
     { "switch1setval",    TB_CBK_rpc_switch1_set_val,   TRUE },
     { "switch2setval",    TB_CBK_rpc_switch2_set_val,   TRUE },
     { "setsentxvalue",    TB_CBK_rpc_set_sen_tx_value,  TRUE },
-    { "tbsetposttime",    TB_CBK_rpc_tb_set_post_time,  TRUE }
+    { "tbsetposttime",    TB_CBK_rpc_tb_set_post_time,  TRUE },
+    { "setFanSpeed",      TB_CBK_rpc_set_fan_speed,     TRUE }
 };
 
 #define TB_RPC_HANDLER_COUNT  ( sizeof(tb_rpc_handlers_s) / sizeof(tb_rpc_handlers_s[0]) )
@@ -216,6 +219,25 @@ pass_fail_et TB_CBK_rpc_tb_get_post_time( const u8_t* params_p, u8_t* response_p
     return( result );
 }
 
+pass_fail_et TB_CBK_rpc_get_fan_speed( const u8_t* params_p, u8_t* response_p, u16_t* response_len_p )
+{
+    pass_fail_et result = FAIL;
+    (void)params_p;
+
+    if( ( response_p != NULL_P ) && ( response_len_p != NULL_P ) )
+    {
+        char* p = (char*)response_p;
+        p = append( p, "{\"result\":" );
+        p = append_u32( p, (u32_t)MENU_NAV_get_fan_speed_pct() );
+        p = append( p, "}" );
+        *p = '\0';
+        *response_len_p = (u16_t)( p - (char*)response_p );
+        result = PASS;
+    }
+
+    return( result );
+}
+
 /***************************************************************************************************
 **                              RPC Handlers - Setters                                            **
 ***************************************************************************************************/
@@ -361,6 +383,51 @@ pass_fail_et TB_CBK_rpc_tb_set_post_time( const u8_t* params_p, u8_t* response_p
         else
         {
             p = append( p, "{\"error\":\"Value out of range (10-3600)\"}" );
+        }
+        *p = '\0';
+        *response_len_p = (u16_t)( p - (char*)response_p );
+    }
+
+    return( result );
+}
+
+pass_fail_et TB_CBK_rpc_set_fan_speed( const u8_t* params_p, u8_t* response_p, u16_t* response_len_p )
+{
+    pass_fail_et result = FAIL;
+
+    if( ( params_p != NULL_P ) && ( response_p != NULL_P ) && ( response_len_p != NULL_P ) )
+    {
+        const u8_t*   value_str  = STDC_strstr( params_p, (const u8_t*)"\"params\":" );
+        u16_t         new_value  = 0u;
+        false_true_et have_digit = FALSE;
+
+        if( value_str != NULL_P )
+        {
+            value_str += 9u;
+
+            /* 0 is a valid Fan Speed value (fan off) - track whether a digit was actually seen
+               rather than rejecting on new_value == 0, unlike the range checks above where the
+               valid range starts above zero and that ambiguity does not arise. */
+            while( ( *value_str >= '0' ) && ( *value_str <= '9' ) )
+            {
+                have_digit = TRUE;
+                new_value  = (u16_t)( ( new_value * 10u ) + ( *value_str - '0' ) );
+                value_str++;
+            }
+        }
+
+        char* p = (char*)response_p;
+        if( ( have_digit == TRUE ) && ( new_value <= 100u ) )
+        {
+            MENU_NAV_set_fan_speed_pct( (u8_t)new_value );
+            p = append( p, "{\"result\":" );
+            p = append_u32( p, (u32_t)new_value );
+            p = append( p, "}" );
+            result = PASS;
+        }
+        else
+        {
+            p = append( p, "{\"error\":\"Value out of range (0-100)\"}" );
         }
         *p = '\0';
         *response_len_p = (u16_t)( p - (char*)response_p );

@@ -1,4 +1,4 @@
-/*! \file
+﻿/*! \file
 *               Author: mstewart
 *   \brief      MENU_NAV - this project's screens and how you move between them
 *
@@ -17,6 +17,7 @@
 #include "TB.h"
 #include "PRESS_CONV.h"
 #include "GFX.h"
+#include "printf.h"
 
 /***************************************************************************************************
 **                              Defines                                                           **
@@ -44,6 +45,28 @@ typedef struct
     u8_t pressure_psi;
 } menu_nav_tire_reading_st;
 
+/*!
+ * \brief Config for a screen that edits a single 0-100 value with the knob (Brightness, Fan Speed)
+ *
+ * Brightness and Fan Speed are the same screen shape - a title, a live "%u%%" readout, min/max/step
+ * clamping on CW/CCW, and BACK/BACK_LONG reverting to whatever was captured on entry - so they share
+ * one draw/handle/enter implementation parameterised by this, rather than each keeping its own near-
+ * identical copy. apply_func_p is NULL_P for a screen with nothing to push to hardware (Fan Speed -
+ * there is no PWM driver wired in yet); screen is looked up in menu_nav_screens_s for back_screen
+ * rather than duplicating it here, so there is still only one place that says where BACK goes.
+ */
+typedef struct
+{
+    const char*        title_p;
+    u8_t*               value_p;
+    u8_t*               saved_p;
+    u8_t                min;
+    u8_t                max;
+    u8_t                step;
+    void              (*apply_func_p)( u8_t pct );
+    MENU_NAV_screen_et  screen;
+} menu_nav_pct_editor_st;
+
 /***************************************************************************************************
 **                              Private Function Prototypes                                       **
 ***************************************************************************************************/
@@ -67,6 +90,9 @@ STATIC void menu_nav_draw_vehicle( void );
 STATIC void menu_nav_draw_tire( u8_t tire_x, u8_t tire_y, u8_t label_col, u8_t label_page, const menu_nav_tire_reading_st* reading_p );
 STATIC void menu_nav_draw_about( void );
 STATIC void menu_nav_draw_not_implemented( void );
+STATIC void menu_nav_pct_editor_enter( const menu_nav_pct_editor_st* cfg_p );
+STATIC void menu_nav_pct_editor_draw( const menu_nav_pct_editor_st* cfg_p );
+STATIC void menu_nav_pct_editor_handle( const menu_nav_pct_editor_st* cfg_p, HMI_SH1106_input_et input );
 STATIC void menu_nav_draw_brightness( void );
 STATIC void menu_nav_handle_brightness( HMI_SH1106_input_et input );
 STATIC void menu_nav_enter_brightness( void );
@@ -145,6 +171,30 @@ STATIC u8_t menu_nav_fan_speed_saved_s = 0u;
 #define MENU_NAV_FAN_SPEED_MIN          ( 0u )
 #define MENU_NAV_FAN_SPEED_MAX          ( 100u )
 #define MENU_NAV_FAN_SPEED_STEP         ( 5u )
+
+STATIC const menu_nav_pct_editor_st menu_nav_brightness_editor_s =
+{
+    .title_p       = "BRIGHTNESS",
+    .value_p       = &menu_nav_brightness_pct_s,
+    .saved_p       = &menu_nav_brightness_saved_s,
+    .min           = MENU_NAV_BRIGHTNESS_MIN,
+    .max           = MENU_NAV_BRIGHTNESS_MAX,
+    .step          = MENU_NAV_BRIGHTNESS_STEP,
+    .apply_func_p  = HMI_SH1106_set_brightness_pct,
+    .screen        = MENU_NAV_SCREEN_BRIGHTNESS,
+};
+
+STATIC const menu_nav_pct_editor_st menu_nav_fan_speed_editor_s =
+{
+    .title_p       = "FAN SPEED",
+    .value_p       = &menu_nav_fan_speed_pct_s,
+    .saved_p       = &menu_nav_fan_speed_saved_s,
+    .min           = MENU_NAV_FAN_SPEED_MIN,
+    .max           = MENU_NAV_FAN_SPEED_MAX,
+    .step          = MENU_NAV_FAN_SPEED_STEP,
+    .apply_func_p  = NULL_P,       /* no fan/PWM driver wired in yet */
+    .screen        = MENU_NAV_SCREEN_FAN_SPEED,
+};
 
 /* ===== Buzzer - one screen, two fields: whether a press beeps, and for how long. Both revert
    together if BACK cancels; the knob edits whichever field is currently selected. ===== */
@@ -639,9 +689,9 @@ STATIC void menu_nav_handle_static( const MENU_NAV_screen_st* screen_p, HMI_SH11
 ***************************************************************************************************/
 STATIC void menu_nav_draw_home( void )
 {
-    HMI_SH1106_draw_text( 1u, 0u, "HUB" );
-    HMI_SH1106_draw_text( 3u, 0u, "Press CONFIRM" );
-    HMI_SH1106_draw_text( 4u, 0u, "for the menu" );
+    HMI_SH1106_draw_text( 1u, 0u, "HUB", TRUE );
+    HMI_SH1106_draw_text( 3u, 0u, "Press CONFIRM", TRUE );
+    HMI_SH1106_draw_text( 4u, 0u, "for the menu", TRUE );
 }
 
 /*!
@@ -695,27 +745,27 @@ STATIC void menu_nav_draw_status( void )
 
     HMI_SH1106_get_stats( &stats );
 
-    HMI_SH1106_draw_text( 0u, 0u, "STATUS" );
+    HMI_SH1106_draw_text( 0u, 0u, "STATUS", FALSE );
 
-    (void)STDC_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "CW %lu  CCW %lu",
+    (void)PRINTF_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "CW %lu  CCW %lu",
                          (unsigned long)stats.count[HMI_SH1106_INPUT_CW],
                          (unsigned long)stats.count[HMI_SH1106_INPUT_CCW] );
-    HMI_SH1106_draw_text( 2u, 0u, line );
+    HMI_SH1106_draw_text( 2u, 0u, line, FALSE );
 
-    (void)STDC_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "Sel %lu  SelL %lu",
+    (void)PRINTF_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "Sel %lu  SelL %lu",
                          (unsigned long)stats.count[HMI_SH1106_INPUT_SELECT],
                          (unsigned long)stats.count[HMI_SH1106_INPUT_SELECT_LONG] );
-    HMI_SH1106_draw_text( 3u, 0u, line );
+    HMI_SH1106_draw_text( 3u, 0u, line, FALSE );
 
-    (void)STDC_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "Cfm %lu  CfmL %lu",
+    (void)PRINTF_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "Cfm %lu  CfmL %lu",
                          (unsigned long)stats.count[HMI_SH1106_INPUT_CONFIRM],
                          (unsigned long)stats.count[HMI_SH1106_INPUT_CONFIRM_LONG] );
-    HMI_SH1106_draw_text( 4u, 0u, line );
+    HMI_SH1106_draw_text( 4u, 0u, line, FALSE );
 
-    (void)STDC_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "Bck %lu  BckL %lu",
+    (void)PRINTF_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "Bck %lu  BckL %lu",
                          (unsigned long)stats.count[HMI_SH1106_INPUT_BACK],
                          (unsigned long)stats.count[HMI_SH1106_INPUT_BACK_LONG] );
-    HMI_SH1106_draw_text( 5u, 0u, line );
+    HMI_SH1106_draw_text( 5u, 0u, line, FALSE );
 }
 
 /*!
@@ -751,22 +801,22 @@ STATIC void menu_nav_draw_wifi( void )
         break;
     }
 
-    HMI_SH1106_draw_text( 0u, 0u, "WIFI" );
+    HMI_SH1106_draw_text( 0u, 0u, "WIFI", FALSE );
 
-    (void)STDC_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "Status %s", status_str );
-    HMI_SH1106_draw_text( 2u, 0u, line );
+    (void)PRINTF_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "Status %s", status_str );
+    HMI_SH1106_draw_text( 2u, 0u, line, FALSE );
 
-    (void)STDC_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "IP %s", (const char*)WIFI_get_ip_address() );
-    HMI_SH1106_draw_text( 3u, 0u, line );
+    (void)PRINTF_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "IP %s", (const char*)WIFI_get_ip_address() );
+    HMI_SH1106_draw_text( 3u, 0u, line, FALSE );
 
-    (void)STDC_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "RSSI %d dBm", (int)WIFI_get_rssi() );
-    HMI_SH1106_draw_text( 4u, 0u, line );
+    (void)PRINTF_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "RSSI %d dBm", (int)WIFI_get_rssi() );
+    HMI_SH1106_draw_text( 4u, 0u, line, FALSE );
 
-    (void)STDC_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "MAC %s", (const char*)WIFI_get_mac_address() );
-    HMI_SH1106_draw_text( 5u, 0u, line );
+    (void)PRINTF_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "MAC %s", (const char*)WIFI_get_mac_address() );
+    HMI_SH1106_draw_text( 5u, 0u, line, FALSE );
 
-    (void)STDC_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "Disconnects %lu", (unsigned long)WIFI_get_disconnect_count() );
-    HMI_SH1106_draw_text( 6u, 0u, line );
+    (void)PRINTF_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "Disconnects %lu", (unsigned long)WIFI_get_disconnect_count() );
+    HMI_SH1106_draw_text( 6u, 0u, line, FALSE );
 }
 
 /*!
@@ -806,19 +856,19 @@ STATIC void menu_nav_draw_tb( void )
         break;
     }
 
-    HMI_SH1106_draw_text( 0u, 0u, "TB" );
+    HMI_SH1106_draw_text( 0u, 0u, "TB", FALSE );
 
-    (void)STDC_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "Status %s", status_str );
-    HMI_SH1106_draw_text( 2u, 0u, line );
+    (void)PRINTF_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "Status %s", status_str );
+    HMI_SH1106_draw_text( 2u, 0u, line, FALSE );
 
-//    (void)STDC_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "Sent %lu", (unsigned long)TB_get_messages_sent_count() );
-    HMI_SH1106_draw_text( 3u, 0u, line );
+//    (void)PRINTF_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "Sent %lu", (unsigned long)TB_get_messages_sent_count() );
+    HMI_SH1106_draw_text( 3u, 0u, line, FALSE );
 
-   // (void)STDC_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "Recv %lu", (unsigned long)TB_get_messages_received_count() );
-    HMI_SH1106_draw_text( 4u, 0u, line );
+   // (void)PRINTF_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "Recv %lu", (unsigned long)TB_get_messages_received_count() );
+    HMI_SH1106_draw_text( 4u, 0u, line, FALSE );
 
-    //(void)STDC_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "Dropped %u", (unsigned int)TB_get_dropped_count() );
-    HMI_SH1106_draw_text( 5u, 0u, line );
+    //(void)PRINTF_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "Dropped %u", (unsigned int)TB_get_dropped_count() );
+    HMI_SH1106_draw_text( 5u, 0u, line, FALSE );
 }
 
 /*!
@@ -857,9 +907,9 @@ STATIC void menu_nav_draw_sensors( void )
     const RF_MGR_sensor_data_st* node_p = &RF_MGR_get_sensor_db()[menu_nav_sensor_index_s];
     char                          line[MENU_NAV_LINE_CHARS];
 
-    (void)STDC_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "SENSOR %u/%u",
+    (void)PRINTF_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "SENSOR %u/%u",
                          (unsigned int)( menu_nav_sensor_index_s + 1u ), (unsigned int)RF_MGR_MAX_SENSORS );
-    HMI_SH1106_draw_text( 0u, 0u, line );
+    HMI_SH1106_draw_text( 0u, 0u, line, FALSE );
 
     if( node_p->valid == TRUE )
     {
@@ -890,27 +940,27 @@ STATIC void menu_nav_draw_sensors( void )
             batt_str = "OK";
         }
 
-        (void)STDC_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "ID 0x%08lX", (unsigned long)node_p->sensor_id );
-        HMI_SH1106_draw_text( 2u, 0u, line );
+        (void)PRINTF_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "ID 0x%08lX", (unsigned long)node_p->sensor_id );
+        HMI_SH1106_draw_text( 2u, 0u, line, FALSE );
 
-        (void)STDC_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "T %d.%02dC  H %d.%01d%%",
+        (void)PRINTF_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "T %d.%02dC  H %d.%01d%%",
                              (int)temp_whole, (int)temp_frac, (int)hum_whole, (int)hum_frac );
-        HMI_SH1106_draw_text( 3u, 0u, line );
+        HMI_SH1106_draw_text( 3u, 0u, line, FALSE );
 
-        (void)STDC_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "Batt %umV %s",
+        (void)PRINTF_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "Batt %umV %s",
                              (unsigned int)node_p->battery_voltage_mv, batt_str );
-        HMI_SH1106_draw_text( 4u, 0u, line );
+        HMI_SH1106_draw_text( 4u, 0u, line, FALSE );
 
-        (void)STDC_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "RX %lu  %s",
+        (void)PRINTF_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "RX %lu  %s",
                              (unsigned long)node_p->rx_frame_count, ( node_p->comms_lost == TRUE ) ? "LOST" : "OK" );
-        HMI_SH1106_draw_text( 5u, 0u, line );
+        HMI_SH1106_draw_text( 5u, 0u, line, FALSE );
 
-        (void)STDC_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "Age %lus", (unsigned long)age_secs );
-        HMI_SH1106_draw_text( 6u, 0u, line );
+        (void)PRINTF_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "Age %lus", (unsigned long)age_secs );
+        HMI_SH1106_draw_text( 6u, 0u, line, FALSE );
     }
     else
     {
-        HMI_SH1106_draw_text( 3u, 0u, "Empty slot" );
+        HMI_SH1106_draw_text( 3u, 0u, "Empty slot", FALSE );
     }
 }
 
@@ -962,8 +1012,9 @@ STATIC void menu_nav_handle_sensors( HMI_SH1106_input_et input )
 *   \author        MS
 *
 *   \param         tire_x, tire_y - Top-left corner of the tire outline, raw pixel coordinates
-*   \param         label_col      - Logical column for both text lines (see HMI_SH1106_draw_text -
-*                                    the actual pixel start is this plus one character cell)
+*   \param         label_col      - Pixel column for both text lines - drawn margin-free (see
+*                                    HMI_SH1106_draw_text), so this is the exact left edge of the
+*                                    first glyph
 *   \param         label_page     - Page (row) the temperature line lands on; the pressure line
 *                                    uses the next page down
 *   \param         reading_p      - What to print beside the tire
@@ -981,16 +1032,16 @@ STATIC void menu_nav_draw_tire( u8_t tire_x, u8_t tire_y, u8_t label_col, u8_t l
 
     GFX_draw_rect_rounded( &target, tire_x, tire_y, MENU_NAV_TIRE_WIDTH, MENU_NAV_TIRE_HEIGHT, MENU_NAV_TIRE_CORNER_RADIUS );
 
-    (void)STDC_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "%dC", (int)reading_p->temp_c );
-    HMI_SH1106_draw_text( label_page, label_col, line );
+    (void)PRINTF_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "%dC", (int)reading_p->temp_c );
+    HMI_SH1106_draw_text( label_page, label_col, line, FALSE );
 
     /* Tire pressure is conventionally quoted to one decimal place in bar - PRESS_CONV itself only
        deals in whole units (see PRESS_CONV_mbar_to_bar), so the one decimal digit is split out
        here rather than in PRESS_CONV, the same way this function already owns its own formatting
        for temperature. */
-    (void)STDC_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "%u.%ubar",
+    (void)PRINTF_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "%u.%ubar",
                          (unsigned int)( press_bar_tenths / 10u ), (unsigned int)( press_bar_tenths % 10u ) );
-    HMI_SH1106_draw_text( (u8_t)( label_page + 1u ), label_col, line );
+    HMI_SH1106_draw_text( (u8_t)( label_page + 1u ), label_col, line, FALSE );
 }
 
 /*!
@@ -1015,7 +1066,7 @@ STATIC void menu_nav_draw_vehicle( void )
 {
     GFX_target_st target = HMI_SH1106_get_target();
 
-    HMI_SH1106_draw_text( 0u, 0u, "VEHICLE" );
+    HMI_SH1106_draw_text( 0u, 0u, "VEHICLE", FALSE );
 
     menu_nav_draw_tire( MENU_NAV_TIRE_LEFT_X,  MENU_NAV_FRONT_TIRE_Y, 0u,  2u, &menu_nav_tire_fl_s );
     menu_nav_draw_tire( MENU_NAV_TIRE_RIGHT_X, MENU_NAV_FRONT_TIRE_Y, 82u, 2u, &menu_nav_tire_fr_s );
@@ -1043,25 +1094,25 @@ STATIC void menu_nav_draw_about( void )
     u8_t  sw_ver[SW_VERSION_NUM_SIZE];
     u8_t  hw_ver[HW_VERSION_NUM_SIZE];
 
-    HMI_SH1106_draw_text( 0u, 0u, "ABOUT" );
+    HMI_SH1106_draw_text( 0u, 0u, "ABOUT", FALSE );
 
     VER_get_sw_version_num( sw_ver );
-    (void)STDC_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "SW v%u.%u.%u", sw_ver[0], sw_ver[1], sw_ver[2] );
-    HMI_SH1106_draw_text( 2u, 0u, line );
+    (void)PRINTF_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "SW v%u.%u.%u", sw_ver[0], sw_ver[1], sw_ver[2] );
+    HMI_SH1106_draw_text( 2u, 0u, line, FALSE );
 
-    (void)STDC_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "Build %s", VER_get_sw_release_type() );
-    HMI_SH1106_draw_text( 3u, 0u, line );
+    (void)PRINTF_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "Build %s", VER_get_sw_release_type() );
+    HMI_SH1106_draw_text( 3u, 0u, line, FALSE );
 
     /* BUILD_DATE/MONTH/YEAR straight from autoversion.h, not VER_get_build_date() - that one
        packs the u16_t year into a u8_t buffer slot and truncates it (VER.c), a pre-existing bug
        in that module, unrelated to this screen. */
-    (void)STDC_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "Date %02u/%02u/%u",
+    (void)PRINTF_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "Date %02u/%02u/%u",
                          (unsigned int)BUILD_DATE, (unsigned int)BUILD_MONTH, (unsigned int)BUILD_YEAR );
-    HMI_SH1106_draw_text( 4u, 0u, line );
+    HMI_SH1106_draw_text( 4u, 0u, line, FALSE );
 
     VER_get_hw_version_num( hw_ver );
-    (void)STDC_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "HW v%u.%u", hw_ver[0], hw_ver[1] );
-    HMI_SH1106_draw_text( 5u, 0u, line );
+    (void)PRINTF_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "HW v%u.%u", hw_ver[0], hw_ver[1] );
+    HMI_SH1106_draw_text( 5u, 0u, line, FALSE );
 }
 
 /*!
@@ -1079,8 +1130,125 @@ STATIC void menu_nav_draw_about( void )
 ***************************************************************************************************/
 STATIC void menu_nav_draw_not_implemented( void )
 {
-    HMI_SH1106_draw_text( 2u, 0u, "Not implemented" );
-    HMI_SH1106_draw_text( 3u, 0u, "yet" );
+    HMI_SH1106_draw_text( 2u, 0u, "Not implemented", TRUE );
+    HMI_SH1106_draw_text( 3u, 0u, "yet", TRUE );
+}
+
+/*!
+****************************************************************************************************
+*
+*   \brief         Percent editor - capture the starting value so BACK can put it back
+*
+*   \author        MS
+*
+*   \return        none
+*
+***************************************************************************************************/
+STATIC void menu_nav_pct_editor_enter( const menu_nav_pct_editor_st* cfg_p )
+{
+    *cfg_p->saved_p = *cfg_p->value_p;
+}
+
+/*!
+****************************************************************************************************
+*
+*   \brief         Percent editor - show the value being edited
+*
+*   \author        MS
+*
+*   \return        none
+*
+***************************************************************************************************/
+STATIC void menu_nav_pct_editor_draw( const menu_nav_pct_editor_st* cfg_p )
+{
+    char line[MENU_NAV_LINE_CHARS];
+
+    HMI_SH1106_draw_text( 0u, 0u, cfg_p->title_p, FALSE );
+
+    (void)PRINTF_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "%u%%", (unsigned int)*cfg_p->value_p );
+    HMI_SH1106_draw_text( 3u, 0u, line, FALSE );
+
+    HMI_SH1106_draw_text( 6u, 0u, "BACK cancels", FALSE );
+}
+
+/*!
+****************************************************************************************************
+*
+*   \brief         Percent editor - the knob edits the value instead of moving a cursor
+*
+*   \author        MS
+*
+*   \param         cfg_p - Which screen (Brightness, Fan Speed, ...) is being driven
+*   \param         input - What the panel reported
+*
+*   \return        none
+*
+*   \note          apply_func_p, if set, is called on every step and on both revert paths, so a
+*                  screen with a live hardware value (Brightness) dims/brightens as it is turned and
+*                  reverting feels like an undo rather than just an exit - the same way it always did
+*                  before Brightness and Fan Speed shared this function. BACK_LONG reverts the same
+*                  way rather than leaving the edit applied - without this case it would fall through
+*                  to default and do nothing, and the panic-button escape to home would silently keep
+*                  whatever value was last turned to. MENU_NAV_on_input() calls this before it
+*                  navigates away, and navigates away regardless of what happens here.
+*
+***************************************************************************************************/
+STATIC void menu_nav_pct_editor_handle( const menu_nav_pct_editor_st* cfg_p, HMI_SH1106_input_et input )
+{
+    switch( input )
+    {
+        case HMI_SH1106_INPUT_CW:
+            if( *cfg_p->value_p <= (u8_t)( cfg_p->max - cfg_p->step ) )
+            {
+                *cfg_p->value_p += cfg_p->step;
+                if( cfg_p->apply_func_p != NULL_P )
+                {
+                    cfg_p->apply_func_p( *cfg_p->value_p );
+                }
+                HMI_SH1106_request_redraw();
+            }
+        break;
+
+        case HMI_SH1106_INPUT_CCW:
+            if( *cfg_p->value_p >= (u8_t)( cfg_p->min + cfg_p->step ) )
+            {
+                *cfg_p->value_p -= cfg_p->step;
+                if( cfg_p->apply_func_p != NULL_P )
+                {
+                    cfg_p->apply_func_p( *cfg_p->value_p );
+                }
+                HMI_SH1106_request_redraw();
+            }
+        break;
+
+        case HMI_SH1106_INPUT_SELECT:
+        case HMI_SH1106_INPUT_CONFIRM:
+            /* Keep it - the value is already live, there is nothing to commit */
+            MENU_NAV_goto( menu_nav_screens_s[cfg_p->screen].back_screen );
+        break;
+
+        case HMI_SH1106_INPUT_BACK:
+            *cfg_p->value_p = *cfg_p->saved_p;
+            if( cfg_p->apply_func_p != NULL_P )
+            {
+                cfg_p->apply_func_p( *cfg_p->value_p );
+            }
+            MENU_NAV_goto( menu_nav_screens_s[cfg_p->screen].back_screen );
+        break;
+
+        case HMI_SH1106_INPUT_BACK_LONG:
+            /* MENU_NAV_on_input() navigates home right after this returns - just revert */
+            *cfg_p->value_p = *cfg_p->saved_p;
+            if( cfg_p->apply_func_p != NULL_P )
+            {
+                cfg_p->apply_func_p( *cfg_p->value_p );
+            }
+        break;
+
+        default:
+            /* Long select/confirm mean nothing while editing */
+        break;
+    }
 }
 
 /*!
@@ -1095,7 +1263,7 @@ STATIC void menu_nav_draw_not_implemented( void )
 ***************************************************************************************************/
 STATIC void menu_nav_enter_brightness( void )
 {
-    menu_nav_brightness_saved_s = menu_nav_brightness_pct_s;
+    menu_nav_pct_editor_enter( &menu_nav_brightness_editor_s );
 }
 
 /*!
@@ -1110,14 +1278,7 @@ STATIC void menu_nav_enter_brightness( void )
 ***************************************************************************************************/
 STATIC void menu_nav_draw_brightness( void )
 {
-    char line[MENU_NAV_LINE_CHARS];
-
-    HMI_SH1106_draw_text( 0u, 0u, "BRIGHTNESS" );
-
-    (void)STDC_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "%u%%", (unsigned int)menu_nav_brightness_pct_s );
-    HMI_SH1106_draw_text( 3u, 0u, line );
-
-    HMI_SH1106_draw_text( 6u, 0u, "BACK cancels" );
+    menu_nav_pct_editor_draw( &menu_nav_brightness_editor_s );
 }
 
 /*!
@@ -1131,61 +1292,10 @@ STATIC void menu_nav_draw_brightness( void )
 *
 *   \return        none
 *
-*   \note          The value is applied to the hardware on every step, so the screen dims and
-*                  brightens as it is turned. Cancelling re-applies the value captured on entry,
-*                  which is what makes BACK feel like an undo rather than just an exit.
-*
-*                  BACK_LONG reverts the same way rather than leaving the edit applied - without
-*                  this case it would fall through to default and do nothing, and the panic-button
-*                  escape to home would silently keep whatever value was last turned to rather than
-*                  cancelling like every other exit from this screen does. MENU_NAV_on_input() calls
-*                  this before it navigates away, and navigates away regardless of what happens here.
-*
 ***************************************************************************************************/
 STATIC void menu_nav_handle_brightness( HMI_SH1106_input_et input )
 {
-    switch( input )
-    {
-        case HMI_SH1106_INPUT_CW:
-            if( menu_nav_brightness_pct_s <= (u8_t)( MENU_NAV_BRIGHTNESS_MAX - MENU_NAV_BRIGHTNESS_STEP ) )
-            {
-                menu_nav_brightness_pct_s += MENU_NAV_BRIGHTNESS_STEP;
-                HMI_SH1106_set_brightness_pct( menu_nav_brightness_pct_s );
-                HMI_SH1106_request_redraw();
-            }
-        break;
-
-        case HMI_SH1106_INPUT_CCW:
-            if( menu_nav_brightness_pct_s >= (u8_t)( MENU_NAV_BRIGHTNESS_MIN + MENU_NAV_BRIGHTNESS_STEP ) )
-            {
-                menu_nav_brightness_pct_s -= MENU_NAV_BRIGHTNESS_STEP;
-                HMI_SH1106_set_brightness_pct( menu_nav_brightness_pct_s );
-                HMI_SH1106_request_redraw();
-            }
-        break;
-
-        case HMI_SH1106_INPUT_SELECT:
-        case HMI_SH1106_INPUT_CONFIRM:
-            /* Keep it - the value is already live, there is nothing to commit */
-            MENU_NAV_goto( menu_nav_screens_s[MENU_NAV_SCREEN_BRIGHTNESS].back_screen );
-        break;
-
-        case HMI_SH1106_INPUT_BACK:
-            menu_nav_brightness_pct_s = menu_nav_brightness_saved_s;
-            HMI_SH1106_set_brightness_pct( menu_nav_brightness_pct_s );
-            MENU_NAV_goto( menu_nav_screens_s[MENU_NAV_SCREEN_BRIGHTNESS].back_screen );
-        break;
-
-        case HMI_SH1106_INPUT_BACK_LONG:
-            /* MENU_NAV_on_input() navigates home right after this returns - just revert */
-            menu_nav_brightness_pct_s = menu_nav_brightness_saved_s;
-            HMI_SH1106_set_brightness_pct( menu_nav_brightness_pct_s );
-        break;
-
-        default:
-            /* Long select/confirm mean nothing while editing */
-        break;
-    }
+    menu_nav_pct_editor_handle( &menu_nav_brightness_editor_s, input );
 }
 
 /*!
@@ -1200,7 +1310,7 @@ STATIC void menu_nav_handle_brightness( HMI_SH1106_input_et input )
 ***************************************************************************************************/
 STATIC void menu_nav_enter_fan_speed( void )
 {
-    menu_nav_fan_speed_saved_s = menu_nav_fan_speed_pct_s;
+    menu_nav_pct_editor_enter( &menu_nav_fan_speed_editor_s );
 }
 
 /*!
@@ -1215,14 +1325,7 @@ STATIC void menu_nav_enter_fan_speed( void )
 ***************************************************************************************************/
 STATIC void menu_nav_draw_fan_speed( void )
 {
-    char line[MENU_NAV_LINE_CHARS];
-
-    HMI_SH1106_draw_text( 0u, 0u, "FAN SPEED" );
-
-    (void)STDC_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "%u%%", (unsigned int)menu_nav_fan_speed_pct_s );
-    HMI_SH1106_draw_text( 3u, 0u, line );
-
-    HMI_SH1106_draw_text( 6u, 0u, "BACK cancels" );
+    menu_nav_pct_editor_draw( &menu_nav_fan_speed_editor_s );
 }
 
 /*!
@@ -1236,52 +1339,13 @@ STATIC void menu_nav_draw_fan_speed( void )
 *
 *   \return        none
 *
-*   \note          Same shape as menu_nav_handle_brightness(), minus the hardware-apply call - there
-*                  is no fan/PWM driver wired into this product yet, so this only edits the stored
-*                  value. Cancelling still reverts it, the same way Brightness cancels a value that
-*                  happens to also be live on hardware.
+*   \note          Same shape as menu_nav_handle_brightness() bar apply_func_p being NULL_P - there is
+*                  no fan/PWM driver wired into this product yet, so this only edits the stored value.
 *
 ***************************************************************************************************/
 STATIC void menu_nav_handle_fan_speed( HMI_SH1106_input_et input )
 {
-    switch( input )
-    {
-        case HMI_SH1106_INPUT_CW:
-            if( menu_nav_fan_speed_pct_s <= (u8_t)( MENU_NAV_FAN_SPEED_MAX - MENU_NAV_FAN_SPEED_STEP ) )
-            {
-                menu_nav_fan_speed_pct_s += MENU_NAV_FAN_SPEED_STEP;
-                HMI_SH1106_request_redraw();
-            }
-        break;
-
-        case HMI_SH1106_INPUT_CCW:
-            if( menu_nav_fan_speed_pct_s >= (u8_t)( MENU_NAV_FAN_SPEED_MIN + MENU_NAV_FAN_SPEED_STEP ) )
-            {
-                menu_nav_fan_speed_pct_s -= MENU_NAV_FAN_SPEED_STEP;
-                HMI_SH1106_request_redraw();
-            }
-        break;
-
-        case HMI_SH1106_INPUT_SELECT:
-        case HMI_SH1106_INPUT_CONFIRM:
-            /* Keep it */
-            MENU_NAV_goto( menu_nav_screens_s[MENU_NAV_SCREEN_FAN_SPEED].back_screen );
-        break;
-
-        case HMI_SH1106_INPUT_BACK:
-            menu_nav_fan_speed_pct_s = menu_nav_fan_speed_saved_s;
-            MENU_NAV_goto( menu_nav_screens_s[MENU_NAV_SCREEN_FAN_SPEED].back_screen );
-        break;
-
-        case HMI_SH1106_INPUT_BACK_LONG:
-            /* MENU_NAV_on_input() navigates home right after this returns - just revert */
-            menu_nav_fan_speed_pct_s = menu_nav_fan_speed_saved_s;
-        break;
-
-        default:
-            /* Long select/confirm mean nothing while editing */
-        break;
-    }
+    menu_nav_pct_editor_handle( &menu_nav_fan_speed_editor_s, input );
 }
 
 /*!
@@ -1315,20 +1379,20 @@ STATIC void menu_nav_draw_buzzer( void )
 {
     char line[MENU_NAV_LINE_CHARS];
 
-    HMI_SH1106_draw_text( 0u, 0u, "BUZZER" );
+    HMI_SH1106_draw_text( 0u, 0u, "BUZZER", TRUE );
 
-    (void)STDC_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "%c State %s",
+    (void)PRINTF_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "%c State %s",
                          ( menu_nav_buzzer_field_s == MENU_NAV_BUZZER_FIELD_STATE ) ? '>' : ' ',
                          ( menu_nav_buzzer_enabled_s == TRUE ) ? "ON" : "OFF" );
-    HMI_SH1106_draw_text( 2u, 0u, line );
+    HMI_SH1106_draw_text( 2u, 0u, line, TRUE );
 
-    (void)STDC_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "%c Time  %u ms",
+    (void)PRINTF_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "%c Time  %u ms",
                          ( menu_nav_buzzer_field_s == MENU_NAV_BUZZER_FIELD_TIME ) ? '>' : ' ',
                          (unsigned int)menu_nav_beep_time_ms_s );
-    HMI_SH1106_draw_text( 3u, 0u, line );
+    HMI_SH1106_draw_text( 3u, 0u, line, TRUE );
 
-    HMI_SH1106_draw_text( 6u, 0u, "SEL field, CFM keep" );
-    HMI_SH1106_draw_text( 7u, 0u, "BACK cancels" );
+    HMI_SH1106_draw_text( 6u, 0u, "SEL field, CFM keep", TRUE );
+    HMI_SH1106_draw_text( 7u, 0u, "BACK cancels", TRUE );
 }
 
 /*!
@@ -1442,6 +1506,57 @@ false_true_et MENU_NAV_buzzer_enabled( void )
 u16_t MENU_NAV_get_beep_duration_ms( void )
 {
     return( menu_nav_beep_time_ms_s );
+}
+
+/*!
+****************************************************************************************************
+*
+*   \brief         The Fan Speed screen's current value
+*
+*   \author        MS
+*
+*   \return        Current Fan Speed screen value, 0-100
+*
+***************************************************************************************************/
+u8_t MENU_NAV_get_fan_speed_pct( void )
+{
+    return( menu_nav_fan_speed_pct_s );
+}
+
+/*!
+****************************************************************************************************
+*
+*   \brief         Set the Fan Speed screen's value from outside the knob path
+*
+*   \author        MS
+*
+*   \param         pct - Requested value, clamped to [MENU_NAV_FAN_SPEED_MIN, MENU_NAV_FAN_SPEED_MAX]
+*
+*   \return        none
+*
+*   \note          Written straight to menu_nav_fan_speed_pct_s, not through the pct editor's saved/
+*                  revert value - a remote set is meant to stick, not be something BACK undoes. If
+*                  the Fan Speed screen is open, the redraw request means the new value appears on
+*                  screen immediately rather than waiting for the next knob turn.
+*
+***************************************************************************************************/
+void MENU_NAV_set_fan_speed_pct( u8_t pct )
+{
+    if( pct > (u8_t)MENU_NAV_FAN_SPEED_MAX )
+    {
+        pct = (u8_t)MENU_NAV_FAN_SPEED_MAX;
+    }
+    else if( pct < (u8_t)MENU_NAV_FAN_SPEED_MIN )
+    {
+        pct = (u8_t)MENU_NAV_FAN_SPEED_MIN;
+    }
+    else
+    {
+        /* Already in range */
+    }
+
+    menu_nav_fan_speed_pct_s = pct;
+    HMI_SH1106_request_redraw();
 }
 
 /****************************** END OF FILE *******************************************************/

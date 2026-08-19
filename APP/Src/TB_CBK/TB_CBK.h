@@ -44,12 +44,14 @@ pass_fail_et TB_CBK_rpc_switch1_get_val( const u8_t* params_p, u8_t* response_p,
 pass_fail_et TB_CBK_rpc_switch2_get_val( const u8_t* params_p, u8_t* response_p, u16_t* response_len_p );
 pass_fail_et TB_CBK_rpc_get_sen_tx_value( const u8_t* params_p, u8_t* response_p, u16_t* response_len_p );
 pass_fail_et TB_CBK_rpc_tb_get_post_time( const u8_t* params_p, u8_t* response_p, u16_t* response_len_p );
+pass_fail_et TB_CBK_rpc_get_fan_speed( const u8_t* params_p, u8_t* response_p, u16_t* response_len_p );
 
 /* RPC Callbacks - Setters (TB_rpc_handler_t signature) */
 pass_fail_et TB_CBK_rpc_switch1_set_val( const u8_t* params_p, u8_t* response_p, u16_t* response_len_p );
 pass_fail_et TB_CBK_rpc_switch2_set_val( const u8_t* params_p, u8_t* response_p, u16_t* response_len_p );
 pass_fail_et TB_CBK_rpc_set_sen_tx_value( const u8_t* params_p, u8_t* response_p, u16_t* response_len_p );
 pass_fail_et TB_CBK_rpc_tb_set_post_time( const u8_t* params_p, u8_t* response_p, u16_t* response_len_p );
+pass_fail_et TB_CBK_rpc_set_fan_speed( const u8_t* params_p, u8_t* response_p, u16_t* response_len_p );
 
 /* Get RPC handler array */
 TB_rpc_handler_entry_st* TB_CBK_get_rpc_handlers( u8_t* count_p );

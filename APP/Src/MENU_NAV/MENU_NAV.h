@@ -151,6 +151,12 @@ void MENU_NAV_goto( MENU_NAV_screen_et screen );
 false_true_et MENU_NAV_buzzer_enabled( void );
 u16_t         MENU_NAV_get_beep_duration_ms( void );
 
+/*!< The Fan Speed screen's current value, and a setter for it. The setter is for callers outside
+ *   the knob path (see TB_CBK_rpc_set_fan_speed()) - it clamps to the same range the knob does and
+ *   requests a redraw, so a change made remotely shows up immediately if the screen is open. */
+u8_t MENU_NAV_get_fan_speed_pct( void );
+void MENU_NAV_set_fan_speed_pct( u8_t pct );
+
 #endif /* MENU_NAV_H multiple inclusion guard */
 
 /****************************** END OF FILE *******************************************************/
