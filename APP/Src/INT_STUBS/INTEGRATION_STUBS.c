@@ -22,25 +22,14 @@
 #include "CPS.h"
 #include "HMI_SH1106.h"
 #include "MENU_NAV.h"
+#include "HEADER.h"
 
-/***************************************************************************************************
-**                              APP HEADER                                                        **
-**  Placed in .app_header section at APP_FLASH_START (0x08005000).                               **
-**  The FBL checks the presence_pattern before jumping to APP.                                    **
-**  The crc field is patched by app_crc_injector after linking.                                   **
-***************************************************************************************************/
-typedef struct 
-{
-    u32_t presence_pattern;
-    u32_t crc;
-    u8_t  reserved[248];
-} APP_header_st;
-
-__attribute__((section(".app_header"), used)) const APP_header_st app_header_s = 
-{
-    .presence_pattern = 0xDEADBEEFU,
-    .crc              = 0x00000000U,
-};
+/* APP_header_st/app_header_s live in HEADER.c (xCOMMON_MODULES/Src/HEADER) - shared across every
+   project (STM32, S32K144, ...) that uses app_crc_injector/app_signer, since the byte layout those
+   tools patch is the same regardless of target. This project's own contribution is placing the
+   .app_header section in APP/linker_script/STM32F103C8_flash.ld at APP_FLASH_START (0x08005000),
+   padded to 256 bytes so .isr_vector/code always starts at header+0x100. The FBL checks
+   presence_pattern before jumping to APP. */
 
 /***************************************************************************************************
 **                              SYSTICK                                                           **

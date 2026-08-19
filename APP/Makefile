@@ -251,7 +251,7 @@ $(APP_ELF_FILE): build_banner autoversion $(APP_OBJ_DIR) #$(BearSSL_LIB)
 	@$(BUILD_ENV_BIN)/app_crc_injector $(APP_HEX_FILE) --output=$(APP_HEX_WITH_CRC_FILE) --header-addr=$(APP_HEADER_ADDR) --code-start=$(APP_CODE_START) --code-end=$(APP_CODE_END)
 	@echo ""
 	@echo "--> Signing firmware with ECDSA..."
-	@$(BUILD_ENV_BIN)/app_signer $(APP_HEX_WITH_CRC_FILE) $(APP_HEX_SIGNED_FILE)
+	@$(BUILD_ENV_BIN)/app_signer $(APP_HEX_WITH_CRC_FILE) --output=$(APP_HEX_SIGNED_FILE) --header-addr=$(APP_HEADER_ADDR) --code-start=$(APP_CODE_START) --code-end=$(APP_CODE_END)
 	@echo "--> Converting signed HEX to S19 format..."
 	@$(SREC) $(APP_HEX_SIGNED_FILE) -Intel -o $(APP_S19_SIGNED_FILE) -Motorola -address-length=4
 	@build_timer $(BUILD_OUT_DIR)/build_time.csv $(START_TIME)
