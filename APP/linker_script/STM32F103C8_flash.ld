@@ -2,8 +2,8 @@
 ** STM32F103C8T6 APP partition linker script
 **
 ** Flash layout (64 KB total):
-**   BM   : 0x08000000 - 0x08000FFF   4 KB
-**   FBL  : 0x08001000 - 0x08004FFF  16 KB
+**   BM   : 0x08000000 - 0x08001FFF   8 KB
+**   FBL  : 0x08002000 - 0x08004FFF  12 KB
 **   APP  : 0x08005000 - 0x0800FFFF  44 KB  <- this image
 **
 ** APP internal layout:

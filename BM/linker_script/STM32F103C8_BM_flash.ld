@@ -2,8 +2,8 @@
 ** STM32F103C8T6 Boot Manager linker script
 **
 ** Flash layout (64 KB total):
-**   BM   : 0x08000000 - 0x08000FFF   4 KB  <- this image
-**   FBL  : 0x08001000 - 0x08004FFF  16 KB
+**   BM   : 0x08000000 - 0x08001FFF   8 KB  <- this image
+**   FBL  : 0x08002000 - 0x08004FFF  12 KB
 **   APP  : 0x08005000 - 0x0800FFFF  44 KB
 **     .app_header : 0x08005000 - 0x080050FF  256 B
 **     code start  : 0x08005100               (APP_CODE_START)
@@ -25,7 +25,7 @@ _Min_Stack_Size = 0x400;   /* 1 KB */
    APP_CODE_END (BM_FLASH_START + BM_FLASH_SIZE + FBL_FLASH_SIZE = 0x08005000) and
    xCOMMON_MODULES/Src/HEADER/HEADER.h's 256-byte header (code start = header + 0x100). */
 __bm_start__         = 0x08000000;
-__fbl_start__        = 0x08001000;
+__fbl_start__        = 0x08002000;
 __app_start__         = 0x08005000;
 __app_header_start__  = 0x08005000;
 __app_code_start__    = 0x08005100;
@@ -33,7 +33,7 @@ __app_code_end__      = 0x0800FFFF;
 
 MEMORY
 {
-    FLASH          (rx)  : ORIGIN = 0x08000000, LENGTH = 4K
+    FLASH          (rx)  : ORIGIN = 0x08000000, LENGTH = 8K
     m_data_shared  (xrw) : ORIGIN = 0x20000000, LENGTH = 0x20
     RAM            (xrw) : ORIGIN = 0x20000020, LENGTH = 0x4FE0
 }

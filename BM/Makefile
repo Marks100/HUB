@@ -22,6 +22,13 @@ BM_MEM_OUTPUT_FILE := $(BUILD_OUT_DIR)/memory_analysis.txt
 BM_MEM_CSV_FILE     := $(BUILD_OUT_DIR)/memory_analysis.csv
 BUILD_ENV_BIN       := ../BuildEnv/xBuildEnv/bin
 
+# Secure boot HMAC secret - both files gitignored (see .gitignore). HMAC_SECRET_FILE is the one
+# thing that needs provisioning out-of-band (openssl rand -hex 32); HMAC_SECRET_HEADER is
+# generated from it below, same pattern as APP/Makefile's autoversion target - never hand-edited,
+# never committed, can't drift from what app_signer actually signs with.
+HMAC_SECRET_FILE    := ../Tool_cfg/SigningKeys/hmac_secret.txt
+HMAC_SECRET_HEADER  := Src/secure_boot_hmac_secret.h
+
 ####################################################################################################
 # Sources
 ####################################################################################################
@@ -40,6 +47,8 @@ BM_C_SRCS := \
     $(COMMON_MODULES_DIR)/CHKSUM/crc_hw_driver.c \
     $(COMMON_MODULES_DIR)/CHKSUM/CRC_HW_STM32F103.c \
     $(COMMON_MODULES_DIR)/CLKS/CLK_STM32F1.c \
+    $(COMMON_MODULES_DIR)/CRYPTO/SHA256.c \
+    $(COMMON_MODULES_DIR)/CRYPTO/HMAC_SHA256.c \
     $(COMMON_MODULES_DIR)/MCAL/stm32/stm32f10x/src/stm32f10x_rcc.c \
     $(COMMON_MODULES_DIR)/MCAL/stm32/stm32f10x/src/stm32f10x_flash.c \
     $(COMMON_MODULES_DIR)/MCAL/stm32/stm32f10x/src/stm32f10x_crc.c \
@@ -56,6 +65,7 @@ INCLUDES  := \
     -I $(COMMON_MODULES_DIR)/MCU_JUMP \
     -I $(COMMON_MODULES_DIR)/CHKSUM \
     -I $(COMMON_MODULES_DIR)/CLKS \
+    -I $(COMMON_MODULES_DIR)/CRYPTO \
     -I $(COMMON_MODULES_DIR)/STDC \
     -I $(COMMON_MODULES_DIR)/MCAL \
     -I $(COMMON_MODULES_DIR)/MCAL/stm32/stm32f10x/inc \
@@ -79,11 +89,18 @@ LDFLAGS := \
 ####################################################################################################
 # Targets
 ####################################################################################################
-.PHONY: bm_build bm_clean bm_rebuild basic_memory_stats full_memory_stats memory_stats
+.PHONY: bm_build bm_clean bm_rebuild basic_memory_stats full_memory_stats memory_stats gen_hmac_secret_header
 
-bm_build: $(BM_ELF_FILE) basic_memory_stats
+bm_build: gen_hmac_secret_header $(BM_ELF_FILE) basic_memory_stats
 
 bm_rebuild: bm_clean bm_build
+
+# Deliberately phony (always runs), not a real $(HMAC_SECRET_HEADER): $(HMAC_SECRET_FILE) file
+# rule - if HMAC_SECRET_FILE doesn't exist, Make's own dependency resolution would refuse to even
+# invoke the recipe ("No rule to make target ... Stop"), burying gen_secure_boot_hmac_header's
+# actual "here's the openssl command to fix this" error before it can ever print.
+gen_hmac_secret_header:
+	@$(BUILD_ENV_BIN)/gen_secure_boot_hmac_header $(HMAC_SECRET_FILE) --output=$(HMAC_SECRET_HEADER)
 
 $(OBJ_DIR):
 	@mkdir -p $(OBJ_DIR)

@@ -45,13 +45,13 @@ RELEASE_PACKAGE_NAME         := $(RELEASE_PACKAGE_BASE_DIR)/$(PROJECT_TYPE)_$(VE
 
 # Flash memory partition layout — must match the linker scripts in BM/, FBL/, APP/
 # STM32F103C8T6: 64KB total flash (0x10000) starting at 0x08000000, 1KB pages
-# BM=4KB  FBL=16KB  APP=44KB — adjust sizes and update linker scripts accordingly
+# BM=8KB  FBL=12KB  APP=44KB — adjust sizes and update linker scripts accordingly
 BM_FLASH_START               := 0x08000000
-BM_FLASH_SIZE                := 0x1000
+BM_FLASH_SIZE                := 0x2000
 BM_FLASH_END                 := $(shell printf '0x%08X' $$(( $(BM_FLASH_START) + $(BM_FLASH_SIZE) - 1 )))
 
 FBL_FLASH_START               := $(shell printf '0x%08X' $$(( $(BM_FLASH_START) + $(BM_FLASH_SIZE) )))
-FBL_FLASH_SIZE                := 0x4000
+FBL_FLASH_SIZE                := 0x3000
 FBL_FLASH_END                 := $(shell printf '0x%08X' $$(( $(BM_FLASH_START) + $(BM_FLASH_SIZE) + $(FBL_FLASH_SIZE) - 1 )))
 
 APP_FLASH_START               := $(shell printf '0x%08X' $$(( $(BM_FLASH_START) + $(BM_FLASH_SIZE) + $(FBL_FLASH_SIZE) )))
@@ -77,8 +77,12 @@ COMBINED_IMAGE               := $(BUILD_OUT_DIR)/BM_FBL_APP_combined.hex
 EOL_CONFIG                   := ../Tool_cfg/EOL/eol_config.yml
 EOL_INJECTOR                 := ../Tool_cfg/EOL/inject_eol_data
 
-# Signing keys
-SIGNING_KEY                  := ../Tool_cfg/SigningKeys/signing_key.pem
+# Signing keys - SIGN_ALGORITHM must match whatever key/secret type SIGNING_KEY actually is
+# (see BuildEnv/xBuildEnv/bin/app_signer --help for the ecdsa-p256/ed25519/hmac-sha256 options).
+# BM currently verifies with HMAC-SHA256 (see BM/Src/bm_main.c/secure_boot_hmac_secret.h) - these
+# two must stay in lockstep, or every APP build signs with a scheme BM will reject at boot.
+SIGN_ALGORITHM                := hmac-sha256
+SIGNING_KEY                  := ../Tool_cfg/SigningKeys/hmac_secret.txt
 FINAL_IMAGE_WITH_EOL         := $(BUILD_OUT_DIR)/BM_FBL_APP_with_EOL.hex
 
 # Flash pack
@@ -256,8 +260,8 @@ $(APP_ELF_FILE): build_banner autoversion $(APP_OBJ_DIR) #$(BearSSL_LIB)
 	@echo "--> Injecting CRC32 into APP header (HEX file)..."
 	@$(BUILD_ENV_BIN)/app_crc_injector $(APP_HEX_FILE) --output=$(APP_HEX_WITH_CRC_FILE) --header-addr=$(APP_HEADER_ADDR) --code-start=$(APP_CODE_START) --code-end=$(APP_CODE_END) --crc-type=$(APP_CRC_TYPE)
 	@echo ""
-	@echo "--> Signing firmware with ECDSA..."
-	@$(BUILD_ENV_BIN)/app_signer $(APP_HEX_WITH_CRC_FILE) --output=$(APP_HEX_SIGNED_FILE) --header-addr=$(APP_HEADER_ADDR) --code-start=$(APP_CODE_START) --code-end=$(APP_CODE_END)
+	@echo "--> Signing firmware ($(SIGN_ALGORITHM))..."
+	@$(BUILD_ENV_BIN)/app_signer $(APP_HEX_WITH_CRC_FILE) --output=$(APP_HEX_SIGNED_FILE) --header-addr=$(APP_HEADER_ADDR) --code-start=$(APP_CODE_START) --code-end=$(APP_CODE_END) --algorithm=$(SIGN_ALGORITHM) --signing-key=$(SIGNING_KEY)
 	@echo "--> Converting signed HEX to S19 format..."
 	@$(SREC) $(APP_HEX_SIGNED_FILE) -Intel -o $(APP_S19_SIGNED_FILE) -Motorola -address-length=4
 	@build_timer $(BUILD_OUT_DIR)/build_time.csv $(START_TIME)
