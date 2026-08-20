@@ -10,18 +10,18 @@ include ../rules.mk
 ####################################################################################################
 # Project Configuration
 ####################################################################################################
-PROJECT_NAME      := FBL
-FBL_LINKER_SCRIPT := linker_script/STM32F103C8_FBL_flash.ld
-OBJ_DIR            := $(BUILD_OUT_DIR)/obj
-OUTPUT_NAME        := $(BUILD_OUT_DIR)/$(PROJECT_NAME)
-FBL_ELF_FILE       := $(OUTPUT_NAME).elf
-FBL_MAP_FILE       := $(OUTPUT_NAME).map
-FBL_HEX_FILE       := $(OUTPUT_NAME).hex
-FBL_BIN_FILE       := $(OUTPUT_NAME).bin
+PROJECT_NAME          := FBL
+FBL_LINKER_SCRIPT     := linker_script/STM32F103C8_FBL_flash.ld
+OBJ_DIR               := $(BUILD_OUT_DIR)/obj
+OUTPUT_NAME           := $(BUILD_OUT_DIR)/$(PROJECT_NAME)
+FBL_ELF_FILE          := $(OUTPUT_NAME).elf
+FBL_MAP_FILE          := $(OUTPUT_NAME).map
+FBL_HEX_FILE          := $(OUTPUT_NAME).hex
+FBL_BIN_FILE          := $(OUTPUT_NAME).bin
 FBL_HEX_WITH_CRC_FILE := $(OUTPUT_NAME)_with_CRC.hex
 FBL_HEX_SIGNED_FILE   := $(OUTPUT_NAME)_signed.hex
-FBL_MEM_OUTPUT_FILE := $(BUILD_OUT_DIR)/memory_analysis.txt
-FBL_MEM_CSV_FILE     := $(BUILD_OUT_DIR)/memory_analysis.csv
+FBL_MEM_OUTPUT_FILE   := $(BUILD_OUT_DIR)/memory_analysis.txt
+FBL_MEM_CSV_FILE      := $(BUILD_OUT_DIR)/memory_analysis.csv
 BUILD_ENV_BIN         := ../BuildEnv/xBuildEnv/bin
 
 # FBL carries the same header/CRC/signature layout as APP (see xCOMMON_MODULES/Src/HEADER/
@@ -43,12 +43,10 @@ SIGNING_KEY     := ../Tool_cfg/SigningKeys/hmac_secret.txt
 ####################################################################################################
 COMMON_MODULES_DIR := ../xCOMMON_MODULES/Src
 
-# Curated list, not a glob of the whole MCAL tree like APP/Makefile uses - same reason BM/Makefile
-# avoids it (APP's MCAL glob pulls in startup_stm32f10x_md.c, which defines its own full
-# .isr_vector; FBL defines its own minimal 2-entry vector table in fbl_main.c and must not link
-# that startup file too). Also deliberately NOT a directory glob over CAN_TRCV/CANTP/UDS/etc. -
-# the source project's FBL Makefile globbed its entire MCAL tree and pulled in ~47KB of unused
-# NXP SDK drivers as a result; every file below is one FBL actually calls.
+# Curated list, not a glob of the whole MCAL tree like APP/Makefile uses. Deliberately NOT a
+# directory glob over CAN_TRCV/CANTP/UDS/etc. either - the source project's FBL Makefile globbed
+# its entire MCAL tree and pulled in ~47KB of unused NXP SDK drivers as a result; every file below
+# is one FBL actually calls.
 FBL_C_SRCS := \
     Src/fbl_main.c \
     Src/UDS_CFG/UDS_config.c \
@@ -70,7 +68,18 @@ FBL_C_SRCS := \
     $(COMMON_MODULES_DIR)/STDC/STDC.c \
     $(COMMON_MODULES_DIR)/SELMATH/SELMATH.c \
     $(COMMON_MODULES_DIR)/stdio/printf.c \
-    ../Common_Src/HAL_CAN/HAL_CAN.c \
+    ../Common_Src/HAL_CAN/HAL_CAN.c
+
+# Vendored ST/CMSIS MCAL sources - same split as APP/Makefile's MCAL_C_SRCS/MCAL_OBJ_DIR/
+# MCAL_OPTIMISATION: this is code we never touch, so there's no reason to debug it, and it always
+# builds at -Os regardless of whatever FBL_OPTIMISATION ends up being (see Flags section below).
+# startup_stm32f10x_md.c is used exactly as BM and APP use it - see fbl_main.c's fbl_main()/main()
+# comment for why this matters more for FBL than it did for BM: FBL genuinely relies on SysTick
+# and CAN RX interrupts, which a hand-rolled vector table (what FBL used before) has no defined
+# vectors for at all.
+MCAL_OBJ_DIR := $(BUILD_OUT_DIR)/obj/mcal
+MCAL_C_SRCS  := \
+    $(COMMON_MODULES_DIR)/MCAL/stm32/stm32f10x/core/startup/startup_stm32f10x_md.c \
     $(COMMON_MODULES_DIR)/MCAL/stm32/stm32f10x/src/stm32f10x_rcc.c \
     $(COMMON_MODULES_DIR)/MCAL/stm32/stm32f10x/src/stm32f10x_flash.c \
     $(COMMON_MODULES_DIR)/MCAL/stm32/stm32f10x/src/stm32f10x_crc.c \
@@ -79,9 +88,10 @@ FBL_C_SRCS := \
     $(COMMON_MODULES_DIR)/MCAL/stm32/stm32f10x/src/misc.c \
     $(COMMON_MODULES_DIR)/MCAL/stm32/stm32f10x/core/system_stm32f10x.c
 
-FBL_C_OBJS := $(patsubst %.c, $(OBJ_DIR)/%.o, $(notdir $(FBL_C_SRCS)))
-FBL_C_DEPS := $(FBL_C_OBJS:.o=.d)
-VPATH      := $(sort $(dir $(FBL_C_SRCS)))
+FBL_C_OBJS  := $(patsubst %.c, $(OBJ_DIR)/%.o, $(notdir $(FBL_C_SRCS)))
+MCAL_C_OBJS := $(patsubst %.c, $(MCAL_OBJ_DIR)/%.o, $(notdir $(MCAL_C_SRCS)))
+FBL_C_DEPS  := $(FBL_C_OBJS:.o=.d) $(MCAL_C_OBJS:.o=.d)
+VPATH       := $(sort $(dir $(FBL_C_SRCS) $(MCAL_C_SRCS)))
 
 INCLUDES  := \
     -I Src \
@@ -114,6 +124,23 @@ INCLUDES  := \
 ####################################################################################################
 # Flags
 ####################################################################################################
+# FBL has no RELEASE/DEBUG toggle (unlike APP/Makefile), so FBL_OPTIMISATION is just -Os today -
+# but MCAL_OPTIMISATION is named/split out separately anyway, same as APP does, so vendored code
+# stays pinned to -Os independent of whatever FBL_OPTIMISATION becomes if a debug mode is ever
+# added here.
+FBL_OPTIMISATION  := -Os
+MCAL_OPTIMISATION := -Os
+
+# FBL's vector table sits at FBL_CODE_START (0x08002100), not FLASH_BASE (0x08000000) - without
+# this, SystemInit() (xCOMMON_MODULES/Src/MCAL/stm32/stm32f10x/core/system_stm32f10x.c, called
+# from startup_stm32f10x_md.c's Default_Reset_Handler on every FBL boot) unconditionally does
+# SCB->VTOR = FLASH_BASE | VECT_TAB_OFFSET, defaulting VECT_TAB_OFFSET to 0 and pointing VTOR back
+# at BM's vector table - clobbering the correct value BM's own MCU_JUMP_to_address() already set
+# before jumping here. Every interrupt (SysTick, CAN RX, ...) would then vector through BM's table
+# instead of FBL's. Same fix APP/Makefile already applies for the same reason (APP's own table is
+# at APP_CODE_START, not FLASH_BASE either) - see its -DVECT_TAB_OFFSET=0x5100.
+CFLAGS += -DVECT_TAB_OFFSET=$(FBL_CODE_START)
+
 LDFLAGS := \
     $(LDFLAGS_COMMON) \
     -Os \
@@ -135,14 +162,21 @@ fbl_rebuild: fbl_clean fbl_build
 $(OBJ_DIR):
 	@mkdir -p $(OBJ_DIR)
 
+$(MCAL_OBJ_DIR):
+	@mkdir -p $(MCAL_OBJ_DIR)
+
 $(OBJ_DIR)/%.o: %.c | $(OBJ_DIR)
 	@echo "--> Compiling $(notdir $@)..."
-	@$(CC) $(CFLAGS) -Os $(INCLUDES) -c $< -o $@
+	@$(CC) $(CFLAGS) $(FBL_OPTIMISATION) $(INCLUDES) -c $< -o $@
 
-$(FBL_ELF_FILE): $(FBL_C_OBJS)
+$(MCAL_OBJ_DIR)/%.o: %.c | $(MCAL_OBJ_DIR)
+	@echo "--> Compiling $(notdir $@)..."
+	@$(CC) $(CFLAGS) $(MCAL_OPTIMISATION) $(INCLUDES) -c $< -o $@
+
+$(FBL_ELF_FILE): $(FBL_C_OBJS) $(MCAL_C_OBJS)
 	@mkdir -p $(BUILD_OUT_DIR)
 	@echo "--> Linking FBL..."
-	@$(LD) $(LDFLAGS) $(FBL_C_OBJS)
+	@$(LD) $(LDFLAGS) $(FBL_C_OBJS) $(MCAL_C_OBJS)
 	@$(OBJCOPY) -O ihex   $(FBL_ELF_FILE) $(FBL_HEX_FILE)
 	@$(OBJCOPY) -O binary $(FBL_ELF_FILE) $(FBL_BIN_FILE)
 	@echo "--> Filling gaps in HEX file with 0xFF (from code end to region end)..."

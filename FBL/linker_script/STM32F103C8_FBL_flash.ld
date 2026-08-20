@@ -19,7 +19,7 @@
 ** encode the same three-way partition.
 */
 
-ENTRY(FBL_Reset_Handler)
+ENTRY(Reset_Handler)
 
 _estack = 0x20005000;   /* top of 20 KB SRAM - same as BM/APP, so a soft reset between stages
                             never needs to reinitialise the stack pointer differently */

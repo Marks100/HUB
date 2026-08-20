@@ -29,6 +29,7 @@
 #include "UDS.h"
 #include "UDS_config.h"
 #include "MCU_JUMP.h"
+#include "nvic_driver.h"
 #include "system_stm32f10x.h"
 #include "stm32f10x_gpio.h"
 #include "stm32f10x_rcc.h"
@@ -42,13 +43,6 @@
 ***************************************************************************************************/
 extern u32_t __app_start__;
 extern u32_t __app_code_end__;
-extern u32_t _estack;
-
-extern u32_t _sidata;
-extern u32_t _sdata;
-extern u32_t _edata;
-extern u32_t _sbss;
-extern u32_t _ebss;
 
 /***************************************************************************************************
 **                              Private Function Prototypes                                       **
@@ -305,40 +299,24 @@ STATIC const fbl_config_st fbl_config_s =
 };
 
 /***************************************************************************************************
-**                              Reset Handler / Vector Table                                     **
+**                              Entry Point                                                      **
 ***************************************************************************************************/
-void FBL_Reset_Handler( void );
-
-__attribute__((section(".isr_vector"), used))
-const u32_t fbl_vector_table[2] =
+/* Same split as BM/Src/bm_main.c's bm_main()/main() and APP/Src/MAIN/main.c's app_main()/main() -
+   the vector table, Reset_Handler (.data/.bss init), SystemInit() and the call into this function
+   all come from startup_stm32f10x_md.c (FBL_C_SRCS in FBL/Makefile), unmodified, exactly as BM and
+   APP use it. This used to be its own hand-rolled 2-entry vector table + manual .data/.bss copy
+   (matching what BM used to do) - that was worse for FBL specifically, not just inconsistent: FBL
+   actually enables SysTick (SYSTICK_init's TICKINT bit, see systick_init_wrapper below) and CAN RX
+   (HAL_CAN_init's NVIC_Init, see can_init_wrapper) interrupts, and a 2-entry table has no vector
+   for either - SysTick_Handler (SYSTICK.c) and USB_LP_CAN1_RX0_IRQHandler (HAL_CAN.c) were both
+   defined but dead code, unreachable from the table and stripped by --gc-sections entirely. With
+   the real vector table, those strong symbol names automatically override the vendor file's weak
+   per-IRQ aliases (the same strong-beats-weak mechanism Reset_Handler itself uses), so both
+   interrupts are now correctly wired up instead of vectoring into whatever flash bytes happened to
+   follow a truncated table. */
+void fbl_main( void )
 {
-    (u32_t)&_estack,
-    (u32_t)FBL_Reset_Handler,
-};
-
-void FBL_Reset_Handler( void )
-{
-    u32_t*             src_p;
-    u32_t*             dst_p;
     STATIC const TIME_cfg_st time_cfg_s = { .time_increment_ms = 1u };
-
-    /* Copy .data (initialised globals) from flash to RAM */
-    src_p = &_sidata;
-    dst_p = &_sdata;
-    while( dst_p < &_edata )
-    {
-        *dst_p = *src_p;
-        dst_p++;
-        src_p++;
-    }
-
-    /* Zero .bss (uninitialised globals) */
-    dst_p = &_sbss;
-    while( dst_p < &_ebss )
-    {
-        *dst_p = 0u;
-        dst_p++;
-    }
 
     TIME_init( &time_cfg_s );
 
@@ -349,7 +327,22 @@ void FBL_Reset_Handler( void )
     UDS_set_session( UDS_SES_PROGRAMMING );
 
     FBL_init( &fbl_config_s );
+
+    /* MCU_JUMP_to_address() (BM.c's BM_jump_to_fbl -> MCU_JUMP.c) sets PRIMASK before jumping
+       here, masking every maskable interrupt at the CPU level regardless of each peripheral's own
+       NVIC enable bit - FBL_init() above already turned on SysTick's TICKINT and CAN RX's NVIC
+       channel (systick_init_wrapper/can_init_wrapper), but neither fires until PRIMASK is cleared
+       too. APP does the equivalent NVIC_EnableGlobalIRQ() call itself (APP/Src/MAIN/main.c) after
+       its own peripheral init, for the same reason - it inherits the same masked state from BM's
+       jump. */
+    NVIC_EnableGlobalIRQ();
+
     FBL_run();
+}
+
+void main( void )
+{
+    fbl_main();
 }
 
 /****************************** END OF FILE *******************************************************/

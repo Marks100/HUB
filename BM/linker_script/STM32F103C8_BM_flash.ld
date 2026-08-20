@@ -15,7 +15,7 @@
 **   everything else: 0x20000020 - 0x20004FFF
 */
 
-ENTRY(BM_Reset_Handler)
+ENTRY(Reset_Handler)
 
 _estack = 0x20005000;   /* top of 20 KB SRAM */
 

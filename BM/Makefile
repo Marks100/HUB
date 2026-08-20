@@ -34,10 +34,7 @@ HMAC_SECRET_HEADER  := Src/secure_boot_hmac_secret.h
 ####################################################################################################
 COMMON_MODULES_DIR := ../xCOMMON_MODULES/Src
 
-# Curated list, not a glob of the whole MCAL tree like APP/Makefile uses - APP's MCAL glob
-# pulls in startup_stm32f10x_md.c, which defines its own full .isr_vector; BM defines its own
-# minimal 2-entry vector table (bm_vector_table in bm_main.c) and must not link that startup
-# file too, or .isr_vector ends up with two vector tables concatenated in it.
+# Curated list, not a glob of the whole MCAL tree like APP/Makefile uses.
 BM_C_SRCS := \
     Src/bm_main.c \
     $(COMMON_MODULES_DIR)/BM/BM.c \
@@ -50,15 +47,28 @@ BM_C_SRCS := \
     $(COMMON_MODULES_DIR)/CRYPTO/HMAC_SHA256/SHA256.c \
     $(COMMON_MODULES_DIR)/CRYPTO/HMAC_SHA256/HMAC_SHA256.c \
     $(COMMON_MODULES_DIR)/CRYPTO/micro-ecc/uECC.c \
-    $(COMMON_MODULES_DIR)/CRYPTO/micro-ecc/ECDSA_P256_verify.c \
+    $(COMMON_MODULES_DIR)/CRYPTO/micro-ecc/ECDSA_P256_verify.c
+
+# Vendored ST/CMSIS MCAL sources - same split as APP/Makefile's MCAL_C_SRCS/MCAL_OBJ_DIR/
+# MCAL_OPTIMISATION: this is code we never touch, so there's no reason to debug it, and it always
+# builds at -Os regardless of whatever BM_OPTIMISATION ends up being (see Flags section below).
+# startup_stm32f10x_md.c is used exactly as APP uses it - unmodified, providing the real vector
+# table, Reset_Handler (.data/.bss init), SystemInit() and the call into main() (bm_main.c's
+# void main(void), same app_main()/main() split as APP/Src/MAIN/main.c). BM used to hand-roll its
+# own 2-entry vector table and reimplement Reset_Handler to avoid linking this file at all; now
+# it's linked and used the same way for both partitions instead - one startup flow, not two.
+MCAL_OBJ_DIR := $(BUILD_OUT_DIR)/obj/mcal
+MCAL_C_SRCS  := \
+    $(COMMON_MODULES_DIR)/MCAL/stm32/stm32f10x/core/startup/startup_stm32f10x_md.c \
     $(COMMON_MODULES_DIR)/MCAL/stm32/stm32f10x/src/stm32f10x_rcc.c \
     $(COMMON_MODULES_DIR)/MCAL/stm32/stm32f10x/src/stm32f10x_flash.c \
     $(COMMON_MODULES_DIR)/MCAL/stm32/stm32f10x/src/stm32f10x_crc.c \
     $(COMMON_MODULES_DIR)/MCAL/stm32/stm32f10x/core/system_stm32f10x.c
 
-BM_C_OBJS := $(patsubst %.c, $(OBJ_DIR)/%.o, $(notdir $(BM_C_SRCS)))
-BM_C_DEPS := $(BM_C_OBJS:.o=.d)
-VPATH     := $(sort $(dir $(BM_C_SRCS)))
+BM_C_OBJS   := $(patsubst %.c, $(OBJ_DIR)/%.o, $(notdir $(BM_C_SRCS)))
+MCAL_C_OBJS := $(patsubst %.c, $(MCAL_OBJ_DIR)/%.o, $(notdir $(MCAL_C_SRCS)))
+BM_C_DEPS   := $(BM_C_OBJS:.o=.d) $(MCAL_C_OBJS:.o=.d)
+VPATH       := $(sort $(dir $(BM_C_SRCS) $(MCAL_C_SRCS)))
 
 INCLUDES  := \
     -I Src \
@@ -92,6 +102,17 @@ UECC_DEFINES := \
     -DuECC_SUPPORTS_secp256r1=1 \
     -DuECC_SUPPORTS_secp256k1=0 \
     -DuECC_SUPPORT_COMPRESSED_POINT=0
+
+# BM has no RELEASE/DEBUG toggle (unlike APP/Makefile), so BM_OPTIMISATION is just -Os today - but
+# MCAL_OPTIMISATION is named/split out separately anyway, same as APP does, so vendored code stays
+# pinned to -Os independent of whatever BM_OPTIMISATION becomes if a debug mode is ever added here.
+# No -DVECT_TAB_OFFSET override needed here (unlike FBL/Makefile and APP/Makefile) - BM's own
+# vector table sits at FLASH_BASE (0x08000000) already, which is SystemInit()'s hardcoded default
+# when VECT_TAB_OFFSET isn't overridden, so its unconditional SCB->VTOR write is already correct
+# for BM. FBL and APP both sit at a nonzero offset from FLASH_BASE and do need the override - see
+# FBL/Makefile's CFLAGS += -DVECT_TAB_OFFSET comment for what breaks without it.
+BM_OPTIMISATION   := -Os
+MCAL_OPTIMISATION := -Os
 
 LDFLAGS := \
     $(LDFLAGS_COMMON) \
@@ -131,14 +152,21 @@ gen_hmac_secret_header: $(HMAC_SECRET_HEADER)
 $(OBJ_DIR):
 	@mkdir -p $(OBJ_DIR)
 
+$(MCAL_OBJ_DIR):
+	@mkdir -p $(MCAL_OBJ_DIR)
+
 $(OBJ_DIR)/%.o: %.c | $(OBJ_DIR)
 	@echo "--> Compiling $(notdir $@)..."
-	@$(CC) $(CFLAGS) -Os $(INCLUDES) $(UECC_DEFINES) -c $< -o $@
+	@$(CC) $(CFLAGS) $(BM_OPTIMISATION) $(INCLUDES) $(UECC_DEFINES) -c $< -o $@
 
-$(BM_ELF_FILE): $(BM_C_OBJS)
+$(MCAL_OBJ_DIR)/%.o: %.c | $(MCAL_OBJ_DIR)
+	@echo "--> Compiling $(notdir $@)..."
+	@$(CC) $(CFLAGS) $(MCAL_OPTIMISATION) $(INCLUDES) -c $< -o $@
+
+$(BM_ELF_FILE): $(BM_C_OBJS) $(MCAL_C_OBJS)
 	@mkdir -p $(BUILD_OUT_DIR)
 	@echo "--> Linking BM..."
-	@$(LD) $(LDFLAGS) $(BM_C_OBJS)
+	@$(LD) $(LDFLAGS) $(BM_C_OBJS) $(MCAL_C_OBJS)
 	@$(OBJCOPY) -O ihex   $(BM_ELF_FILE) $(BM_HEX_FILE)
 	@$(OBJCOPY) -O binary $(BM_ELF_FILE) $(BM_BIN_FILE)
 	@echo "--> BM image: $(realpath $(BM_HEX_FILE))"

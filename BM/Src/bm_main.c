@@ -52,17 +52,6 @@ extern u32_t __fbl_code_end__;
 extern u32_t __app_header_start__;
 extern u32_t __app_code_start__;
 extern u32_t __app_code_end__;
-extern u32_t _estack;
-
-/* .data/.bss init boundaries - BM_Reset_Handler() below does the flash->RAM copy and zeroing
-   itself, since BM deliberately doesn't link startup_stm32f10x_md.c (see BM/Makefile's comment
-   on BM_C_SRCS - linking it too would duplicate .isr_vector). Without this, every non-const
-   global starts as whatever garbage was already in SRAM at power-on, not its initialiser. */
-extern u32_t _sidata;
-extern u32_t _sdata;
-extern u32_t _edata;
-extern u32_t _sbss;
-extern u32_t _ebss;
 
 /***************************************************************************************************
 **                              CRC Configuration                                                **
@@ -150,42 +139,23 @@ STATIC const bm_config_st bm_config_s =
 };
 
 /***************************************************************************************************
-**                              Reset Handler / Vector Table                                     **
+**                              Entry Point                                                      **
 ***************************************************************************************************/
-void BM_Reset_Handler( void );
-
-__attribute__((section(".isr_vector"), used))
-const u32_t bm_vector_table[2] =
+/* Same split as APP/Src/MAIN/main.c's app_main()/main() - the vector table, Reset_Handler
+   (.data/.bss init), SystemInit() and the call into this function all come from
+   startup_stm32f10x_md.c (BM_C_SRCS in BM/Makefile), unmodified, exactly as APP uses it. BM no
+   longer overrides any of that itself, so both partitions boot through the identical startup
+   flow - see BM/Makefile's BM_C_SRCS comment for what that flow does to BM specifically
+   (SystemInit()'s RCC reset and SCB->VTOR write are both no-ops/correct for BM's case). */
+void bm_main( void )
 {
-    (u32_t)&_estack,          /* Initial SP: top of 20 KB SRAM, see linker script */
-    (u32_t)BM_Reset_Handler,
-};
-
-void BM_Reset_Handler( void )
-{
-    u32_t* src_p;
-    u32_t* dst_p;
-
-    /* Copy .data (initialised globals) from flash to RAM */
-    src_p = &_sidata;
-    dst_p = &_sdata;
-    while( dst_p < &_edata )
-    {
-        *dst_p = *src_p;
-        dst_p++;
-        src_p++;
-    }
-
-    /* Zero .bss (uninitialised globals) - without this they start as SRAM power-on garbage */
-    dst_p = &_sbss;
-    while( dst_p < &_ebss )
-    {
-        *dst_p = 0u;
-        dst_p++;
-    }
-
     BM_init( &bm_config_s );
     BM_run();
+}
+
+void main( void )
+{
+    bm_main();
 }
 
 /****************************** END OF FILE *******************************************************/
