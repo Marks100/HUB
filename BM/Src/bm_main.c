@@ -145,10 +145,18 @@ STATIC const bm_config_st bm_config_s =
    (.data/.bss init), SystemInit() and the call into this function all come from
    startup_stm32f10x_md.c (BM_C_SRCS in BM/Makefile), unmodified, exactly as APP uses it. BM no
    longer overrides any of that itself, so both partitions boot through the identical startup
-   flow - see BM/Makefile's BM_C_SRCS comment for what that flow does to BM specifically
-   (SystemInit()'s RCC reset and SCB->VTOR write are both no-ops/correct for BM's case). */
+   flow - see BM/Makefile's BM_C_SRCS comment for what that flow does to BM specifically. */
+extern u32_t __isr_vector_start;   /* Linker symbol - BM/linker_script/STM32F103C8_BM_flash.ld */
+
 void bm_main( void )
 {
+    /* Re-assert VTOR from the linker's own placement of .isr_vector, not a hand-maintained
+       constant - see MCU_JUMP_set_vector_table()'s comment. Correct for BM by
+       coincidence even without this (BM's table happens to sit at SystemInit()'s FLASH_BASE
+       default), but calling it here anyway keeps all three partitions doing the identical thing
+       rather than BM being the one exception nobody has to explain. */
+    MCU_JUMP_set_vector_table( (u32_t)&__isr_vector_start );
+
     BM_init( &bm_config_s );
     BM_run();
 }

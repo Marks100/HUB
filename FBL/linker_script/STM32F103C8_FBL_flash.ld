@@ -54,6 +54,8 @@ SECTIONS
     .isr_vector :
     {
         . = ALIGN(4);
+        __isr_vector_start = .;   /* Read by Reset_Handler to self-relocate VTOR - see
+                                     MCU_JUMP_set_vector_table() */
         KEEP(*(.isr_vector))
         . = ALIGN(4);
     } >FLASH

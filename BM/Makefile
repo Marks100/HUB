@@ -106,11 +106,6 @@ UECC_DEFINES := \
 # BM has no RELEASE/DEBUG toggle (unlike APP/Makefile), so BM_OPTIMISATION is just -Os today - but
 # MCAL_OPTIMISATION is named/split out separately anyway, same as APP does, so vendored code stays
 # pinned to -Os independent of whatever BM_OPTIMISATION becomes if a debug mode is ever added here.
-# No -DVECT_TAB_OFFSET override needed here (unlike FBL/Makefile and APP/Makefile) - BM's own
-# vector table sits at FLASH_BASE (0x08000000) already, which is SystemInit()'s hardcoded default
-# when VECT_TAB_OFFSET isn't overridden, so its unconditional SCB->VTOR write is already correct
-# for BM. FBL and APP both sit at a nonzero offset from FLASH_BASE and do need the override - see
-# FBL/Makefile's CFLAGS += -DVECT_TAB_OFFSET comment for what breaks without it.
 BM_OPTIMISATION   := -Os
 MCAL_OPTIMISATION := -Os
 

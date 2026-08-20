@@ -314,9 +314,14 @@ STATIC const fbl_config_st fbl_config_s =
    per-IRQ aliases (the same strong-beats-weak mechanism Reset_Handler itself uses), so both
    interrupts are now correctly wired up instead of vectoring into whatever flash bytes happened to
    follow a truncated table. */
+extern u32_t __isr_vector_start;   /* Linker symbol - FBL/linker_script/STM32F103C8_FBL_flash.ld */
+
 void fbl_main( void )
 {
     STATIC const TIME_cfg_st time_cfg_s = { .time_increment_ms = 1u };
+
+    /* Points VTOR at FBL's own vector table, read from the linker symbol. */
+    MCU_JUMP_set_vector_table( (u32_t)&__isr_vector_start );
 
     TIME_init( &time_cfg_s );
 

@@ -25,14 +25,20 @@
 #include "CTRL_AXIS.h"
 #include "nvic_driver.h"
 #include "scb_driver.h"
+#include "MCU_JUMP.h"
 #include "TB_CBK.h"
 #include "TJA1051.h"
 #include "HAL_CAN.h"
 #include "CPS.h"
 #include "VER.h"
 
+extern u32_t __isr_vector_start;   /* Linker symbol - APP/linker_script/STM32F103C8_flash.ld */
+
 void app_main( void )
 {
+    /* Points VTOR at APP's own vector table, read from the linker symbol. */
+    MCU_JUMP_set_vector_table( (u32_t)&__isr_vector_start );
+
     CLK_STM32F1_init( &hse8_72mhz_s );
     NVM_init( &nvm_hw_interface_s );
     NVM_register_block( 0u, &nvm_persist_block_s );

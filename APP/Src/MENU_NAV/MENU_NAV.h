@@ -67,6 +67,7 @@ typedef enum
     MENU_NAV_SCREEN_REV_COUNTER,
     MENU_NAV_SCREEN_REV_COUNTER_BAR,
     MENU_NAV_SCREEN_ABOUT,
+    MENU_NAV_SCREEN_BOOTLOADER,
     MENU_NAV_SCREEN_NOT_IMPLEMENTED,
     MENU_NAV_NUM_SCREENS                /*!< Not a screen - array bound, keep last */
 } MENU_NAV_screen_et;

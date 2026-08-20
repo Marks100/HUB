@@ -18,6 +18,8 @@
 #include "PRESS_CONV.h"
 #include "GFX.h"
 #include "printf.h"
+#include "SHARED_RAM.h"
+#include "MCU_JUMP.h"
 
 /***************************************************************************************************
 **                              Defines                                                           **
@@ -150,6 +152,8 @@ STATIC void menu_nav_enter_sensors( void );
 STATIC void menu_nav_draw_vehicle( void );
 STATIC void menu_nav_draw_tire( u8_t tire_x, u8_t tire_y, u8_t label_col, u8_t label_page, const menu_nav_tire_reading_st* reading_p );
 STATIC void menu_nav_draw_about( void );
+STATIC void menu_nav_draw_bootloader( void );
+STATIC void menu_nav_handle_bootloader( HMI_SH1106_input_et input );
 STATIC void menu_nav_draw_not_implemented( void );
 STATIC void menu_nav_pct_editor_enter( const menu_nav_pct_editor_st* cfg_p );
 STATIC void menu_nav_pct_editor_draw( const menu_nav_pct_editor_st* cfg_p );
@@ -193,6 +197,7 @@ STATIC const MENU_NAV_item_st menu_nav_main_items_s[] =
     { "Buzzer",     MENU_NAV_SCREEN_BUZZER          },
     { "Sensors",    MENU_NAV_SCREEN_SENSORS         },
     { "About",      MENU_NAV_SCREEN_ABOUT           },
+    { "Bootloader", MENU_NAV_SCREEN_BOOTLOADER      },
 };
 
 STATIC const MENU_NAV_list_st menu_nav_main_list_s =
@@ -560,6 +565,13 @@ STATIC const MENU_NAV_screen_st menu_nav_screens_s[MENU_NAV_NUM_SCREENS] =
     {
         .draw_func_p  = menu_nav_draw_about,
         .back_screen  = MENU_NAV_SCREEN_MAIN_MENU,
+    },
+
+    [MENU_NAV_SCREEN_BOOTLOADER] =
+    {
+        .draw_func_p   = menu_nav_draw_bootloader,
+        .handle_func_p = menu_nav_handle_bootloader,   /* CONFIRM resets into FBL, not the default */
+        .back_screen   = MENU_NAV_SCREEN_MAIN_MENU,
     },
 
     [MENU_NAV_SCREEN_NOT_IMPLEMENTED] =
@@ -1592,6 +1604,64 @@ STATIC void menu_nav_draw_about( void )
     VER_get_hw_version_num( hw_ver );
     (void)PRINTF_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "HW v%u.%u", hw_ver[0], hw_ver[1] );
     HMI_SH1106_draw_text( 5u, 0u, line, FALSE );
+}
+
+/*!
+****************************************************************************************************
+*
+*   \brief         Bootloader - confirm before resetting into FBL
+*
+*   \author        MS
+*
+*   \return        none
+*
+***************************************************************************************************/
+STATIC void menu_nav_draw_bootloader( void )
+{
+    HMI_SH1106_draw_text( 1u, 0u, "ENTER BOOTLOADER?", TRUE );
+    HMI_SH1106_draw_text( 3u, 0u, "CONFIRM = Yes", TRUE );
+    HMI_SH1106_draw_text( 4u, 0u, "BACK = Cancel", TRUE );
+}
+
+/*!
+****************************************************************************************************
+*
+*   \brief         Bootloader - CONFIRM sets the FBL request flag and resets, BACK cancels
+*
+*   \author        MS
+*
+*   \param         input - What the panel reported
+*
+*   \return        none
+*
+*   \note          SHARED_RAM_set_fbl_request(TRUE) followed by a reset is the same explicit-request
+*                  path BM_run() checks on every boot (see BM.c's BM_check_for_reprog_flag()) - BM
+*                  still validates FBL's presence/CRC/signature before actually jumping to it, the
+*                  same as every other path into FBL, so a corrupt/missing FBL image fails safe
+*                  rather than this screen being able to strand the device. SHARED_RAM's magic is
+*                  already valid by the time APP is running (BM sets it before ever jumping here),
+*                  so no SHARED_RAM_init() call is needed first. MCU_JUMP_software_reset() never
+*                  returns, so CONFIRM has no case that falls through to anything after it.
+*
+***************************************************************************************************/
+STATIC void menu_nav_handle_bootloader( HMI_SH1106_input_et input )
+{
+    switch( input )
+    {
+        case HMI_SH1106_INPUT_SELECT:
+        case HMI_SH1106_INPUT_CONFIRM:
+            SHARED_RAM_set_fbl_request( TRUE );
+            MCU_JUMP_software_reset();
+        break;
+
+        case HMI_SH1106_INPUT_BACK:
+            MENU_NAV_goto( MENU_NAV_SCREEN_MAIN_MENU );
+        break;
+
+        default:
+            /* The knob does nothing on a confirm screen */
+        break;
+    }
 }
 
 /*!

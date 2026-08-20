@@ -131,14 +131,7 @@ INCLUDES  := \
 FBL_OPTIMISATION  := -Os
 MCAL_OPTIMISATION := -Os
 
-# FBL's vector table sits at FBL_CODE_START (0x08002100), not FLASH_BASE (0x08000000) - without
-# this, SystemInit() (xCOMMON_MODULES/Src/MCAL/stm32/stm32f10x/core/system_stm32f10x.c, called
-# from startup_stm32f10x_md.c's Default_Reset_Handler on every FBL boot) unconditionally does
-# SCB->VTOR = FLASH_BASE | VECT_TAB_OFFSET, defaulting VECT_TAB_OFFSET to 0 and pointing VTOR back
-# at BM's vector table - clobbering the correct value BM's own MCU_JUMP_to_address() already set
-# before jumping here. Every interrupt (SysTick, CAN RX, ...) would then vector through BM's table
-# instead of FBL's. Same fix APP/Makefile already applies for the same reason (APP's own table is
-# at APP_CODE_START, not FLASH_BASE either) - see its -DVECT_TAB_OFFSET=0x5100.
+# FBL's vector table sits at FBL_CODE_START (0x08002100), not FLASH_BASE (0x08000000).
 CFLAGS += -DVECT_TAB_OFFSET=$(FBL_CODE_START)
 
 LDFLAGS := \

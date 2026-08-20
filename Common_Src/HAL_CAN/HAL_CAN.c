@@ -40,6 +40,14 @@ void HAL_CAN_init( HAL_CAN_rx_callback_ft rx_callback_p )
     /* CAN1 peripheral clock (APB1) */
     RCC_APB1PeriphClockCmd( RCC_APB1Periph_CAN1, ENABLE );
 
+    /* GPIOA clock (APB2) - CAN_TX_PORT/CAN_RX_PORT are both GPIOA (see HAL_config.h). Enabled
+       here rather than left to the caller: APP happens to already enable it via HAL_BRD_init()
+       before HAL_CAN_init() runs, but FBL calls this directly with no such prior step - without
+       this, GPIO_Init() below writes to a clock-gated peripheral and silently has no effect,
+       leaving PA11/PA12 as floating inputs instead of CAN_RX/CAN_TX. Idempotent/harmless if
+       already enabled. */
+    RCC_APB2PeriphClockCmd( RCC_APB2Periph_GPIOA, ENABLE );
+
     /* PA12 — CAN_TX: alternate function push-pull */
     gpio_init.GPIO_Pin   = CAN_TX_PIN;
     gpio_init.GPIO_Mode  = GPIO_Mode_AF_PP;

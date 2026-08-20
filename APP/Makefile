@@ -155,7 +155,7 @@ else
     MCAL_OPTIMISATION        := -Os
 endif
 
-# APP vector table offset: APP_FLASH_START (0x08005000) + 256-byte app_header = 0x08005100
+# APP vector table offset: APP_FLASH_START (0x08005000) + 256-byte app_header = 0x08005100.
 CFLAGS += -DVECT_TAB_OFFSET=0x5100
 
 # Linker flags configuration
