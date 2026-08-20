@@ -92,6 +92,18 @@ FLASH_PACK_SEEDKEY           := ../Tool_cfg/CANFLASH/seedkey.dll
 FLASH_PACK_OUTPUT            := $(BUILD_OUT_DIR)/$(PROJECT_NAME)_$(VERSION).flashpack
 
 ####################################################################################################
+# BearSSL (vendored, shared submodule - xCOMMON_MODULES/Src/CRYPTO/BearSSL, unmodified upstream)
+####################################################################################################
+# CRYPTO.c (xCOMMON_MODULES/Src/CRYPTO/CRYPTO.c) is a thin wrapper over this - shared with
+# AUTOCFG_HUB, which vendors its own copy of the same unmodified library at ../BearSSL relative to
+# its own APP/. Headers (inc/) are already on INCLUDES below via the broad xCOMMON_MODULES/Src
+# directory search - no separate -I needed. NOTE: AUTOCFG_HUB's own Makefile still points at its
+# project-local ../BearSSL, not this shared path - update that separately if/when it should match.
+BEARSSL_DIR                  := ../xCOMMON_MODULES/Src/CRYPTO/BearSSL
+BearSSL_LIB                  := $(BEARSSL_DIR)/Build/BEARSSL.a
+BearSSL_MINGW_LIB            := $(BEARSSL_DIR)/build_mingw/BEARSSL_mingw.a
+
+####################################################################################################
 # Local build-tool paths (avoids relying on which project's BuildEnv is first on PATH)
 ####################################################################################################
 BUILD_ENV_BIN                := ../BuildEnv/xBuildEnv/bin
@@ -332,13 +344,13 @@ $(CEEDLING_COV_DIR):
 # BearSSL MinGW library for test environment
 $(BearSSL_MINGW_LIB):
 	@echo "Building BearSSL MinGW library for tests..."
-	@$(MAKE) $(MAKE_FLAGS) -C ../BearSSL -f Makefile.mingw.mk all
+	@$(MAKE) $(MAKE_FLAGS) -C $(BEARSSL_DIR) -f Makefile.mingw.mk all
 	@$(MAKE) $(MAKE_FLAGS) force_ceedling_relink
 
 # BearSSL ARM library for embedded target
 $(BearSSL_LIB):
 	@echo "Building BearSSL ARM library for embedded target..."
-	@$(MAKE) $(MAKE_FLAGS) -C ../BearSSL -f Makefile.arm.mk all
+	@$(MAKE) $(MAKE_FLAGS) -C $(BEARSSL_DIR) -f Makefile.arm.mk all
 
 # mbedTLS MinGW library for test environment
 $(MBEDTLS_MINGW_LIB):

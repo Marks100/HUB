@@ -7,12 +7,23 @@
 *   signature_enabled is flipped on - see secure_boot_hmac_secret.h) its HMAC-SHA256 signature,
 *   then jumps to APP or FBL - see BM.h for the full decision sequence.
 *
-*   HMAC-SHA256 chosen as the first algorithm wired up here (over ECDSA/Ed25519, which
-*   app_signer also supports) to prove out the full header/CRC/signature/boot pipeline with the
-*   simplest primitive first - it's a straight SHA-256 + HMAC construction, no big-integer EC
-*   math, so there's very little surface for a subtle implementation bug. BM_signature_verify_func_t
-*   is dependency-injected specifically so swapping this for ECDSA/Ed25519 later, once the
-*   pipeline is proven, only means changing this file - BM.c and app_signer's interfaces don't move.
+*   HMAC-SHA256 chosen as the first algorithm wired up here (over ECDSA, which app_signer also
+*   supports) to prove out the full header/CRC/signature/boot pipeline with the simplest primitive
+*   first - it's a straight SHA-256 + HMAC construction, no big-integer EC math, so there's very
+*   little surface for a subtle implementation bug. BM_signature_verify_func_t is dependency-
+*   injected specifically so swapping this for ECDSA later only means changing this file - BM.c
+*   and app_signer's interfaces don't move.
+*
+*   Ed25519 (xCOMMON_MODULES/Src/CRYPTO/ed25519) was evaluated and ruled out for this target: its
+*   verify path costs ~16.6KB (ref10-derived, heavily unrolled sc_reduce/sha512_compress), which
+*   doesn't fit BM's 8KB region. ECDSA P-256 via micro-ecc costs ~3.5KB instead (generic bignum
+*   code, not unrolled) and reuses the SHA-256 already needed for HMAC - see
+*   xCOMMON_MODULES/Src/CRYPTO/ECDSA_P256/ECDSA_P256_verify.c for the validated-but-not-yet-live
+*   implementation.
+*
+*   HMAC_SHA256_verify()/ECDSA_P256_verify() are shaped to match BM_signature_verify_func_t
+*   exactly and assigned to .signature_verify directly below - no adapter needed here, the same
+*   way .crc_calculate takes CHKSUM_calc_hw_crc32 straight from the CHKSUM module.
 */
 
 /***************************************************************************************************
@@ -25,6 +36,8 @@
 #include "MCU_JUMP.h"
 #include "HMAC_SHA256.h"
 #include "secure_boot_hmac_secret.h"
+#include "ECDSA_P256_verify.h"
+#include "secure_boot_public_key.h"
 
 /***************************************************************************************************
 **                              External Symbols from Linker                                     **
@@ -37,6 +50,16 @@ extern u32_t __app_header_start__;
 extern u32_t __app_code_start__;
 extern u32_t __app_code_end__;
 extern u32_t _estack;
+
+/* .data/.bss init boundaries - BM_Reset_Handler() below does the flash->RAM copy and zeroing
+   itself, since BM deliberately doesn't link startup_stm32f10x_md.c (see BM/Makefile's comment
+   on BM_C_SRCS - linking it too would duplicate .isr_vector). Without this, every non-const
+   global starts as whatever garbage was already in SRAM at power-on, not its initialiser. */
+extern u32_t _sidata;
+extern u32_t _sdata;
+extern u32_t _edata;
+extern u32_t _sbss;
+extern u32_t _ebss;
 
 /***************************************************************************************************
 **                              CRC Configuration                                                **
@@ -68,75 +91,6 @@ STATIC void clk_init( void )
 }
 
 /***************************************************************************************************
-**                              Signature Verification                                           **
-***************************************************************************************************/
-/*!
-****************************************************************************************************
-*
-*   \brief         Constant-time byte-buffer comparison
-*
-*   \author        MS
-*
-*   \param         a_p    - first buffer
-*   \param         b_p    - second buffer
-*   \param         length - number of bytes to compare
-*
-*   \return        TRUE if every byte matches, FALSE otherwise
-*
-*   \note          Deliberately not STDC_memcompare()/memcmp() - those are free to (and typically
-*                  do) return on the first mismatching byte, which leaks how many leading bytes of
-*                  an attacker's guess were correct via timing. Always touches every byte,
-*                  regardless of where the first difference is.
-*
-***************************************************************************************************/
-STATIC false_true_et constant_time_equal( const u8_t* a_p, const u8_t* b_p, u32_t length )
-{
-    u8_t  diff = 0u;
-    u32_t i;
-
-    for( i = 0u; i < length; i++ )
-    {
-        diff |= ( a_p[i] ^ b_p[i] );
-    }
-
-    return( ( diff == 0u ) ? TRUE : FALSE );
-}
-
-/*!
-****************************************************************************************************
-*
-*   \brief         HMAC-SHA256 signature verification
-*
-*   \author        MS
-*
-*   \param         code_p          - start of the code region that was hashed/signed
-*   \param         code_len        - length of code_p in bytes
-*   \param         signature_p     - header's 64-byte signature field; only the first
-*                                     HMAC_SHA256_TAG_SIZE (32) bytes are meaningful - app_signer's
-*                                     --algorithm=hmac-sha256 zero-pads the rest to fill the same
-*                                     fixed-width field ECDSA/Ed25519 also use
-*   \param         public_key_p    - shared secret (see secure_boot_hmac_secret.h - despite the
-*                                     generic "public_key" name this dependency-injection slot
-*                                     shares with every algorithm, this one is NOT public)
-*   \param         public_key_len  - shared secret length in bytes
-*
-*   \return        TRUE only if the computed HMAC-SHA256 tag matches the stored one
-*
-***************************************************************************************************/
-STATIC false_true_et signature_verify_hmac_sha256( const u8_t* code_p,
-                                                     u32_t       code_len,
-                                                     const u8_t* signature_p,
-                                                     const u8_t* public_key_p,
-                                                     u32_t       public_key_len )
-{
-    u8_t computed_tag[HMAC_SHA256_TAG_SIZE];
-
-    HMAC_SHA256_calculate( public_key_p, public_key_len, code_p, code_len, computed_tag );
-
-    return( constant_time_equal( computed_tag, signature_p, HMAC_SHA256_TAG_SIZE ) );
-}
-
-/***************************************************************************************************
 **                              Boot Manager Configuration                                       **
 ***************************************************************************************************/
 STATIC const bm_config_st bm_config_s =
@@ -150,8 +104,8 @@ STATIC const bm_config_st bm_config_s =
     /* CRC calculation */
     .crc_calculate = CHKSUM_calc_hw_crc32,
 
-    /* Signature verification - see signature_verify_hmac_sha256() above */
-    .signature_verify = signature_verify_hmac_sha256,
+    /* Signature verification - see HMAC_SHA256_verify() in xCOMMON_MODULES/Src/CRYPTO/HMAC_SHA256 */
+    .signature_verify = HMAC_SHA256_verify,
 
     /* Platform-specific jump function */
     .jump_to_address = MCU_JUMP_to_address,
@@ -200,6 +154,27 @@ const u32_t bm_vector_table[2] =
 
 void BM_Reset_Handler( void )
 {
+    u32_t* src_p;
+    u32_t* dst_p;
+
+    /* Copy .data (initialised globals) from flash to RAM */
+    src_p = &_sidata;
+    dst_p = &_sdata;
+    while( dst_p < &_edata )
+    {
+        *dst_p = *src_p;
+        dst_p++;
+        src_p++;
+    }
+
+    /* Zero .bss (uninitialised globals) - without this they start as SRAM power-on garbage */
+    dst_p = &_sbss;
+    while( dst_p < &_ebss )
+    {
+        *dst_p = 0u;
+        dst_p++;
+    }
+
     BM_init( &bm_config_s );
     BM_run();
 }
