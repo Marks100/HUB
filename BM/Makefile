@@ -57,6 +57,7 @@ BM_C_SRCS := \
     $(COMMON_MODULES_DIR)/MCAL/stm32/stm32f10x/core/system_stm32f10x.c
 
 BM_C_OBJS := $(patsubst %.c, $(OBJ_DIR)/%.o, $(notdir $(BM_C_SRCS)))
+BM_C_DEPS := $(BM_C_OBJS:.o=.d)
 VPATH     := $(sort $(dir $(BM_C_SRCS)))
 
 INCLUDES  := \
@@ -146,3 +147,5 @@ full_memory_stats: $(BM_MAP_FILE)
 
 # Legacy alias - this is what tasks.json's "BM_memory_stats" task already calls
 memory_stats: basic_memory_stats
+
+-include $(BM_C_DEPS)
