@@ -46,6 +46,9 @@
    not itself occupy any section in. */
 extern u32_t __app_start__;
 extern u32_t __fbl_start__;
+extern u32_t __fbl_header_start__;
+extern u32_t __fbl_code_start__;
+extern u32_t __fbl_code_end__;
 extern u32_t __app_header_start__;
 extern u32_t __app_code_start__;
 extern u32_t __app_code_end__;
@@ -125,6 +128,12 @@ STATIC const bm_config_st bm_config_s =
     .app_code_start_address  = (u32_t)&__app_code_start__,
     .app_code_end_address    = (u32_t)&__app_code_end__,
     .app_presence_pattern    = APP_HEADER_PRESENCE_PATTERN,
+
+    /* FBL memory addresses - FBL carries its own header (see FBL/linker_script/
+       STM32F103C8_FBL_flash.ld), validated the same way APP is before BM_jump_to_fbl() jumps */
+    .fbl_header_address      = (u32_t)&__fbl_header_start__,
+    .fbl_code_start_address  = (u32_t)&__fbl_code_start__,
+    .fbl_code_end_address    = (u32_t)&__fbl_code_end__,
 
     /* Signature configuration - see secure_boot_hmac_secret.h before touching this */
     .firmware_public_key_p    = FIRMWARE_HMAC_SECRET,

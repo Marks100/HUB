@@ -4,6 +4,8 @@
 ** Flash layout (64 KB total):
 **   BM   : 0x08000000 - 0x08001FFF   8 KB  <- this image
 **   FBL  : 0x08002000 - 0x08004FFF  12 KB
+**     .app_header : 0x08002000 - 0x080020FF  256 B
+**     code start  : 0x08002100               (FBL_CODE_START)
 **   APP  : 0x08005000 - 0x0800FFFF  44 KB
 **     .app_header : 0x08005000 - 0x080050FF  256 B
 **     code start  : 0x08005100               (APP_CODE_START)
@@ -26,6 +28,9 @@ _Min_Stack_Size = 0x400;   /* 1 KB */
    xCOMMON_MODULES/Src/HEADER/HEADER.h's 256-byte header (code start = header + 0x100). */
 __bm_start__         = 0x08000000;
 __fbl_start__        = 0x08002000;
+__fbl_header_start__  = 0x08002000;
+__fbl_code_start__    = 0x08002100;
+__fbl_code_end__      = 0x08004FFF;
 __app_start__         = 0x08005000;
 __app_header_start__  = 0x08005000;
 __app_code_start__    = 0x08005100;

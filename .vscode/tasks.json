@@ -41,6 +41,18 @@
             "command": "mingw32-make.exe bm_rebuild",
         },
         {
+            "label": "FBL_build",
+            "type": "shell",
+            "options": { "cwd": "${workspaceFolder}/FBL" },
+            "command": "mingw32-make.exe fbl_build",
+        },
+        {
+            "label": "FBL_rebuild",
+            "type": "shell",
+            "options": { "cwd": "${workspaceFolder}/FBL" },
+            "command": "mingw32-make.exe fbl_rebuild",
+        },
+        {
             "label": "Combined_image",
             "type": "shell",
             "options": { "cwd": "${workspaceFolder}/APP" },
@@ -92,6 +104,12 @@
             "label": "BM_memory_stats",
             "type": "shell",
             "options": { "cwd": "${workspaceFolder}/BM" },
+            "command": "mingw32-make.exe memory_stats",
+        },
+        {
+            "label": "FBL_memory_stats",
+            "type": "shell",
+            "options": { "cwd": "${workspaceFolder}/FBL" },
             "command": "mingw32-make.exe memory_stats",
         },
         {

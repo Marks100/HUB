@@ -3,6 +3,7 @@
 # Export ELF and combined HEX paths as Windows paths for Trace32
 export LAUTERBACH_APP_EXE=$(cygpath -w $(find $PTLD/APP/Build/ -type f -name "*.elf"))
 export LAUTERBACH_BM_EXE=$(cygpath -w $(find $PTLD/BM/Build/  -type f -name "*.elf"))
+export LAUTERBACH_FBL_EXE=$(cygpath -w $(find $PTLD/FBL/Build/  -type f -name "*.elf"))
 export LAUTERBACH_COMBINED_EXE=$(cygpath -w $(find $PTLD/APP/Build/ -type f -name "*combined*.hex"))
 
 # Launch Trace32 for ARM Cortex-M3 (STM32)

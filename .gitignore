@@ -9,3 +9,5 @@ Tool_cfg/Lauterbach/T32store.cmm
 # lets anyone forge a firmware signature BM will accept. Never commit the real values.
 Tool_cfg/SigningKeys/hmac_secret.txt
 BM/Src/secure_boot_hmac_secret.h
+FBL/Build/obj/
+FBL/Build/

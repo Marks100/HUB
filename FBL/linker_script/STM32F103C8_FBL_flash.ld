@@ -1,46 +1,56 @@
 /*
-** STM32F103C8T6 APP partition linker script
+** STM32F103C8T6 Field Bootloader (FBL) linker script
 **
 ** Flash layout (64 KB total):
 **   BM   : 0x08000000 - 0x08001FFF   8 KB
-**   FBL  : 0x08002000 - 0x08004FFF  12 KB
-**   APP  : 0x08005000 - 0x0800FFFF  44 KB  <- this image
-**
-** APP internal layout:
-**   .app_header : 0x08005000 - 0x080050FF  256 B  (presence pattern + CRC)
-**   .isr_vector : 0x08005100 ...            code start (APP_CODE_START)
+**   FBL  : 0x08002000 - 0x08004FFF  12 KB  <- this image
+**     .app_header : 0x08002000 - 0x080020FF  256 B  (presence pattern + CRC, see HEADER.h -
+**                                                     BM validates this before jumping here,
+**                                                     same tooling/layout as APP's header)
+**     .isr_vector : 0x08002100 ...            code start
+**   APP  : 0x08005000 - 0x0800FFFF  44 KB
 **
 ** RAM layout (20 KB total):
 **   .noinit_shared : 0x20000000 - 0x2000001F   32 B  (BM/FBL/APP handoff - see SHARED_RAM.h)
 **   everything else: 0x20000020 - 0x20004FFF
+**
+** Must stay numerically consistent with BM/linker_script/STM32F103C8_BM_flash.ld and
+** APP/linker_script/STM32F103C8_flash.ld / APP/Makefile's FBL_FLASH_START/SIZE - all three
+** encode the same three-way partition.
 */
 
-ENTRY(Reset_Handler)
+ENTRY(FBL_Reset_Handler)
 
-_estack = 0x20005000;   /* top of 20 KB SRAM - same as BM/FBL, see SHARED_RAM.h's fixed layout */
+_estack = 0x20005000;   /* top of 20 KB SRAM - same as BM/APP, so a soft reset between stages
+                            never needs to reinitialise the stack pointer differently */
 
-_Min_Heap_Size  = 0x200;   /* 512 B */
-_Min_Stack_Size = 0x400;   /* 1 KB  */
+_Min_Heap_Size  = 0x0;
+_Min_Stack_Size = 0x400;   /* 1 KB */
+
+/* App region FBL writes into - not occupied by any section here, just constants fbl_main.c's
+   fbl_config_s is built from. Must match BM's/APP's __app_start__/__app_code_end__. */
+__app_start__     = 0x08005000;
+__app_code_end__  = 0x0800FFFF;
 
 MEMORY
 {
-    FLASH          (rx)  : ORIGIN = 0x08005000, LENGTH = 44K
+    FLASH          (rx)  : ORIGIN = 0x08002000, LENGTH = 12K
     m_data_shared  (xrw) : ORIGIN = 0x20000000, LENGTH = 0x20
     RAM            (xrw) : ORIGIN = 0x20000020, LENGTH = 0x4FE0
 }
 
 SECTIONS
 {
-    /* APP header: presence pattern + CRC, padded to 256 bytes.
-       The CRC field at offset +4 is patched by app_crc_injector. */
+    /* FBL header: presence pattern + CRC, padded to 256 bytes - same layout/tooling as APP's,
+       see xCOMMON_MODULES/Src/HEADER/HEADER.h. The CRC field is patched by app_crc_injector,
+       BM validates it before jumping here (see BM.c's BM_jump_to_fbl()). */
     .app_header :
     {
         . = ALIGN(4);
         KEEP(*(.app_header))
-        . = ALIGN(0x100);   /* pad to 256-byte boundary -> next addr = 0x08005100 */
+        . = ALIGN(0x100);   /* pad to 256-byte boundary -> next addr = 0x08002100 */
     } >FLASH
 
-    /* Vector table at APP_CODE_START = 0x08005100 */
     .isr_vector :
     {
         . = ALIGN(4);
@@ -102,8 +112,7 @@ SECTIONS
     } >FLASH
 
     /* BM/FBL/APP handoff - NOLOAD, must survive a soft reset, so it is deliberately not zeroed
-       by startup the way .bss is - see SHARED_RAM.h. Not previously present in this script;
-       added so APP can call SHARED_RAM_set_fbl_request() to request FBL entry on next boot. */
+       by startup the way .bss is - see SHARED_RAM.h. */
     .noinit_shared (NOLOAD) :
     {
         . = ALIGN(4);

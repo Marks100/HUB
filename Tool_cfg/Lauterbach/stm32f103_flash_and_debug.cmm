@@ -20,6 +20,7 @@
 
 &app_exe=OS.ENV("LAUTERBACH_APP_EXE")
 &bm_exe=OS.ENV("LAUTERBACH_BM_EXE")
+&fbl_exe=OS.ENV("LAUTERBACH_FBL_EXE")
 &combined_hex=OS.ENV("LAUTERBACH_COMBINED_EXE")
 
 ; --------------------------------------------------------------------------------
@@ -52,8 +53,10 @@ SYStem.Up
 
 ; --------------------------------------------------------------------------------
 ; Load debug symbols from both partitions (no reflash)
-Data.LOAD.auto &bm_exe  /nocode /noclear
 Data.LOAD.auto &app_exe /nocode /noclear
+Data.LOAD.auto &bm_exe  /nocode /noclear
+Data.LOAD.auto &fbl_exe /nocode /noclear
+
 
 Mode.Hll
 

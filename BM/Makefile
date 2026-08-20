@@ -111,12 +111,22 @@ bm_build: gen_hmac_secret_header $(BM_ELF_FILE) basic_memory_stats
 
 bm_rebuild: bm_clean bm_build
 
-# Deliberately phony (always runs), not a real $(HMAC_SECRET_HEADER): $(HMAC_SECRET_FILE) file
-# rule - if HMAC_SECRET_FILE doesn't exist, Make's own dependency resolution would refuse to even
-# invoke the recipe ("No rule to make target ... Stop"), burying gen_secure_boot_hmac_header's
-# actual "here's the openssl command to fix this" error before it can ever print.
-gen_hmac_secret_header:
+# HMAC_SECRET_FILE gets its own rule so a missing secret still fails with a clear "run this
+# openssl command" message instead of Make's generic "No rule to make target ... Stop" - same
+# concern the old always-phony version worked around, now handled by giving the missing-
+# prerequisite case its own recipe instead of by skipping real dependency tracking on the header.
+$(HMAC_SECRET_FILE):
+	@echo "ERROR: secret file not found: $(HMAC_SECRET_FILE)" >&2
+	@echo "       Generate one with: openssl rand -hex 32 > $(HMAC_SECRET_FILE)" >&2
+	@exit 1
+
+# Real prerequisite now - only regenerates the header (and therefore only forces bm_main.o to
+# recompile) when hmac_secret.txt actually changes or the header doesn't exist yet, instead of
+# unconditionally rewriting it - and recompiling bm_main.o - on every single build.
+$(HMAC_SECRET_HEADER): $(HMAC_SECRET_FILE)
 	@$(BUILD_ENV_BIN)/gen_secure_boot_hmac_header $(HMAC_SECRET_FILE) --output=$(HMAC_SECRET_HEADER)
+
+gen_hmac_secret_header: $(HMAC_SECRET_HEADER)
 
 $(OBJ_DIR):
 	@mkdir -p $(OBJ_DIR)

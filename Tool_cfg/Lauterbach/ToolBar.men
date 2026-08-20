@@ -29,6 +29,13 @@ MENU.ReProgram
 			List.auto
 		)
 		SEPARATOR
+		TOOLITEM "FBL REQUEST TEST" "[:pgotill]" ""
+		(
+			; Write the reprog request directly into shared RAM (see offsets above)
+			Data.Set 0x20000000 %Long 0xDEADBEEF   ; magic - marks shared RAM valid (soft reset)
+			Data.Set 0x20000004 %Byte 0x1          ; fbl_request = TRUE
+		)
+		SEPARATOR
 		TOOLITEM "NODEBUG" "[:flashreset]" ""
 		(
 			SYStem.mode.nodebug

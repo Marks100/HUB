@@ -70,7 +70,7 @@ APP_CODE_END                 := $(APP_FLASH_END)
 APP_CRC_TYPE                 := stm32-hw-crc32
 
 BM_IMAGE                     := ../BM/$(BUILD_OUT_DIR)/BM.hex
-FBL_IMAGE                    := ../FBL/$(BUILD_OUT_DIR)/FBL.hex
+FBL_IMAGE                    := ../FBL/$(BUILD_OUT_DIR)/FBL_signed.hex
 COMBINED_IMAGE               := $(BUILD_OUT_DIR)/BM_FBL_APP_combined.hex
 
 # EOL (End-of-Line) data injection
@@ -202,14 +202,13 @@ rebuild: build_clean
 $(BM_IMAGE):
 	@$(MAKE) $(MAKE_FLAGS) -C ../BM bm_build
 
-# Placeholder — uncomment when FBL is implemented
 $(FBL_IMAGE):
-#	@$(MAKE) $(MAKE_FLAGS) -C ../FBL fbl_build
+	@$(MAKE) $(MAKE_FLAGS) -C ../FBL fbl_build
 
-all: $(BM_IMAGE) app_build
-	@$(SREC) $(BM_IMAGE) -Intel --multiple $(APP_HEX_SIGNED_FILE) -Intel --multiple -o $(COMBINED_IMAGE) -intel
+all: $(BM_IMAGE) $(FBL_IMAGE) app_build
+	@$(SREC) $(BM_IMAGE) -Intel --multiple $(FBL_IMAGE) -Intel --multiple $(APP_HEX_SIGNED_FILE) -Intel --multiple -o $(COMBINED_IMAGE) -intel
 	@echo "--> Combined image created: $(COMBINED_IMAGE)"
-	@echo "    Contains: BM ($(BM_FLASH_START)-$(BM_FLASH_END)) + APP ($(APP_FLASH_START)-$(APP_FLASH_END))"
+	@echo "    Contains: BM ($(BM_FLASH_START)-$(BM_FLASH_END)) + FBL ($(FBL_FLASH_START)-$(FBL_FLASH_END)) + APP ($(APP_FLASH_START)-$(APP_FLASH_END))"
 	@echo "--> Generating flash pack..."
 	@ruby -S $(FLASH_PACK_SCRIPT) $(FLASH_PACK_PROFILE) $(APP_HEX_SIGNED_FILE) \
 		--output=$(FLASH_PACK_OUTPUT) \
@@ -461,8 +460,8 @@ autoversion:
 $(APP_MAP_FILE): $(APP_ELF_FILE)
 
 total_clean: test_clean build_clean doxygen_clean
-	@$(MAKE) $(MAKE_FLAGS) -C ../BM build_clean
-	@$(MAKE) $(MAKE_FLAGS) -C ../FBL clean
+	@$(MAKE) $(MAKE_FLAGS) -C ../BM bm_clean
+	@$(MAKE) $(MAKE_FLAGS) -C ../FBL fbl_clean
 	@echo "--> Total clean complete!"
 
 warnings_parser: $(APP_ELF_FILE)
