@@ -63,9 +63,17 @@ typedef enum
     MENU_NAV_SCREEN_WIFI,
     MENU_NAV_SCREEN_TB,
     MENU_NAV_SCREEN_SENSORS,
+
+    /* Dormant - implemented in MENU_NAV.c (draw/handle functions and data tables both present) but
+       deliberately not given a menu_nav_main_items_s row or a menu_nav_screens_s table entry, so
+       nothing ever navigates here and the whole implementation is unreferenced - --gc-sections
+       strips it out of the actual link. ROM was tight (see MENU_NAV.c's ROM budget history); this
+       keeps the feature in source, ready to re-enable (add the menu row + screen table entry) the
+       moment there's room, without it costing anything while it isn't. */
     MENU_NAV_SCREEN_VEHICLE,
     MENU_NAV_SCREEN_REV_COUNTER,
     MENU_NAV_SCREEN_REV_COUNTER_BAR,
+
     MENU_NAV_SCREEN_ABOUT,
     MENU_NAV_SCREEN_BOOTLOADER,
     MENU_NAV_SCREEN_NOT_IMPLEMENTED,

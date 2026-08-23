@@ -35,19 +35,6 @@
 **                              Data Types                                                        **
 ***************************************************************************************************/
 /*!
- * \brief One tire's reading for the Vehicle screen
- *
- * Placeholder data - there is no tire pressure sensor anywhere in this codebase yet (RF_MGR's
- * sensor DB has no pressure field and no FL/FR/RL/RR mapping). Replace menu_nav_tire_fl_s etc.
- * with real readings once that data source exists.
- */
-typedef struct
-{
-    s8_t temp_c;
-    u8_t pressure_psi;
-} menu_nav_tire_reading_st;
-
-/*!
  * \brief Config for a screen that edits a single 0-100 value with the knob (Brightness, Fan Speed)
  *
  * Brightness and Fan Speed are the same screen shape - a title, a live "%u%%" readout, min/max/step
@@ -77,6 +64,9 @@ typedef struct
  * the value ends up on screen, so a new gauge shape reuses this rather than re-writing the same
  * clamp/step/navigate switch. Unlike menu_nav_pct_editor_st there is no saved_p/apply_func_p - a
  * gauge's value is live and immediate, nothing to revert if BACK is pressed.
+ *
+ * DORMANT - see MENU_NAV_SCREEN_VEHICLE's comment in MENU_NAV.h. Compiled but unreferenced from
+ * any screen table row, so --gc-sections drops it from the actual link.
  */
 typedef struct
 {
@@ -129,6 +119,19 @@ typedef struct
     menu_nav_value_edit_st  edit;      /*!< Value + knob feel - see menu_nav_value_edit_st */
     GFX_bar_cfg_st          bar_cfg;   /*!< Shape - see GFX_draw_bar() */
 } menu_nav_bar_gauge_cfg_st;
+
+/*!
+ * \brief One tire's reading for the (dormant) Vehicle screen
+ *
+ * Placeholder data - there is no tire pressure sensor anywhere in this codebase yet (RF_MGR's
+ * sensor DB has no pressure field and no FL/FR/RL/RR mapping). Replace menu_nav_tire_fl_s etc.
+ * with real readings once that data source exists.
+ */
+typedef struct
+{
+    s8_t temp_c;
+    u8_t pressure_psi;
+} menu_nav_tire_reading_st;
 
 /***************************************************************************************************
 **                              Private Function Prototypes                                       **
@@ -189,9 +192,6 @@ STATIC const MENU_NAV_item_st menu_nav_main_items_s[] =
     { "Fan Speed",  MENU_NAV_SCREEN_FAN_SPEED       },
     { "WiFi",       MENU_NAV_SCREEN_WIFI            },
     { "TB",         MENU_NAV_SCREEN_TB              },
-    { "Vehicle",    MENU_NAV_SCREEN_VEHICLE         },
-    { "Rev Counter", MENU_NAV_SCREEN_REV_COUNTER    },
-    { "Rev Ctr Bar", MENU_NAV_SCREEN_REV_COUNTER_BAR },
     { "CAN Bus",    MENU_NAV_SCREEN_NOT_IMPLEMENTED },
     { "LEDs",       MENU_NAV_SCREEN_NOT_IMPLEMENTED },
     { "Buzzer",     MENU_NAV_SCREEN_BUZZER          },
@@ -206,6 +206,11 @@ STATIC const MENU_NAV_list_st menu_nav_main_list_s =
     .items_p    = menu_nav_main_items_s,
     .item_count = MENU_NAV_ITEM_COUNT( menu_nav_main_items_s ),
 };
+
+/* ===== Vehicle / Rev Counter / Rev Counter Bar - DORMANT, see MENU_NAV_SCREEN_VEHICLE's comment
+   in MENU_NAV.h. Data tables and draw/handle functions are all present and compile clean, just not
+   reachable from menu_nav_main_items_s or menu_nav_screens_s, so none of it is in the actual link.
+   ===== */
 
 /* ===== Vehicle - placeholder tire readings, see menu_nav_tire_reading_st ===== */
 STATIC const menu_nav_tire_reading_st menu_nav_tire_fl_s = { 22, 32 };
@@ -539,26 +544,6 @@ STATIC const MENU_NAV_screen_st menu_nav_screens_s[MENU_NAV_NUM_SCREENS] =
         .handle_func_p   = menu_nav_handle_sensors,   /* The knob steps through sensor slots */
         .on_enter_func_p = menu_nav_enter_sensors,    /* Always start back at slot 0 */
         .back_screen     = MENU_NAV_SCREEN_MAIN_MENU,
-    },
-
-    [MENU_NAV_SCREEN_VEHICLE] =
-    {
-        .draw_func_p  = menu_nav_draw_vehicle,
-        .back_screen  = MENU_NAV_SCREEN_MAIN_MENU,
-    },
-
-    [MENU_NAV_SCREEN_REV_COUNTER] =
-    {
-        .draw_func_p   = menu_nav_draw_rev_counter,
-        .handle_func_p = menu_nav_handle_rev_counter,   /* The knob steps the value, not a cursor */
-        .back_screen   = MENU_NAV_SCREEN_MAIN_MENU,
-    },
-
-    [MENU_NAV_SCREEN_REV_COUNTER_BAR] =
-    {
-        .draw_func_p   = menu_nav_draw_rev_counter_bar,
-        .handle_func_p = menu_nav_handle_rev_counter_bar,   /* The knob steps the value, not a cursor */
-        .back_screen   = MENU_NAV_SCREEN_MAIN_MENU,
     },
 
     [MENU_NAV_SCREEN_ABOUT] =
@@ -1275,6 +1260,9 @@ STATIC void menu_nav_handle_sensors( HMI_SH1106_input_et input )
         break;
     }
 }
+
+/* ===== Vehicle / Rev Counter / Rev Counter Bar screens - DORMANT, see MENU_NAV_SCREEN_VEHICLE's
+   comment in MENU_NAV.h. ===== */
 
 /*!
 ****************************************************************************************************

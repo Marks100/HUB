@@ -54,9 +54,12 @@ STATIC void systick_init_wrapper( void );
 STATIC void can_init_wrapper( void );
 STATIC void cantp_init_wrapper( void );
 STATIC void pdur_init_wrapper( void );
-STATIC void fbl_can_rx_wrapper( u32_t id, u8_t* data_p, u8_t dlc );
+STATIC void fbl_can_rx_wrapper( u32_t id, u8_t id_type, u8_t* data_p, u8_t dlc );
 STATIC void fbl_cantp_send_wrapper( CANTP_can_msg_format_st* msg_p );
 STATIC void fbl_cantp_tx_request_wrapper( u32_t id, u8_t id_type, u8_t frame_type, u8_t* data_p, u16_t len, u8_t channel );
+STATIC void fbl_cantp_rx_indication_wrapper( u32_t id, CANTP_id_type_et id_type, u8_t* data_p, u16_t len );
+STATIC void fbl_cantp_tick_wrapper( void );
+STATIC void fbl_cantp_instance_init( void );
 STATIC void fbl_pdur_tx_uds( u8_t* data_p, u16_t len );
 STATIC void fbl_uds_session_notify( UDS_session_et old_session, UDS_session_et new_session );
 STATIC void tja1051_en_pin_set( low_high_et state );
@@ -152,24 +155,70 @@ STATIC const TJA1051_config_st tja1051_config_s =
 /***************************************************************************************************
 **                              CAN / CAN-TP / PDU-R / UDS Wiring                                 **
 ***************************************************************************************************/
-STATIC void fbl_can_rx_wrapper( u32_t id, u8_t* data_p, u8_t dlc )
+/* Referenced by fbl_can_rx_wrapper, fbl_cantp_send_wrapper, fbl_cantp_tx_request_wrapper and
+   fbl_cantp_tick_wrapper below - must be defined before them, not just forward-declared, since
+   they're plain function bodies (not deferred until after CANTP_init() runs). */
+/* Deliberately NOT a designated initializer - see app_cantp_instance_s's identical comment in
+   APP/Src/INT_STUBS/INTEGRATION_STUBS.c: CANTP_instance_st embeds ~1.7KB of near-all-zero RX/TX
+   queue and TP session arrays, and a designated initializer with any non-zero field forces the
+   compiler to store the WHOLE struct as flash-resident .data. On FBL's already razor-thin 12KB
+   budget this is the difference between fitting and not. Left plain (zero-initialized in .bss)
+   and configured at runtime by fbl_cantp_instance_init(), called from cantp_init_wrapper() below
+   before CANTP_init(). */
+STATIC CANTP_instance_st fbl_cantp_instance_s;
+
+STATIC void fbl_cantp_instance_init( void )
 {
-    CANTP_rx_frame_received( id, STANDARD_ID, data_p, (u16_t)dlc, 0u );
+    fbl_cantp_instance_s.CANTP_message_rx_func_p = fbl_cantp_rx_indication_wrapper;
+    fbl_cantp_instance_s.tx_func_p               = fbl_cantp_send_wrapper;
+    fbl_cantp_instance_s.tp_buffer               = pdur_buffer_s;
+    fbl_cantp_instance_s.tp_ids[0]               = FBL_UDS_REQUEST_ID;
+    fbl_cantp_instance_s.tp_ids[1]               = FBL_CAN_RX_ID;
+    fbl_cantp_instance_s.st_min                  = 10u;
+    fbl_cantp_instance_s.rx_block_size           = 10u;
+    fbl_cantp_instance_s.N_Cr                    = CANTP_DEFAULT_N_CR;
+    fbl_cantp_instance_s.N_Bs                    = CANTP_DEFAULT_N_BS;
+    fbl_cantp_instance_s.N_Ar                    = CANTP_DEFAULT_N_AR;
+    fbl_cantp_instance_s.uds_req_id              = FBL_UDS_REQUEST_ID;
+    fbl_cantp_instance_s.uds_resp_id             = FBL_UDS_RESPONSE_ID;
+}
+
+STATIC void fbl_can_rx_wrapper( u32_t id, u8_t id_type, u8_t* data_p, u8_t dlc )
+{
+    CANTP_rx_frame_received( &fbl_cantp_instance_s, id, (CANTP_id_type_et)id_type, data_p, (u16_t)dlc );
 }
 
 STATIC void fbl_cantp_send_wrapper( CANTP_can_msg_format_st* msg_p )
 {
     if( msg_p != NULL_P )
     {
-        (void)HAL_CAN_send_frame( msg_p->Id, msg_p->Data, msg_p->DLC );
+        (void)HAL_CAN_send_frame( msg_p->Id, (u8_t)msg_p->id_type, msg_p->Data, msg_p->DLC );
     }
 }
 
 /* PDUR's lower_layer_tx_func_t shape - routes application TX through CANTP so multi-frame
-   responses get segmented, matching PDUR.c's PDUR_tx() which calls this directly per-route. */
+   responses get segmented, matching PDUR.c's PDUR_tx() which calls this directly per-route.
+   channel is unused now that a CANTP instance IS a physical channel (see CANTP_instance_st) -
+   kept as a parameter only because PDUR_lower_layer_tx_func_t's shape is shared with non-CANTP
+   routes. */
 STATIC void fbl_cantp_tx_request_wrapper( u32_t id, u8_t id_type, u8_t frame_type, u8_t* data_p, u16_t len, u8_t channel )
 {
-    (void)CANTP_tx_request( id, (CANTP_id_type_et)id_type, (CANTP_frame_type_et)frame_type, data_p, len, channel, NULL_P );
+    (void)channel;
+    (void)CANTP_tx_request( &fbl_cantp_instance_s, id, (CANTP_id_type_et)id_type, (CANTP_frame_type_et)frame_type, data_p, len, NULL_P );
+}
+
+/* Adapter: CANTP_message_rx_func_p carries CANTP_id_type_et (a CANTP-local enum), but
+   PDUR_rx_indication deliberately stays CANTP-agnostic and takes a plain u8_t id_type - the two
+   aren't the same type, so a direct function-pointer assignment between them isn't valid without
+   this cast. */
+STATIC void fbl_cantp_rx_indication_wrapper( u32_t id, CANTP_id_type_et id_type, u8_t* data_p, u16_t len )
+{
+    PDUR_rx_indication( id, (u8_t)id_type, data_p, len );
+}
+
+STATIC void fbl_cantp_tick_wrapper( void )
+{
+    CANTP_tick( &fbl_cantp_instance_s );
 }
 
 STATIC void can_init_wrapper( void )
@@ -185,30 +234,14 @@ STATIC void can_init_wrapper( void )
 
     TJA1051_init( &tja1051_func_table_s, &tja1051_config_s );
 
-    HAL_CAN_init( fbl_can_rx_wrapper );
+    HAL_CAN_init();
+    HAL_CAN_set_rx_callback( fbl_can_rx_wrapper );
 }
 
 STATIC void cantp_init_wrapper( void )
 {
-    STATIC CANTP_cfg_st fbl_cantp_cfg_s =
-    {
-        .CANTP_message_rx_func_p = PDUR_rx_indication,
-        .CANTP_error_func_p      = NULL_P,
-        .channel_tx_funcs        = { fbl_cantp_send_wrapper },
-        .tp_buffer               = pdur_buffer_s,
-        .tp_ids                  = { FBL_UDS_REQUEST_ID, FBL_CAN_RX_ID },
-        .st_min                  = 10u,
-        .rx_block_size           = 10u,
-        .N_Cr                    = CANTP_DEFAULT_N_CR,
-        .N_Bs                    = CANTP_DEFAULT_N_BS,
-        .N_Ar                    = CANTP_DEFAULT_N_AR,
-        .uds_req_id              = FBL_UDS_REQUEST_ID,
-        .uds_resp_id             = FBL_UDS_RESPONSE_ID,
-        .num_channels            = 1u,
-        .fd_enable               = FALSE,
-    };
-
-    CANTP_init( &fbl_cantp_cfg_s );
+    fbl_cantp_instance_init();
+    CANTP_init( &fbl_cantp_instance_s );
 }
 
 /* Bidirectional routes: functional request (0x700->0x600) and physical request (0x7E0->0x7E8).
@@ -227,7 +260,7 @@ STATIC void pdur_init_wrapper( void )
 
 STATIC void fbl_pdur_tx_uds( u8_t* data_p, u16_t len )
 {
-    PDUR_tx( FBL_UDS_RESPONSE_ID, data_p, len );
+    PDUR_tx( FBL_UDS_RESPONSE_ID, 0u, data_p, len );
 }
 
 /*!
@@ -277,7 +310,7 @@ STATIC const fbl_config_st fbl_config_s =
 
     /* Runtime function pointers */
     .wdg_kick_func_p           = NULL_P,
-    .cantp_tick_func_p         = CANTP_tick,
+    .cantp_tick_func_p         = fbl_cantp_tick_wrapper,
     .time_get_tick_func_p      = TIME_get_cumulative_run_time_ms,
     .flash_erase_sector_func_p = FLS_STM32F1_erase_sector,
     .flash_write_data_func_p   = FLS_STM32F1_write_data,

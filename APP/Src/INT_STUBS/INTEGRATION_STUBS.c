@@ -23,6 +23,10 @@
 #include "HMI_SH1106.h"
 #include "MENU_NAV.h"
 #include "HEADER.h"
+#include "CANTP.h"
+#include "UDS.h"
+#include "SHARED_RAM.h"
+#include "MCU_JUMP.h"
 
 /* APP_header_st/app_header_s live in HEADER.c (xCOMMON_MODULES/Src/HEADER) - shared across every
    project (STM32, S32K144, ...) that uses app_crc_injector/app_signer, since the byte layout those
@@ -331,10 +335,9 @@ const RF_MGR_cfg_st rf_mgr_cfg_s =
 ***************************************************************************************************/
 STATIC void pdur_hal_can_tx( u32_t id, u8_t id_type, u8_t frame_type, u8_t* data_p, u16_t len, u8_t channel )
 {
-    (void)id_type;
     (void)frame_type;
     (void)channel;
-    HAL_CAN_send_frame( id, data_p, (u8_t)len );
+    HAL_CAN_send_frame( id, id_type, data_p, (u8_t)len );
 }
 
 /* Base CAN ID for sensor telemetry frames — slot N uses ID (base + N) */
@@ -343,6 +346,117 @@ STATIC void pdur_hal_can_tx( u32_t id, u8_t id_type, u8_t frame_type, u8_t* data
 /* One TX-only PDUR route per sensor slot */
 #define CAN_SENSOR_PDUR_ENTRY( n ) \
     { 0u, 0xFFFFFFFFu, ( CAN_SENSOR_BASE_ID + (u32_t)(n) ), 0u, 0u, 0u, NULL_P, pdur_hal_can_tx, NULL_P }
+
+/* Cyclic hub heartbeat/status frame - byte0 rolling counter (proves the frame is still live,
+   not just present), byte1 current MODE_MGR mode, byte2 current RF_MGR link state. */
+#define APP_HEARTBEAT_CAN_ID    ( 0x200u )
+#define APP_HEARTBEAT_PERIOD_MS ( 1000u )
+
+/* UDS diagnostics over CAN-TP - functional (0x700/0x600) and physical (0x7E0/0x7E8) request/
+   response pair, same IDs FBL uses (FBL/Src/UDS_CFG/UDS_config.h) - safe to reuse rather than
+   needing a second set, since BM only ever runs one of APP/FBL at a time, never both, so a tester
+   never has to know which stage it's actually talking to. */
+#define APP_UDS_REQUEST_ID   ( 0x700u )
+#define APP_UDS_RESPONSE_ID  ( 0x600u )
+#define APP_CAN_RX_ID        ( 0x7E0u )
+#define APP_CAN_TX_ID        ( 0x7E8u )
+
+/* Not STATIC - passed to HAL_CAN_set_rx_callback() from main.c, the same way MODE_MGR_tick
+   (MODE_MGR.h) is referenced by name from systick_cfg_s below, just in the opposite direction. */
+void app_can_rx_wrapper( u32_t id, u8_t id_type, u8_t* data_p, u8_t dlc )
+{
+    CANTP_rx_frame_received( &app_cantp_instance_s, id, (CANTP_id_type_et)id_type, data_p, (u16_t)dlc );
+}
+
+STATIC void app_cantp_send_wrapper( CANTP_can_msg_format_st* msg_p )
+{
+    if( msg_p != NULL_P )
+    {
+        (void)HAL_CAN_send_frame( msg_p->Id, (u8_t)msg_p->id_type, msg_p->Data, msg_p->DLC );
+    }
+}
+
+/* PDUR's lower_layer_tx_func_t shape - routes UDS responses through CANTP so multi-frame
+   responses get segmented, matching FBL's fbl_cantp_tx_request_wrapper. channel is unused now
+   that a CANTP instance IS a physical channel (see CANTP_instance_st) - kept as a parameter only
+   because PDUR_lower_layer_tx_func_t's shape is shared with non-CANTP routes. */
+STATIC void app_cantp_tx_request_wrapper( u32_t id, u8_t id_type, u8_t frame_type, u8_t* data_p, u16_t len, u8_t channel )
+{
+    (void)channel;
+    (void)CANTP_tx_request( &app_cantp_instance_s, id, (CANTP_id_type_et)id_type, (CANTP_frame_type_et)frame_type, data_p, len, NULL_P );
+}
+
+/* Adapter: CANTP_message_rx_func_p carries CANTP_id_type_et (a CANTP-local enum), but PDUR_rx_indication
+   deliberately stays CANTP-agnostic and takes a plain u8_t id_type (PDUR routes CANTP, HAL_CAN, LINTP,
+   etc. uniformly) - the two aren't the same type, so a direct function-pointer assignment between them
+   isn't valid without this cast. */
+STATIC void app_cantp_rx_indication_wrapper( u32_t id, CANTP_id_type_et id_type, u8_t* data_p, u16_t len )
+{
+    PDUR_rx_indication( id, (u8_t)id_type, data_p, len );
+}
+
+STATIC void app_uds_tx( u8_t* data_p, u16_t len )
+{
+    PDUR_tx( APP_UDS_RESPONSE_ID, 0u, data_p, len );
+}
+
+/*!
+****************************************************************************************************
+*   \brief         UDS session change notification
+*   \details       DEFAULT->PROGRAMMING means a tester wants FBL entry - set the FBL request flag
+*                  so BM boots FBL after the soft reset UDS schedules for this transition (see
+*                  UDS.c's uds_handle_session_control()/uds_invoke_pending_action() - this callback
+*                  runs before that reset is scheduled, same as FBL's own fbl_uds_session_notify
+*                  does the opposite (clears the flag) for PROGRAMMING->DEFAULT.
+***************************************************************************************************/
+STATIC void app_uds_session_notify( UDS_session_et old_session, UDS_session_et new_session )
+{
+    if( ( old_session == UDS_SES_DEFAULT ) && ( new_session == UDS_SES_PROGRAMMING ) )
+    {
+        SHARED_RAM_set_fbl_request( TRUE );
+    }
+}
+
+/* Deliberately NOT a designated initializer: CANTP_instance_st embeds the RX/TX queues and TP
+   session arrays (~1.7KB, almost entirely zero) alongside these config fields. Giving the struct
+   an initializer with even one non-zero field forces the compiler to store the WHOLE object -
+   zero regions included - as flash-resident .data instead of letting the zero-only bulk of it
+   land in .bss for free. Left plain (zero-initialized in .bss, same as any other global) and
+   configured at runtime instead - see app_cantp_instance_init(), called once from main.c before
+   CANTP_init(). .CANTP_error_func_p (NULL_P) and .fd_enable (FALSE) need no explicit assignment -
+   already zero from .bss. */
+CANTP_instance_st app_cantp_instance_s;
+
+void app_cantp_instance_init( void )
+{
+    app_cantp_instance_s.CANTP_message_rx_func_p = app_cantp_rx_indication_wrapper;
+    app_cantp_instance_s.tx_func_p               = app_cantp_send_wrapper;
+    app_cantp_instance_s.tp_buffer               = pdur_buffer_s;
+    app_cantp_instance_s.tp_ids[0]               = APP_UDS_REQUEST_ID;
+    app_cantp_instance_s.tp_ids[1]               = APP_CAN_RX_ID;
+    app_cantp_instance_s.st_min                  = 10u;
+    app_cantp_instance_s.rx_block_size           = 10u;
+    app_cantp_instance_s.N_Cr                    = CANTP_DEFAULT_N_CR;
+    app_cantp_instance_s.N_Bs                    = CANTP_DEFAULT_N_BS;
+    app_cantp_instance_s.N_Ar                    = CANTP_DEFAULT_N_AR;
+    app_cantp_instance_s.uds_req_id              = APP_UDS_REQUEST_ID;
+    app_cantp_instance_s.uds_resp_id             = APP_UDS_RESPONSE_ID;
+}
+
+/* No extra services beyond 0x10/0x11/0x3E (session control, ECU reset, tester present) - all
+   three are handled entirely inside UDS.c regardless of the service table (see
+   uds_process_rx_message()'s routing), so an empty table (NULL_P/0u passed to UDS_init) is
+   correct, not a placeholder - there is nothing else APP needs to expose yet. */
+const UDS_func_p_st app_uds_func_table_s =
+{
+    .tp_send_func_p          = app_uds_tx,
+    .perform_soft_reset      = MCU_JUMP_software_reset,
+    .perform_hard_reset      = MCU_JUMP_software_reset,
+    .s3_timeout_notify       = NULL_P,   /* Standard ISO 14229 behaviour - see UDS.h */
+    .session_change_notify   = app_uds_session_notify,
+    .message_received_notify = NULL_P,
+    .tester_present_notify   = NULL_P,
+};
 
 const PDUR_rx_route_st pdur_routing_table_s[] =
 {
@@ -358,6 +472,11 @@ const PDUR_rx_route_st pdur_routing_table_s[] =
     CAN_SENSOR_PDUR_ENTRY(  9u ),
     CAN_SENSOR_PDUR_ENTRY( 10u ),
     CAN_SENSOR_PDUR_ENTRY( 11u ),
+    /* TX-only PDUR route for the cyclic heartbeat frame */
+    { 0u, 0xFFFFFFFFu, APP_HEARTBEAT_CAN_ID, 0u, 0u, 0u, NULL_P, pdur_hal_can_tx, NULL_P },
+    /* Functional (0x700->0x600) and physical (0x7E0->0x7E8) UDS request/response routes */
+    { APP_UDS_REQUEST_ID, 0xFFFFFFFFu, APP_UDS_RESPONSE_ID, 0u, 2u, 0u, UDS_rx_indication, app_cantp_tx_request_wrapper, NULL_P },
+    { APP_CAN_RX_ID,      0xFFFFFFFFu, APP_CAN_TX_ID,       0u, 2u, 0u, UDS_rx_indication, app_cantp_tx_request_wrapper, NULL_P },
 };
 
 const u16_t pdur_num_routes_s = (u16_t)( sizeof(pdur_routing_table_s) / sizeof(pdur_routing_table_s[0u]) );
@@ -382,6 +501,18 @@ STATIC void can_sensor_get_data( u8_t msg_idx, u8_t* buf_p, u8_t* len_p )
 #define CAN_SENSOR_MSG_ENTRY( n ) \
     { ( CAN_SENSOR_BASE_ID + (u32_t)(n) ), 0u, 0u, MSG_SCHED_TX_ON_EVENT, can_sensor_get_data }
 
+STATIC u8_t app_heartbeat_ctr_s = 0u;
+
+STATIC void app_heartbeat_get_data( u8_t msg_idx, u8_t* buf_p, u8_t* len_p )
+{
+    (void)msg_idx;
+
+    buf_p[0u] = app_heartbeat_ctr_s++;
+    buf_p[1u] = (u8_t)MODE_MGR_get_mode();
+    buf_p[2u] = (u8_t)RF_MGR_get_state();
+    *len_p    = 3u;
+}
+
 STATIC const MSG_SCHED_msg_cfg_st can_msg_table_s[] =
 {
     CAN_SENSOR_MSG_ENTRY(  0u ),
@@ -396,6 +527,7 @@ STATIC const MSG_SCHED_msg_cfg_st can_msg_table_s[] =
     CAN_SENSOR_MSG_ENTRY(  9u ),
     CAN_SENSOR_MSG_ENTRY( 10u ),
     CAN_SENSOR_MSG_ENTRY( 11u ),
+    { APP_HEARTBEAT_CAN_ID, APP_HEARTBEAT_PERIOD_MS, 0u, MSG_SCHED_TX_CYCLIC, app_heartbeat_get_data },
 };
 
 const MSG_SCHED_cfg_st msg_sched_cfg_s =

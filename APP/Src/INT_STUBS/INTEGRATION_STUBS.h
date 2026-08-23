@@ -28,6 +28,8 @@
 #include "REF_SPEED_CALC.h"
 #include "TYRE_CALC.h"
 #include "SPEED_CONV.h"
+#include "CANTP.h"
+#include "UDS.h"
 
 extern const SYSTICK_cfg_st          systick_cfg_s;
 extern const hw_crc_config_st        hw_crc_cfg_s;
@@ -52,6 +54,10 @@ extern const TJA1051_config_st       tja1051_cfg_s;
 extern const RF_MGR_cfg_st           rf_mgr_cfg_s;
 extern const PDUR_rx_route_st        pdur_routing_table_s[];
 extern const u16_t                   pdur_num_routes_s;
+extern       CANTP_instance_st        app_cantp_instance_s;
+void app_cantp_instance_init( void );
+extern const UDS_func_p_st           app_uds_func_table_s;
+void app_can_rx_wrapper( u32_t id, u8_t id_type, u8_t* data_p, u8_t dlc );
 extern const MSG_SCHED_cfg_st        msg_sched_cfg_s;
 extern       CPS_instance_st         cps_instance_s;
 extern const CPS_cfg_st              cps_cfg_s;

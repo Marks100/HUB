@@ -10,13 +10,15 @@
 /***************************************************************************************************
 **                              Data Types                                                        **
 ***************************************************************************************************/
-typedef void (*HAL_CAN_rx_callback_ft)( u32_t id, u8_t* data_p, u8_t dlc );
+/* id_type: 0 = Standard (11-bit), 1 = Extended (29-bit) */
+typedef void (*HAL_CAN_rx_callback_ft)( u32_t id, u8_t id_type, u8_t* data_p, u8_t dlc );
 
 /***************************************************************************************************
 **                              Function Prototypes                                               **
 ***************************************************************************************************/
-void         HAL_CAN_init( HAL_CAN_rx_callback_ft rx_callback_p );
-pass_fail_et HAL_CAN_send_frame( u32_t id, const u8_t* data_p, u8_t dlc );
+void         HAL_CAN_init( void );
+void         HAL_CAN_set_rx_callback( HAL_CAN_rx_callback_ft rx_callback_p );
+pass_fail_et HAL_CAN_send_frame( u32_t id, u8_t id_type, const u8_t* data_p, u8_t dlc );
 
 #endif /* HAL_CAN_H */
 

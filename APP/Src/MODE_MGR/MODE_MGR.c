@@ -9,6 +9,8 @@
 #include "INTEGRATION_STUBS.h"
 #include "MSG_SCHED.h"
 #include "HMI_SH1106.h"   /* This module owns the panel's tick slot - see mode_mgr_action_schedule_normal() */
+#include "CANTP.h"
+#include "UDS.h"
 
 /***************************************************************************************************
 **                              Data declarations and definitions                                 **
@@ -62,6 +64,16 @@ void MODE_MGR_tick( void )
 	//DBG_MGR_start_cpu_load_timer();
     TIME_increment_time();
 
+	/* CAN-TP/UDS timing (ST_min, N_Cr/N_Bs/N_Ar, S3 session timeout) is budgeted in real
+	   milliseconds, so these need the base 1ms-class tick, not one of
+	   mode_mgr_action_schedule_normal()'s slower interval slots - same reasoning FBL_tick() ticks
+	   CANTP every cycle instead of on a slower schedule. Note this runs at APP_TIMER_TICK_RATE_MS
+	   (10ms), coarser than FBL's genuine 1ms SysTick loop - fine for CANTP.h's default timing
+	   budgets (N_Ar=25ms etc., still several ticks of headroom), just worth knowing if a tester
+	   ever needs tighter timing than that. */
+	CANTP_tick( &app_cantp_instance_s );
+	UDS_tick();
+
 	WDG_kick();
 
 	switch( mode_mgr_mode_s )
@@ -112,11 +124,6 @@ void MODE_MGR_tick( void )
 void MODE_MGR_power_cbk( void )
 {
 }
-
-/* MODE_MGR_ccw_scroll_cbk / MODE_MGR_cw_scroll_cbk removed with the ST7567 integration - they
-   existed only to drive that display's cursor from the encoder. HMI_SH1106 owns the encoder now
-   and reports HMI_SH1106_INPUT_CW/_CCW through on_input_func_p, wired to MENU_NAV_on_input() in
-   INTEGRATION_STUBS.c - MENU_NAV decides whether the cursor moves. */
 
 /*!
 ****************************************************************************************************

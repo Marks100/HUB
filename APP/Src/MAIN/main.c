@@ -46,7 +46,8 @@ void app_main( void )
     DBG_MGR_init( &dbg_mgr_cfg_s, SystemCoreClock );
     DWT_init( SystemCoreClock );
     HAL_BRD_init();
-    HAL_CAN_init( NULL_P );
+    HAL_CAN_init();
+    HAL_CAN_set_rx_callback( app_can_rx_wrapper );
     HAL_ADC_init();
     HAL_TIM3_init();
     HAL_TIM4_init_encoder();
@@ -78,6 +79,17 @@ void app_main( void )
     TB_init( &tb_cfg_s );
     TJA1051_init( &tja1051_func_s, &tja1051_cfg_s );
     PDUR_init( pdur_routing_table_s, pdur_num_routes_s );
+    MSG_SCHED_init( &msg_sched_cfg_s );
+
+    /* UDS diagnostics over CAN - session control (0x10) and ECU reset (0x11) are handled entirely
+       inside UDS.c; app_uds_session_notify (INTEGRATION_STUBS.c) is what actually requests FBL
+       entry, by setting the shared-RAM flag before the reset UDS schedules on DEFAULT->PROGRAMMING.
+       No service table (NULL_P/0u) - nothing beyond session control/reset/tester present is
+       exposed yet. */
+    app_cantp_instance_init();
+    CANTP_init( &app_cantp_instance_s );
+    UDS_init( &app_uds_func_table_s, NULL_P, 0u, pdur_buffer_s, PDUR_BUFFER_SIZE );
+
     MODE_MGR_init();
 
     SYSTICK_init( &systick_cfg_s, SystemCoreClock );
