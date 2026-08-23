@@ -44,18 +44,25 @@ AUTOVERSION_FILE             := Src/autoversion.h
 RELEASE_PACKAGE_NAME         := $(RELEASE_PACKAGE_BASE_DIR)/$(PROJECT_TYPE)_$(VERSION)
 
 # Flash memory partition layout — must match the linker scripts in BM/, FBL/, APP/
-# STM32F103C8T6: 64KB total flash (0x10000) starting at 0x08000000, 1KB pages
-# BM=8KB  FBL=12KB  APP=44KB — adjust sizes and update linker scripts accordingly
+# STM32F103C8T6: 128KB total flash (0x20000) starting at 0x08000000, 1KB pages — confirmed via a
+# live F_SIZE register read (0x1FFFF7E0): this "C8" (64KB nominal) part is physically 128KB
+# silicon, a known STM32F103 binning quirk. The top 1KB (0x0801FC00-0x0801FFFF) is reserved for
+# the NVM emulation page - FLS_STM32F1_get_nvm_base_address() places it there dynamically
+# (xCOMMON_MODULES/Src/FLS/FLS_STM32F1.c), so APP must not grow into it.
+# BM=12KB  FBL=16KB  APP=99KB (+ 1KB reserved for NVM) — adjust sizes and update linker scripts
+# accordingly, and keep APP_FLASH_END below the reserved NVM page. BM sized at 12KB (up from the
+# minimum-viable 8KB) for future secure boot headroom - e.g. switching signature_verify over to
+# ECDSA P-256 (xCOMMON_MODULES/Src/CRYPTO/micro-ecc) adds ~3.5KB over the current HMAC-SHA256 path.
 BM_FLASH_START               := 0x08000000
-BM_FLASH_SIZE                := 0x2000
+BM_FLASH_SIZE                := 0x3000
 BM_FLASH_END                 := $(shell printf '0x%08X' $$(( $(BM_FLASH_START) + $(BM_FLASH_SIZE) - 1 )))
 
 FBL_FLASH_START               := $(shell printf '0x%08X' $$(( $(BM_FLASH_START) + $(BM_FLASH_SIZE) )))
-FBL_FLASH_SIZE                := 0x3000
+FBL_FLASH_SIZE                := 0x4000
 FBL_FLASH_END                 := $(shell printf '0x%08X' $$(( $(BM_FLASH_START) + $(BM_FLASH_SIZE) + $(FBL_FLASH_SIZE) - 1 )))
 
 APP_FLASH_START               := $(shell printf '0x%08X' $$(( $(BM_FLASH_START) + $(BM_FLASH_SIZE) + $(FBL_FLASH_SIZE) )))
-APP_FLASH_SIZE                := 0xB000
+APP_FLASH_SIZE                := 0x18C00
 APP_FLASH_END                 := $(shell printf '0x%08X' $$(( $(BM_FLASH_START) + $(BM_FLASH_SIZE) + $(FBL_FLASH_SIZE) + $(APP_FLASH_SIZE) - 1 )))
 
 # TODO: Set APP_HEADER_ADDR and APP_CODE_START to match your linker script APP section layout
@@ -155,8 +162,8 @@ else
     MCAL_OPTIMISATION        := -Os
 endif
 
-# APP vector table offset: APP_FLASH_START (0x08005000) + 256-byte app_header = 0x08005100.
-CFLAGS += -DVECT_TAB_OFFSET=0x5100
+# APP vector table offset: APP_FLASH_START (0x08007000) + 256-byte app_header = 0x08007100.
+CFLAGS += -DVECT_TAB_OFFSET=0x7100
 
 # Linker flags configuration
 LDFLAGS := \

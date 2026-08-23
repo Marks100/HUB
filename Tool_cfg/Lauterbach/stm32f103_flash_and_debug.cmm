@@ -1,9 +1,19 @@
 ; HUB project - STM32F103C8T6
 ; Flash BM + APP combined image and open a debug session.
 ;
-; Flash layout:
-;   BM  : 0x08000000 - 0x08000FFF   4 KB
-;   APP : 0x08005000 - 0x0800FFFF  44 KB  (vectors at 0x08005100)
+; Flash layout (128 KB total - confirmed via live F_SIZE register read at 0x1FFFF7E0; this "C8"
+; part is physically 128 KB silicon, a known STM32F103 binning quirk):
+;   BM  : 0x08000000 - 0x08002FFF  12 KB
+;   FBL : 0x08003000 - 0x08006FFF  16 KB
+;   APP : 0x08007000 - 0x0801FBFF  99 KB  (vectors at 0x08007100)
+;   NVM : 0x0801FC00 - 0x0801FFFF   1 KB  (reserved, placed dynamically - see
+;                                          FLS_STM32F1_get_nvm_base_address())
+;
+; NOTE: SYStem.CPU STM32F103C8 below selects Trace32's device-database entry for the nominal
+; 64 KB part. Its flash algorithm (~~/demo/arm/flash/stm32f10x.cmm, in the Trace32 install tree,
+; not this repo) may hardcode a 64 KB erase/program range - NOT VERIFIED on hardware yet. If
+; FLASH.ReProgram fails or silently doesn't program past 0x0800FFFF, try SYStem.CPU STM32F103CB
+; (the 128 KB part number) or an explicit FLASH.CFG override instead.
 ;
 ; BM is no longer an unconditional jump to APP - it validates the APP header's presence pattern
 ; and hardware CRC (xCOMMON_MODULES/Src/BM/BM.c's BM_run()) before jumping, so "Go.direct app_main"

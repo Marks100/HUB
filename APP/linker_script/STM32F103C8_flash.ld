@@ -1,16 +1,21 @@
 /*
 ** STM32F103C8T6 APP partition linker script
 **
-** Flash layout (64 KB total):
-**   BM   : 0x08000000 - 0x08001FFF   8 KB
-**   FBL  : 0x08002000 - 0x08004FFF  12 KB
-**   APP  : 0x08005000 - 0x0800FFFF  44 KB  <- this image
+** Flash layout (128 KB total - confirmed via live F_SIZE register read at 0x1FFFF7E0; this part
+** is a "C8" (64 KB nominal) that's physically 128 KB silicon, a known STM32F103 binning quirk):
+**   BM   : 0x08000000 - 0x08002FFF   12 KB
+**   FBL  : 0x08003000 - 0x08006FFF   16 KB
+**   APP  : 0x08007000 - 0x0801FBFF   99 KB  <- this image
+**   NVM  : 0x0801FC00 - 0x0801FFFF    1 KB  (reserved - not a linker section here; placed
+**                                             dynamically by FLS_STM32F1_get_nvm_base_address()
+**                                             at the top page of actual flash size. This image
+**                                             must not grow into it.)
 **
 ** APP internal layout:
-**   .app_header : 0x08005000 - 0x080050FF  256 B  (presence pattern + CRC)
-**   .isr_vector : 0x08005100 ...            code start (APP_CODE_START)
+**   .app_header : 0x08007000 - 0x080070FF  256 B  (presence pattern + CRC)
+**   .isr_vector : 0x08007100 ...            code start (APP_CODE_START)
 **
-** RAM layout (20 KB total):
+** RAM layout (20 KB total - fixed regardless of the 64/128 KB flash bin on this part family):
 **   .noinit_shared : 0x20000000 - 0x2000001F   32 B  (BM/FBL/APP handoff - see SHARED_RAM.h)
 **   everything else: 0x20000020 - 0x20004FFF
 */
@@ -24,7 +29,7 @@ _Min_Stack_Size = 0x400;   /* 1 KB  */
 
 MEMORY
 {
-    FLASH          (rx)  : ORIGIN = 0x08005000, LENGTH = 44K
+    FLASH          (rx)  : ORIGIN = 0x08007000, LENGTH = 99K
     m_data_shared  (xrw) : ORIGIN = 0x20000000, LENGTH = 0x20
     RAM            (xrw) : ORIGIN = 0x20000020, LENGTH = 0x4FE0
 }
@@ -37,10 +42,10 @@ SECTIONS
     {
         . = ALIGN(4);
         KEEP(*(.app_header))
-        . = ALIGN(0x100);   /* pad to 256-byte boundary -> next addr = 0x08005100 */
+        . = ALIGN(0x100);   /* pad to 256-byte boundary -> next addr = 0x08007100 */
     } >FLASH
 
-    /* Vector table at APP_CODE_START = 0x08005100 */
+    /* Vector table at APP_CODE_START = 0x08007100 */
     .isr_vector :
     {
         . = ALIGN(4);

@@ -169,7 +169,8 @@ STATIC u8_t uds_handle_routine_check_memory( u8_t* data_p, u16_t* len_p, UDS_res
     const fbl_config_st* cfg_p = FBL_get_config();
     u32_t                crc;
 
-    crc = FBL_crc_calculate( cfg_p->app_start_address, ( cfg_p->app_end_address - cfg_p->app_start_address ) );
+    crc = FBL_crc_calculate( cfg_p->app_header_address,
+                              FBL_region_length( cfg_p->app_header_address, cfg_p->app_code_end_address ) );
 
     data_p[0] = (u8_t)( crc >> 24u );
     data_p[1] = (u8_t)( crc >> 16u );

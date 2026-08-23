@@ -41,7 +41,7 @@
 /***************************************************************************************************
 **                              External Symbols from Linker                                     **
 ***************************************************************************************************/
-extern u32_t __app_start__;
+extern u32_t __app_header_start__;
 extern u32_t __app_code_end__;
 
 /***************************************************************************************************
@@ -327,8 +327,8 @@ STATIC const fbl_config_st fbl_config_s =
     .max_transfer_block_len     = FLS_STM32F1_PAGE_SIZE,
     .transfer_sector_buffer_p   = fbl_transfer_sector_buffer_s,
     .transfer_sector_buffer_len = FLS_STM32F1_PAGE_SIZE,
-    .app_start_address          = (u32_t)&__app_start__,
-    .app_end_address            = (u32_t)&__app_code_end__,
+    .app_header_address         = (u32_t)&__app_header_start__,
+    .app_code_end_address       = (u32_t)&__app_code_end__,
 };
 
 /***************************************************************************************************

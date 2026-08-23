@@ -46,8 +46,7 @@ BM_C_SRCS := \
     $(COMMON_MODULES_DIR)/CLKS/CLK_STM32F1.c \
     $(COMMON_MODULES_DIR)/CRYPTO/HMAC_SHA256/SHA256.c \
     $(COMMON_MODULES_DIR)/CRYPTO/HMAC_SHA256/HMAC_SHA256.c \
-    $(COMMON_MODULES_DIR)/CRYPTO/micro-ecc/uECC.c \
-    $(COMMON_MODULES_DIR)/CRYPTO/micro-ecc/ECDSA_P256_verify.c
+    $(COMMON_MODULES_DIR)/CRYPTO/micro-ecc/uECC.c
 
 # Vendored ST/CMSIS MCAL sources - same split as APP/Makefile's MCAL_C_SRCS/MCAL_OBJ_DIR/
 # MCAL_OPTIMISATION: this is code we never touch, so there's no reason to debug it, and it always

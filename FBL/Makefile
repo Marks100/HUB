@@ -25,12 +25,15 @@ FBL_MEM_CSV_FILE      := $(BUILD_OUT_DIR)/memory_analysis.csv
 BUILD_ENV_BIN         := ../BuildEnv/xBuildEnv/bin
 
 # FBL carries the same header/CRC/signature layout as APP (see xCOMMON_MODULES/Src/HEADER/
-# HEADER.h) at the start of its own 12K region - BM validates it the same way before jumping
+# HEADER.h) at the start of its own 16K region - BM validates it the same way before jumping
 # here (see BM.c's BM_jump_to_fbl()). Must match FBL/linker_script/STM32F103C8_FBL_flash.ld and
-# APP/Makefile's FBL_FLASH_START (0x08002000).
-FBL_HEADER_ADDR := 0x08002000
-FBL_CODE_START  := 0x08002100
-FBL_CODE_END    := 0x08004FFF
+# APP/Makefile's FBL_FLASH_START (0x08003000). FBL_CODE_END in particular must exactly match
+# BM's __fbl_code_end__ (BM/linker_script/STM32F103C8_BM_flash.ld) - that's the range
+# app_crc_injector/app_signer actually sign over, so a mismatch makes a legitimately-signed FBL
+# image fail BM's validation.
+FBL_HEADER_ADDR := 0x08003000
+FBL_CODE_START  := 0x08003100
+FBL_CODE_END    := 0x08006FFF
 FBL_CRC_TYPE    := stm32-hw-crc32
 
 # Signing key - must stay in lockstep with APP/Makefile's SIGN_ALGORITHM/SIGNING_KEY and with

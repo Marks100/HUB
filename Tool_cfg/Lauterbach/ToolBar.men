@@ -45,6 +45,13 @@ MENU.ReProgram
 			SYStem.mode.Attach
 		)
 		SEPARATOR
+		TOOLITEM "DEVICE INFO" "[:info]" ""
+		(
+			; Pure silicon facts read straight off the chip (core ID, device/revision ID,
+			; flash size, unique ID) in a popup window - see device_info.cmm.
+			DO device_info.cmm
+		)
+		SEPARATOR
 		TOOLITEM "Snooper" "[:iview]" ""
 		(
 			SNOOPer.SELect %Long MODE_MGR_tick_timer_msecs_s

@@ -1,29 +1,7 @@
 /*! \file
 *               Author: mstewart
-*   \brief      BM (Boot Manager) entry point and platform wiring for STM32F103C8
+*   \brief      BM (Boot Manager) entry point
 *
-*   Reset handler -> BM_init()/BM_run() (xCOMMON_MODULES/Src/BM) with every platform dependency
-*   supplied here via bm_config_s. BM_run() validates the APP header's CRC and (once
-*   signature_enabled is flipped on - see secure_boot_hmac_secret.h) its HMAC-SHA256 signature,
-*   then jumps to APP or FBL - see BM.h for the full decision sequence.
-*
-*   HMAC-SHA256 chosen as the first algorithm wired up here (over ECDSA, which app_signer also
-*   supports) to prove out the full header/CRC/signature/boot pipeline with the simplest primitive
-*   first - it's a straight SHA-256 + HMAC construction, no big-integer EC math, so there's very
-*   little surface for a subtle implementation bug. BM_signature_verify_func_t is dependency-
-*   injected specifically so swapping this for ECDSA later only means changing this file - BM.c
-*   and app_signer's interfaces don't move.
-*
-*   Ed25519 (xCOMMON_MODULES/Src/CRYPTO/ed25519) was evaluated and ruled out for this target: its
-*   verify path costs ~16.6KB (ref10-derived, heavily unrolled sc_reduce/sha512_compress), which
-*   doesn't fit BM's 8KB region. ECDSA P-256 via micro-ecc costs ~3.5KB instead (generic bignum
-*   code, not unrolled) and reuses the SHA-256 already needed for HMAC - see
-*   xCOMMON_MODULES/Src/CRYPTO/ECDSA_P256/ECDSA_P256_verify.c for the validated-but-not-yet-live
-*   implementation.
-*
-*   HMAC_SHA256_verify()/ECDSA_P256_verify() are shaped to match BM_signature_verify_func_t
-*   exactly and assigned to .signature_verify directly below - no adapter needed here, the same
-*   way .crc_calculate takes CHKSUM_calc_hw_crc32 straight from the CHKSUM module.
 */
 
 /***************************************************************************************************
@@ -36,7 +14,8 @@
 #include "MCU_JUMP.h"
 #include "HMAC_SHA256.h"
 #include "secure_boot_hmac_secret.h"
-#include "ECDSA_P256_verify.h"
+#include "SHA256.h"
+#include "uECC.h"
 #include "secure_boot_public_key.h"
 
 /***************************************************************************************************
@@ -44,8 +23,6 @@
 ***************************************************************************************************/
 /* See BM/linker_script/STM32F103C8_BM_flash.ld - absolute flash addresses BM validates but does
    not itself occupy any section in. */
-extern u32_t __app_start__;
-extern u32_t __fbl_start__;
 extern u32_t __fbl_header_start__;
 extern u32_t __fbl_code_start__;
 extern u32_t __fbl_code_end__;
@@ -83,6 +60,32 @@ STATIC void clk_init( void )
 }
 
 /***************************************************************************************************
+**                              Signature Verification (ECDSA P-256, not yet wired live)         **
+***************************************************************************************************/
+/* Adapter for uECC_verify() (xCOMMON_MODULES/Src/CRYPTO/micro-ecc) - not shaped to match
+   BM_signature_verify_func_t directly (it takes a pre-computed hash + curve object and returns
+   int, not false_true_et), so this hashes data_p with SHA-256 and translates the result. Only
+   BM-specific glue like this lives here rather than in the shared CRYPTO/ module - see
+   xCOMMON_MODULES/Src/CRYPTO/README.md. Not yet assigned to .signature_verify below; switching
+   over is a one-line change once a real P-256 keypair replaces secure_boot_public_key.h's
+   placeholder. */
+STATIC false_true_et signature_verify_ecdsa_p256( const u8_t* data_p, u32_t data_len,
+                                                    const u8_t* signature_p,
+                                                    const u8_t* public_key_p, u32_t public_key_len )
+{
+    u8_t       hash[SHA256_DIGEST_SIZE];
+    uECC_Curve curve;
+
+    (void)public_key_len;
+
+    SHA256_calculate( data_p, data_len, hash );
+
+    curve = uECC_secp256r1();
+
+    return( uECC_verify( public_key_p, hash, SHA256_DIGEST_SIZE, signature_p, curve ) ? TRUE : FALSE );
+}
+
+/***************************************************************************************************
 **                              Boot Manager Configuration                                       **
 ***************************************************************************************************/
 STATIC const bm_config_st bm_config_s =
@@ -111,8 +114,6 @@ STATIC const bm_config_st bm_config_s =
     .shared_ram_is_valid           = SHARED_RAM_is_valid,
 
     /* Memory addresses from the linker script */
-    .app_start_address       = (u32_t)&__app_start__,
-    .fbl_start_address       = (u32_t)&__fbl_start__,
     .app_header_address      = (u32_t)&__app_header_start__,
     .app_code_start_address  = (u32_t)&__app_code_start__,
     .app_code_end_address    = (u32_t)&__app_code_end__,
@@ -150,20 +151,15 @@ extern u32_t __isr_vector_start;   /* Linker symbol - BM/linker_script/STM32F103
 
 void bm_main( void )
 {
-    /* Re-assert VTOR from the linker's own placement of .isr_vector, not a hand-maintained
-       constant - see MCU_JUMP_set_vector_table()'s comment. Correct for BM by
-       coincidence even without this (BM's table happens to sit at SystemInit()'s FLASH_BASE
-       default), but calling it here anyway keeps all three partitions doing the identical thing
-       rather than BM being the one exception nobody has to explain. */
-    MCU_JUMP_set_vector_table( (u32_t)&__isr_vector_start );
+   MCU_JUMP_set_vector_table( (u32_t)&__isr_vector_start );
 
-    BM_init( &bm_config_s );
-    BM_run();
+   BM_init( &bm_config_s );
+   BM_run();
 }
 
 void main( void )
 {
-    bm_main();
+   bm_main();
 }
 
 /****************************** END OF FILE *******************************************************/

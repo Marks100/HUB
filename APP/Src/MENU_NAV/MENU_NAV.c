@@ -183,21 +183,24 @@ STATIC void menu_nav_handle_rev_counter_bar( HMI_SH1106_input_et input );
 /***************************************************************************************************
 **                              Screen contents                                                   **
 ***************************************************************************************************/
-/* ===== Main menu - the only list screen so far. Ten rows against seven item rows, so it scrolls
-   and shows the up/down indicators. ===== */
+/* ===== Main menu - the only list screen so far. More rows than fit on screen at once, so it
+   scrolls and shows the up/down indicators. ===== */
 STATIC const MENU_NAV_item_st menu_nav_main_items_s[] =
 {
-    { "Status",     MENU_NAV_SCREEN_STATUS          },
-    { "Brightness", MENU_NAV_SCREEN_BRIGHTNESS      },
-    { "Fan Speed",  MENU_NAV_SCREEN_FAN_SPEED       },
-    { "WiFi",       MENU_NAV_SCREEN_WIFI            },
-    { "TB",         MENU_NAV_SCREEN_TB              },
-    { "CAN Bus",    MENU_NAV_SCREEN_NOT_IMPLEMENTED },
-    { "LEDs",       MENU_NAV_SCREEN_NOT_IMPLEMENTED },
-    { "Buzzer",     MENU_NAV_SCREEN_BUZZER          },
-    { "Sensors",    MENU_NAV_SCREEN_SENSORS         },
-    { "About",      MENU_NAV_SCREEN_ABOUT           },
-    { "Bootloader", MENU_NAV_SCREEN_BOOTLOADER      },
+    { "Status",              MENU_NAV_SCREEN_STATUS          },
+    { "Brightness",          MENU_NAV_SCREEN_BRIGHTNESS      },
+    { "Fan Speed",           MENU_NAV_SCREEN_FAN_SPEED       },
+    { "WiFi",                MENU_NAV_SCREEN_WIFI            },
+    { "TB",                  MENU_NAV_SCREEN_TB              },
+    { "CAN Bus",             MENU_NAV_SCREEN_NOT_IMPLEMENTED },
+    { "LEDs",                MENU_NAV_SCREEN_NOT_IMPLEMENTED },
+    { "Buzzer",              MENU_NAV_SCREEN_BUZZER          },
+    { "Sensors",             MENU_NAV_SCREEN_SENSORS         },
+    { "Vehicle",             MENU_NAV_SCREEN_VEHICLE         },
+    { "Rev Counter",         MENU_NAV_SCREEN_REV_COUNTER     },
+    { "Rev Counter (Bar)",   MENU_NAV_SCREEN_REV_COUNTER_BAR },
+    { "About",               MENU_NAV_SCREEN_ABOUT           },
+    { "Bootloader",          MENU_NAV_SCREEN_BOOTLOADER      },
 };
 
 STATIC const MENU_NAV_list_st menu_nav_main_list_s =
@@ -207,10 +210,10 @@ STATIC const MENU_NAV_list_st menu_nav_main_list_s =
     .item_count = MENU_NAV_ITEM_COUNT( menu_nav_main_items_s ),
 };
 
-/* ===== Vehicle / Rev Counter / Rev Counter Bar - DORMANT, see MENU_NAV_SCREEN_VEHICLE's comment
-   in MENU_NAV.h. Data tables and draw/handle functions are all present and compile clean, just not
-   reachable from menu_nav_main_items_s or menu_nav_screens_s, so none of it is in the actual link.
-   ===== */
+/* ===== Vehicle / Rev Counter / Rev Counter Bar - re-enabled once the 128KB flash rework gave APP
+   enough headroom to afford them (see xCOMMON_MODULES/Src/FLS/FLS_STM32F1.h and the BM/FBL/APP
+   linker scripts). Previously dormant: implemented but deliberately unreferenced so --gc-sections
+   would strip them while ROM was tight. ===== */
 
 /* ===== Vehicle - placeholder tire readings, see menu_nav_tire_reading_st ===== */
 STATIC const menu_nav_tire_reading_st menu_nav_tire_fl_s = { 22, 32 };
@@ -544,6 +547,26 @@ STATIC const MENU_NAV_screen_st menu_nav_screens_s[MENU_NAV_NUM_SCREENS] =
         .handle_func_p   = menu_nav_handle_sensors,   /* The knob steps through sensor slots */
         .on_enter_func_p = menu_nav_enter_sensors,    /* Always start back at slot 0 */
         .back_screen     = MENU_NAV_SCREEN_MAIN_MENU,
+    },
+
+    [MENU_NAV_SCREEN_VEHICLE] =
+    {
+        .draw_func_p  = menu_nav_draw_vehicle,
+        .back_screen  = MENU_NAV_SCREEN_MAIN_MENU,
+    },
+
+    [MENU_NAV_SCREEN_REV_COUNTER] =
+    {
+        .draw_func_p   = menu_nav_draw_rev_counter,
+        .handle_func_p = menu_nav_handle_rev_counter,   /* The knob edits the placeholder RPM */
+        .back_screen   = MENU_NAV_SCREEN_MAIN_MENU,
+    },
+
+    [MENU_NAV_SCREEN_REV_COUNTER_BAR] =
+    {
+        .draw_func_p   = menu_nav_draw_rev_counter_bar,
+        .handle_func_p = menu_nav_handle_rev_counter_bar,   /* The knob edits the placeholder RPM */
+        .back_screen   = MENU_NAV_SCREEN_MAIN_MENU,
     },
 
     [MENU_NAV_SCREEN_ABOUT] =
