@@ -31,6 +31,7 @@
 #include "HAL_CAN.h"
 #include "CPS.h"
 #include "VER.h"
+#include "UDS_config.h"
 
 extern u32_t __isr_vector_start;   /* Linker symbol - APP/linker_script/STM32F103C8_flash.ld */
 
@@ -84,11 +85,15 @@ void app_main( void )
     /* UDS diagnostics over CAN - session control (0x10) and ECU reset (0x11) are handled entirely
        inside UDS.c; app_uds_session_notify (INTEGRATION_STUBS.c) is what actually requests FBL
        entry, by setting the shared-RAM flag before the reset UDS schedules on DEFAULT->PROGRAMMING.
-       No service table (NULL_P/0u) - nothing beyond session control/reset/tester present is
-       exposed yet. */
+       Both tables come from APP/Src/UDS_CFG/UDS_config.c: the service table currently carries only
+       SecurityAccess (0x27), and the session table is what restricts entry into PROGRAMMING to
+       EXTENDED-plus-unlocked. */
     app_cantp_instance_init();
     CANTP_init( &app_cantp_instance_s );
-    UDS_init( &app_uds_func_table_s, NULL_P, 0u, pdur_buffer_s, PDUR_BUFFER_SIZE );
+    UDS_init( &app_uds_func_table_s,
+              UDS_get_service_table(), UDS_get_service_table_size(),
+              UDS_get_session_table(), UDS_get_session_table_size(),
+              pdur_buffer_s, PDUR_BUFFER_SIZE );
 
     MODE_MGR_init();
 

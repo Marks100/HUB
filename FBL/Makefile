@@ -52,6 +52,7 @@ COMMON_MODULES_DIR := ../xCOMMON_MODULES/Src
 # is one FBL actually calls.
 FBL_C_SRCS := \
     Src/fbl_main.c \
+    Src/INT_STUBS/INTEGRATION_STUBS.c \
     Src/UDS_CFG/UDS_config.c \
     $(COMMON_MODULES_DIR)/FBL/FBL.c \
     $(COMMON_MODULES_DIR)/HEADER/HEADER.c \
@@ -71,7 +72,10 @@ FBL_C_SRCS := \
     $(COMMON_MODULES_DIR)/STDC/STDC.c \
     $(COMMON_MODULES_DIR)/SELMATH/SELMATH.c \
     $(COMMON_MODULES_DIR)/stdio/printf.c \
-    ../Common_Src/HAL_CAN/HAL_CAN.c
+    ../Common_Src/HAL_CAN/HAL_CAN.c \
+    ../Common_Src/HAL_I2C/HAL_I2C.c \
+    $(COMMON_MODULES_DIR)/SH1106/SH1106.c \
+    $(COMMON_MODULES_DIR)/SH1106/SH1106_fonts.c
 
 # Vendored ST/CMSIS MCAL sources - same split as APP/Makefile's MCAL_C_SRCS/MCAL_OBJ_DIR/
 # MCAL_OPTIMISATION: this is code we never touch, so there's no reason to debug it, and it always
@@ -88,6 +92,7 @@ MCAL_C_SRCS  := \
     $(COMMON_MODULES_DIR)/MCAL/stm32/stm32f10x/src/stm32f10x_crc.c \
     $(COMMON_MODULES_DIR)/MCAL/stm32/stm32f10x/src/stm32f10x_can.c \
     $(COMMON_MODULES_DIR)/MCAL/stm32/stm32f10x/src/stm32f10x_gpio.c \
+    $(COMMON_MODULES_DIR)/MCAL/stm32/stm32f10x/src/stm32f10x_i2c.c \
     $(COMMON_MODULES_DIR)/MCAL/stm32/stm32f10x/src/misc.c \
     $(COMMON_MODULES_DIR)/MCAL/stm32/stm32f10x/core/system_stm32f10x.c
 
@@ -98,6 +103,7 @@ VPATH       := $(sort $(dir $(FBL_C_SRCS) $(MCAL_C_SRCS)))
 
 INCLUDES  := \
     -I Src \
+    -I Src/INT_STUBS \
     -I Src/UDS_CFG \
     -I $(COMMON_MODULES_DIR)/FBL \
     -I $(COMMON_MODULES_DIR)/UDS \
@@ -115,23 +121,31 @@ INCLUDES  := \
     -I $(COMMON_MODULES_DIR)/STDC \
     -I $(COMMON_MODULES_DIR)/SELMATH \
     -I $(COMMON_MODULES_DIR)/stdio \
+    -I $(COMMON_MODULES_DIR)/SH1106 \
+    -I $(COMMON_MODULES_DIR)/GFX \
+    -I $(COMMON_MODULES_DIR)/DBG_MGR \
     -I $(COMMON_MODULES_DIR)/MCAL \
     -I $(COMMON_MODULES_DIR)/MCAL/stm32/stm32f10x/inc \
     -I $(COMMON_MODULES_DIR)/MCAL/stm32/stm32f10x/core \
     -I $(COMMON_MODULES_DIR)/MCAL/stm32/cmsis_core \
     -I $(COMMON_MODULES_DIR) \
     -I ../Common_Src/HAL_CAN \
-    -I ../APP/Src \
+    -I ../Common_Src/HAL_I2C \
     -I ../Common_Src/PROJ_CONFIG
 
 ####################################################################################################
 # Flags
 ####################################################################################################
-# FBL has no RELEASE/DEBUG toggle (unlike APP/Makefile), so FBL_OPTIMISATION is just -Os today -
-# but MCAL_OPTIMISATION is named/split out separately anyway, same as APP does, so vendored code
-# stays pinned to -Os independent of whatever FBL_OPTIMISATION becomes if a debug mode is ever
-# added here.
-FBL_OPTIMISATION  := -Os
+# Same RELEASE/DEBUG toggle APP/Makefile uses, so `make RELEASE=y` still builds the size-optimised
+# image while a plain `make` is debuggable (-Og keeps variables live and control flow in source
+# order, which -Os destroys). MCAL_OPTIMISATION stays pinned to -Os either way: it is vendored code
+# we never step through, and FBL's 16KB partition is tight enough that there is no reason to spend
+# flash making it debuggable.
+ifeq ($(RELEASE),y)
+    FBL_OPTIMISATION  := -Os
+else
+    FBL_OPTIMISATION  := -Og
+endif
 MCAL_OPTIMISATION := -Os
 
 # FBL's vector table sits at FBL_CODE_START (0x08002100), not FLASH_BASE (0x08000000).
@@ -139,7 +153,7 @@ CFLAGS += -DVECT_TAB_OFFSET=$(FBL_CODE_START)
 
 LDFLAGS := \
     $(LDFLAGS_COMMON) \
-    -Os \
+    $(FBL_OPTIMISATION) \
     --specs=nano.specs \
     --specs=nosys.specs \
     "-Wl,-Map=$(FBL_MAP_FILE)" \

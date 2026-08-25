@@ -102,15 +102,20 @@ UECC_DEFINES := \
     -DuECC_SUPPORTS_secp256k1=0 \
     -DuECC_SUPPORT_COMPRESSED_POINT=0
 
-# BM has no RELEASE/DEBUG toggle (unlike APP/Makefile), so BM_OPTIMISATION is just -Os today - but
-# MCAL_OPTIMISATION is named/split out separately anyway, same as APP does, so vendored code stays
-# pinned to -Os independent of whatever BM_OPTIMISATION becomes if a debug mode is ever added here.
-BM_OPTIMISATION   := -Os
+# Same RELEASE/DEBUG toggle APP/Makefile uses, so `make RELEASE=y` still builds the size-optimised
+# image while a plain `make` is debuggable (-Og keeps variables live and control flow in source
+# order, which -Os destroys). MCAL_OPTIMISATION stays pinned to -Os either way: it is vendored code
+# we never step through, and there is no reason to spend BM's limited flash making it debuggable.
+ifeq ($(RELEASE),y)
+    BM_OPTIMISATION   := -Os
+else
+    BM_OPTIMISATION   := -Og
+endif
 MCAL_OPTIMISATION := -Os
 
 LDFLAGS := \
     $(LDFLAGS_COMMON) \
-    -Os \
+    $(BM_OPTIMISATION) \
     --specs=nano.specs \
     --specs=nosys.specs \
     "-Wl,-Map=$(BM_MAP_FILE)" \

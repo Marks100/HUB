@@ -63,6 +63,31 @@ STATIC UDS_service_table_st uds_service_table_s[] =
 };
 
 /***************************************************************************************************
+**                              Session Transition Table                                          **
+***************************************************************************************************/
+/* FBL's 0x10 policy - a whitelist, anything absent is refused with NRC 0x7E. See
+   UDS_session_transition_st in UDS.h for the matching rules.
+
+   Deliberately looser than APP's table (APP/Src/UDS_CFG/UDS_config.c): getting here at all already
+   required APP to authenticate the tester before rebooting into FBL, and fbl_main() starts this
+   partition pre-unlocked on the strength of that, so re-gating the sessions would only ask the same
+   tester to prove itself twice.
+
+   Reaching DEFAULT from anywhere is the tester saying "done programming" and resets the ECU so BM
+   re-validates APP and boots it. Wildcarding from_session is what makes the conventional exit
+   PROGRAMMING -> EXTENDED -> DEFAULT behave the same as a direct PROGRAMMING -> DEFAULT, and it
+   also gives the S3 timeout a route home if the tester simply vanishes mid-session (see
+   uds_handle_s3_timeout - PROGRAMMING itself is exempt there, so FBL's own boot delay still owns
+   the "no tester ever showed up" case). */
+STATIC const UDS_session_transition_st uds_session_table_s[] =
+{
+    /* from         to                   sec  action */
+    { UDS_SES_ANY,  UDS_SES_PROGRAMMING, 0u,  UDS_PENDING_ACTION_NONE },
+    { UDS_SES_ANY,  UDS_SES_EXTENDED,    0u,  UDS_PENDING_ACTION_NONE },
+    { UDS_SES_ANY,  UDS_SES_DEFAULT,     0u,  UDS_PENDING_ACTION_SOFT_RESET },
+};
+
+/***************************************************************************************************
 **                              Public Functions                                                  **
 ***************************************************************************************************/
 const UDS_service_table_st* UDS_get_service_table( void )
@@ -73,6 +98,16 @@ const UDS_service_table_st* UDS_get_service_table( void )
 u8_t UDS_get_service_table_size( void )
 {
     return( (u8_t)( sizeof( uds_service_table_s ) / sizeof( uds_service_table_s[0] ) ) );
+}
+
+const UDS_session_transition_st* UDS_get_session_table( void )
+{
+    return( uds_session_table_s );
+}
+
+u8_t UDS_get_session_table_size( void )
+{
+    return( (u8_t)( sizeof( uds_session_table_s ) / sizeof( uds_session_table_s[0] ) ) );
 }
 
 /***************************************************************************************************
@@ -140,22 +175,55 @@ STATIC u8_t uds_handle_security_send_key( u8_t* data_p, u16_t* len_p, UDS_respon
 ****************************************************************************************************
 *   \brief         0x31 StartRoutine 0xFF00 - EraseMemory
 *   \details       Erases the entire APP flash region. Must precede 0x34 RequestDownload.
+*
+*                  Answered asynchronously: erasing ~99 pages takes seconds, so this starts the run
+*                  and defers the response rather than blocking the tick loop for the duration.
+*                  FBL_tick() erases one page per tick and calls uds_erase_complete() below when it
+*                  finishes, which sends the real answer. UDS emits 0x78 ResponsePending meanwhile
+*                  and discards anything the tester sends until then - see UDS_defer_response().
 ***************************************************************************************************/
 STATIC u8_t uds_handle_routine_erase_memory( u8_t* data_p, u16_t* len_p, UDS_response_code_et* nrc_p )
 {
     (void)data_p;
 
-    if( FBL_flash_erase_application() == TRUE )
+    if( FBL_flash_erase_begin() == TRUE )
     {
-        *len_p = 0u;
-        *nrc_p = UDS_RC_POSITIVE_RESPONSE;
+        UDS_defer_response();
     }
     else
     {
+        *len_p = 0u;
         *nrc_p = UDS_RC_GENERAL_PROGRAMMING_FAILURE;
     }
 
     return( 0u );
+}
+
+/*!
+****************************************************************************************************
+*   \brief         End of the erase run started above - wired to fbl_config_st.erase_complete_func_p
+*   \details       Sends the 0x31 answer that uds_handle_routine_erase_memory() deferred. The
+*                  payload is the routine echo the tester expects back (routineControlType then the
+*                  2-byte routine identifier), supplied explicitly because the interim 0x78 frames
+*                  have long since overwritten the request bytes in the shared buffer.
+***************************************************************************************************/
+void UDS_erase_complete_notify( false_true_et success )
+{
+    STATIC const u8_t erase_echo_s[3] =
+    {
+        0x01u,                                      /* routineControlType: startRoutine   */
+        (u8_t)( ROUTINE_ID_ERASE_MEMORY >> 8u ),
+        (u8_t)( ROUTINE_ID_ERASE_MEMORY & 0xFFu ),
+    };
+
+    if( success == TRUE )
+    {
+        UDS_send_deferred_response( erase_echo_s, (u16_t)sizeof( erase_echo_s ), UDS_RC_POSITIVE_RESPONSE );
+    }
+    else
+    {
+        UDS_send_deferred_response( NULL_P, 0u, UDS_RC_GENERAL_PROGRAMMING_FAILURE );
+    }
 }
 
 /*!

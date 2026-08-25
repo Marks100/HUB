@@ -333,10 +333,9 @@ const RF_MGR_cfg_st rf_mgr_cfg_s =
 /***************************************************************************************************
 **                              CAN / PDUR / MSG_SCHED                                           **
 ***************************************************************************************************/
-STATIC void pdur_hal_can_tx( u32_t id, u8_t id_type, u8_t frame_type, u8_t* data_p, u16_t len, u8_t channel )
+STATIC void pdur_hal_can_tx( u32_t id, u8_t id_type, u8_t frame_type, u8_t* data_p, u16_t len )
 {
     (void)frame_type;
-    (void)channel;
     HAL_CAN_send_frame( id, id_type, data_p, (u8_t)len );
 }
 
@@ -345,7 +344,7 @@ STATIC void pdur_hal_can_tx( u32_t id, u8_t id_type, u8_t frame_type, u8_t* data
 
 /* One TX-only PDUR route per sensor slot */
 #define CAN_SENSOR_PDUR_ENTRY( n ) \
-    { 0u, 0xFFFFFFFFu, ( CAN_SENSOR_BASE_ID + (u32_t)(n) ), 0u, 0u, 0u, NULL_P, pdur_hal_can_tx, NULL_P }
+    { 0u, 0xFFFFFFFFu, ( CAN_SENSOR_BASE_ID + (u32_t)(n) ), 0u, 0u, NULL_P, pdur_hal_can_tx }
 
 /* Cyclic hub heartbeat/status frame - byte0 rolling counter (proves the frame is still live,
    not just present), byte1 current MODE_MGR mode, byte2 current RF_MGR link state. */
@@ -380,9 +379,8 @@ STATIC void app_cantp_send_wrapper( CANTP_can_msg_format_st* msg_p )
    responses get segmented, matching FBL's fbl_cantp_tx_request_wrapper. channel is unused now
    that a CANTP instance IS a physical channel (see CANTP_instance_st) - kept as a parameter only
    because PDUR_lower_layer_tx_func_t's shape is shared with non-CANTP routes. */
-STATIC void app_cantp_tx_request_wrapper( u32_t id, u8_t id_type, u8_t frame_type, u8_t* data_p, u16_t len, u8_t channel )
+STATIC void app_cantp_tx_request_wrapper( u32_t id, u8_t id_type, u8_t frame_type, u8_t* data_p, u16_t len )
 {
-    (void)channel;
     (void)CANTP_tx_request( &app_cantp_instance_s, id, (CANTP_id_type_et)id_type, (CANTP_frame_type_et)frame_type, data_p, len, NULL_P );
 }
 
@@ -403,15 +401,20 @@ STATIC void app_uds_tx( u8_t* data_p, u16_t len )
 /*!
 ****************************************************************************************************
 *   \brief         UDS session change notification
-*   \details       DEFAULT->PROGRAMMING means a tester wants FBL entry - set the FBL request flag
-*                  so BM boots FBL after the soft reset UDS schedules for this transition (see
-*                  UDS.c's uds_handle_session_control()/uds_invoke_pending_action() - this callback
-*                  runs before that reset is scheduled, same as FBL's own fbl_uds_session_notify
-*                  does the opposite (clears the flag) for PROGRAMMING->DEFAULT.
+*   \details       Entering PROGRAMMING means a tester wants FBL entry - set the FBL request flag so
+*                  BM boots FBL after the soft reset that transition schedules (see UDS.c's
+*                  uds_apply_session_change()/uds_invoke_pending_action(); this callback runs before
+*                  the reset is scheduled, which is the whole reason it exists).
+*
+*                  Whether the transition is allowed at all is not decided here - UDS_CFG/
+*                  UDS_config.c's session table owns that, and only permits EXTENDED -> PROGRAMMING
+*                  with security unlocked. By the time this runs the request has already been
+*                  authorised, so it just records the intent. Same module, opposite direction:
+*                  FBL's own fbl_uds_session_notify clears the flag on the way back to DEFAULT.
 ***************************************************************************************************/
 STATIC void app_uds_session_notify( UDS_session_et old_session, UDS_session_et new_session )
 {
-    if( ( old_session == UDS_SES_DEFAULT ) && ( new_session == UDS_SES_PROGRAMMING ) )
+    if( ( new_session == UDS_SES_PROGRAMMING ) && ( old_session != UDS_SES_PROGRAMMING ) )
     {
         SHARED_RAM_set_fbl_request( TRUE );
     }
@@ -423,8 +426,7 @@ STATIC void app_uds_session_notify( UDS_session_et old_session, UDS_session_et n
    zero regions included - as flash-resident .data instead of letting the zero-only bulk of it
    land in .bss for free. Left plain (zero-initialized in .bss, same as any other global) and
    configured at runtime instead - see app_cantp_instance_init(), called once from main.c before
-   CANTP_init(). .CANTP_error_func_p (NULL_P) and .fd_enable (FALSE) need no explicit assignment -
-   already zero from .bss. */
+   CANTP_init(). .fd_enable (FALSE) needs no explicit assignment - already zero from .bss. */
 CANTP_instance_st app_cantp_instance_s;
 
 void app_cantp_instance_init( void )
@@ -443,10 +445,10 @@ void app_cantp_instance_init( void )
     app_cantp_instance_s.uds_resp_id             = APP_UDS_RESPONSE_ID;
 }
 
-/* No extra services beyond 0x10/0x11/0x3E (session control, ECU reset, tester present) - all
-   three are handled entirely inside UDS.c regardless of the service table (see
-   uds_process_rx_message()'s routing), so an empty table (NULL_P/0u passed to UDS_init) is
-   correct, not a placeholder - there is nothing else APP needs to expose yet. */
+/* 0x10/0x11/0x3E (session control, ECU reset, tester present) are handled entirely inside UDS.c
+   regardless of the service table (see uds_process_rx_message()'s routing). The service table
+   itself (APP/Src/UDS_CFG/UDS_config.c) now carries SecurityAccess (0x27) - required, unlocked in
+   EXTENDED session, before UDS.c will honour a session-control request into PROGRAMMING. */
 const UDS_func_p_st app_uds_func_table_s =
 {
     .tp_send_func_p          = app_uds_tx,
@@ -473,10 +475,10 @@ const PDUR_rx_route_st pdur_routing_table_s[] =
     CAN_SENSOR_PDUR_ENTRY( 10u ),
     CAN_SENSOR_PDUR_ENTRY( 11u ),
     /* TX-only PDUR route for the cyclic heartbeat frame */
-    { 0u, 0xFFFFFFFFu, APP_HEARTBEAT_CAN_ID, 0u, 0u, 0u, NULL_P, pdur_hal_can_tx, NULL_P },
+    { 0u, 0xFFFFFFFFu, APP_HEARTBEAT_CAN_ID, 0u, 0u, NULL_P, pdur_hal_can_tx },
     /* Functional (0x700->0x600) and physical (0x7E0->0x7E8) UDS request/response routes */
-    { APP_UDS_REQUEST_ID, 0xFFFFFFFFu, APP_UDS_RESPONSE_ID, 0u, 2u, 0u, UDS_rx_indication, app_cantp_tx_request_wrapper, NULL_P },
-    { APP_CAN_RX_ID,      0xFFFFFFFFu, APP_CAN_TX_ID,       0u, 2u, 0u, UDS_rx_indication, app_cantp_tx_request_wrapper, NULL_P },
+    { APP_UDS_REQUEST_ID, 0xFFFFFFFFu, APP_UDS_RESPONSE_ID, 0u, 2u, UDS_rx_indication, app_cantp_tx_request_wrapper },
+    { APP_CAN_RX_ID,      0xFFFFFFFFu, APP_CAN_TX_ID,       0u, 2u, UDS_rx_indication, app_cantp_tx_request_wrapper },
 };
 
 const u16_t pdur_num_routes_s = (u16_t)( sizeof(pdur_routing_table_s) / sizeof(pdur_routing_table_s[0u]) );
@@ -527,7 +529,7 @@ STATIC const MSG_SCHED_msg_cfg_st can_msg_table_s[] =
     CAN_SENSOR_MSG_ENTRY(  9u ),
     CAN_SENSOR_MSG_ENTRY( 10u ),
     CAN_SENSOR_MSG_ENTRY( 11u ),
-    { APP_HEARTBEAT_CAN_ID, APP_HEARTBEAT_PERIOD_MS, 0u, MSG_SCHED_TX_CYCLIC, app_heartbeat_get_data },
+    //{ APP_HEARTBEAT_CAN_ID, APP_HEARTBEAT_PERIOD_MS, 0u, MSG_SCHED_TX_CYCLIC, app_heartbeat_get_data },
 };
 
 const MSG_SCHED_cfg_st msg_sched_cfg_s =

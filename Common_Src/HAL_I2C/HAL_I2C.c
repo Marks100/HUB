@@ -51,7 +51,7 @@ void HAL_I2C1_init( void )
 	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AF_OD;
 	GPIO_Init( I2C1_PORT, &GPIO_InitStructure );
 
-	I2C_InitTypeDef  I2C_InitStructure;
+	I2C_InitTypeDef I2C_InitStructure;
 
 	/* I2C configuration */
 	I2C_InitStructure.I2C_Mode = I2C_Mode_I2C;
@@ -68,7 +68,7 @@ void HAL_I2C1_init( void )
 	I2C_Cmd( I2C1, ENABLE );
 	
 	/* Apply I2C configuration after enabling it */
-	I2C_Init(I2C1, &I2C_InitStructure);
+	I2C_Init( I2C1, &I2C_InitStructure );
 
 	I2C_AcknowledgeConfig( I2C1, ENABLE );
 
@@ -116,23 +116,23 @@ pass_fail_et HAL_I2C_write_registers( u8_t dev_add, u8_t reg_address, u8_t* data
 	u8_t i = 0u;
 	pass_fail_et status = PASS;
 
-	I2C_GenerateSTART(I2C1,ENABLE);
-	status = HAL_I2C_check_event(I2C_EVENT_MASTER_MODE_SELECT);
+	I2C_GenerateSTART( I2C1, ENABLE );
+	status = HAL_I2C_check_event( I2C_EVENT_MASTER_MODE_SELECT );
 
-	I2C_Send7bitAddress(I2C1, ( dev_add << 1u ), I2C_Direction_Transmitter);
-	status = HAL_I2C_check_event(I2C_EVENT_MASTER_TRANSMITTER_MODE_SELECTED);
+	I2C_Send7bitAddress( I2C1, ( dev_add << 1u ), I2C_Direction_Transmitter );
+	status = HAL_I2C_check_event( I2C_EVENT_MASTER_TRANSMITTER_MODE_SELECTED );
 
-	I2C_SendData(I2C1, reg_address );
-	status = HAL_I2C_check_event(I2C_EVENT_MASTER_BYTE_TRANSMITTED);
+	I2C_SendData( I2C1, reg_address );
+	status = HAL_I2C_check_event( I2C_EVENT_MASTER_BYTE_TRANSMITTED );
 
 	for( i = 0; i < num_bytes; i++ )
 	{
-		I2C_SendData(I2C1, data[i] );
-		status = HAL_I2C_check_event(I2C_EVENT_MASTER_BYTE_TRANSMITTED);
+		I2C_SendData( I2C1, data[i] );
+		status = HAL_I2C_check_event( I2C_EVENT_MASTER_BYTE_TRANSMITTED );
 	}
 
-	I2C_GenerateSTOP(I2C1,ENABLE);
-	status = HAL_I2C_check_event(I2C_EVENT_MASTER_BYTE_TRANSMITTED);
+	I2C_GenerateSTOP( I2C1, ENABLE );
+	status = HAL_I2C_check_event( I2C_EVENT_MASTER_BYTE_TRANSMITTED );
 
 	return( status );
 }
@@ -154,34 +154,34 @@ pass_fail_et HAL_I2C_read_registers( u8_t dev_add, u8_t reg_address, u8_t* data,
 	u8_t i = 0u;
 	pass_fail_et status = PASS;
 
-	I2C_AcknowledgeConfig(I2C1,ENABLE);
+	I2C_AcknowledgeConfig( I2C1, ENABLE );
 
-	I2C_GenerateSTART(I2C1,ENABLE);
-	status = HAL_I2C_check_event(I2C_EVENT_MASTER_MODE_SELECT);
+	I2C_GenerateSTART( I2C1, ENABLE );
+	status = HAL_I2C_check_event( I2C_EVENT_MASTER_MODE_SELECT );
 
-	I2C_Send7bitAddress(I2C1, ( dev_add << 1u ), I2C_Direction_Transmitter);
-	status = HAL_I2C_check_event(I2C_EVENT_MASTER_TRANSMITTER_MODE_SELECTED);
+	I2C_Send7bitAddress( I2C1, ( dev_add << 1u ), I2C_Direction_Transmitter );
+	status = HAL_I2C_check_event( I2C_EVENT_MASTER_TRANSMITTER_MODE_SELECTED );
 
-	I2C_SendData(I2C1, reg_address);
-	status = HAL_I2C_check_event(I2C_EVENT_MASTER_BYTE_TRANSMITTED);
+	I2C_SendData( I2C1, reg_address );
+	status = HAL_I2C_check_event( I2C_EVENT_MASTER_BYTE_TRANSMITTED );
 
-	I2C_GenerateSTART(I2C1,ENABLE);
-	status = HAL_I2C_check_event(I2C_EVENT_MASTER_MODE_SELECT);
+	I2C_GenerateSTART( I2C1, ENABLE );
+	status = HAL_I2C_check_event( I2C_EVENT_MASTER_MODE_SELECT );
 
-	I2C_Send7bitAddress(I2C1, ( dev_add << 1u ), I2C_Direction_Receiver);
-	status = HAL_I2C_check_event(I2C_EVENT_MASTER_RECEIVER_MODE_SELECTED);
+	I2C_Send7bitAddress( I2C1, ( dev_add << 1u ), I2C_Direction_Receiver );
+	status = HAL_I2C_check_event( I2C_EVENT_MASTER_RECEIVER_MODE_SELECTED );
 
 	for( i = 0; i < num_bytes ; i++ )
 	{
-		status = HAL_I2C_check_event(I2C_EVENT_MASTER_BYTE_RECEIVED);
-		data[i] = I2C_ReceiveData(I2C1);
+		status = HAL_I2C_check_event( I2C_EVENT_MASTER_BYTE_RECEIVED );
+		data[i] = I2C_ReceiveData( I2C1 );
 	}
 
-	I2C_GenerateSTOP(I2C1, ENABLE);
-	I2C_AcknowledgeConfig(I2C1, DISABLE);
+	I2C_GenerateSTOP( I2C1, ENABLE );
+	I2C_AcknowledgeConfig( I2C1, DISABLE );
 
-	status = HAL_I2C_check_event(I2C_EVENT_MASTER_BYTE_RECEIVED);
-	I2C_ReceiveData(I2C1);
+	status = HAL_I2C_check_event( I2C_EVENT_MASTER_BYTE_RECEIVED );
+	I2C_ReceiveData( I2C1 );
 
 	return( status );
 }
@@ -259,14 +259,14 @@ pass_fail_et HAL_I2C_check_event( u32_t event )
 
 	HAL_I2C1_timeout_s = 0u;
 
-	while( ( !I2C_CheckEvent(I2C1, (uint32_t)event) ) &&
-	       ( I2C_GetFlagStatus(I2C1, I2C_FLAG_AF) != SET ) &&
+	while( ( !I2C_CheckEvent( I2C1, (uint32_t)event ) ) &&
+	       ( I2C_GetFlagStatus( I2C1, I2C_FLAG_AF ) != SET ) &&
 	       ( HAL_I2C1_timeout_s < 1000u ) )
 	{
 		HAL_I2C1_timeout_s++;
 	}
 
-	if( I2C_CheckEvent(I2C1, (uint32_t)event) == SUCCESS )
+	if( I2C_CheckEvent( I2C1, (uint32_t)event ) == SUCCESS )
 	{
 		status = PASS;
 	}
@@ -274,7 +274,7 @@ pass_fail_et HAL_I2C_check_event( u32_t event )
 	{
 		status = FAIL;
 
-		if( I2C_GetFlagStatus(I2C1, I2C_FLAG_AF) == SET )
+		if( I2C_GetFlagStatus( I2C1, I2C_FLAG_AF ) == SET )
 		{
 			I2C_ClearFlag( I2C1, I2C_FLAG_AF );
 		}
@@ -283,9 +283,9 @@ pass_fail_et HAL_I2C_check_event( u32_t event )
 	return( status );
 }
 
-///***************************************************************************************************
-//**                              ISR Handlers                                                      **
-//***************************************************************************************************/
+/*****************************************************************************************************
+**                                ISR Handlers                                                      **
+/****************************************************************************************************/
 /* None */
 
-///****************************** END OF FILE *******************************************************/
+/******************************** END OF FILE *******************************************************/
