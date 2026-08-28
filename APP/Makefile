@@ -49,16 +49,18 @@ RELEASE_PACKAGE_NAME         := $(RELEASE_PACKAGE_BASE_DIR)/$(PROJECT_TYPE)_$(VE
 # silicon, a known STM32F103 binning quirk. The top 1KB (0x0801FC00-0x0801FFFF) is reserved for
 # the NVM emulation page - FLS_STM32F1_get_nvm_base_address() places it there dynamically
 # (xCOMMON_MODULES/Src/FLS/FLS_STM32F1.c), so APP must not grow into it.
-# BM=12KB  FBL=16KB  APP=99KB (+ 1KB reserved for NVM) — adjust sizes and update linker scripts
+# BM=11KB  FBL=17KB  APP=99KB (+ 1KB reserved for NVM) — adjust sizes and update linker scripts
 # accordingly, and keep APP_FLASH_END below the reserved NVM page. BM sized at 12KB (up from the
 # minimum-viable 8KB) for future secure boot headroom - e.g. switching signature_verify over to
-# ECDSA P-256 (xCOMMON_MODULES/Src/CRYPTO/micro-ecc) adds ~3.5KB over the current HMAC-SHA256 path.
+# ECDSA P-256 (xCOMMON_MODULES/Src/CRYPTO/micro-ecc) adds ~3.5KB over the current HMAC-SHA256 path -
+# then gave back 1KB of that headroom to FBL, which had run out of its own margin entirely, since
+# BM still has ~7KB free either way (see BM/linker_script/STM32F103C8_BM_flash.ld).
 BM_FLASH_START               := 0x08000000
-BM_FLASH_SIZE                := 0x3000
+BM_FLASH_SIZE                := 0x2C00
 BM_FLASH_END                 := $(shell printf '0x%08X' $$(( $(BM_FLASH_START) + $(BM_FLASH_SIZE) - 1 )))
 
 FBL_FLASH_START               := $(shell printf '0x%08X' $$(( $(BM_FLASH_START) + $(BM_FLASH_SIZE) )))
-FBL_FLASH_SIZE                := 0x4000
+FBL_FLASH_SIZE                := 0x4400
 FBL_FLASH_END                 := $(shell printf '0x%08X' $$(( $(BM_FLASH_START) + $(BM_FLASH_SIZE) + $(FBL_FLASH_SIZE) - 1 )))
 
 APP_FLASH_START               := $(shell printf '0x%08X' $$(( $(BM_FLASH_START) + $(BM_FLASH_SIZE) + $(FBL_FLASH_SIZE) )))
@@ -94,8 +96,8 @@ FINAL_IMAGE_WITH_EOL         := $(BUILD_OUT_DIR)/BM_FBL_APP_with_EOL.hex
 
 # Flash pack
 FLASH_PACK_SCRIPT            := ../scripts/create_flash_pack
-FLASH_PACK_PROFILE           := ../Tool_cfg/CANFLASH/erx2_slp3.json
-FLASH_PACK_SEEDKEY           := ../Tool_cfg/CANFLASH/seedkey.dll
+FLASH_PACK_PROFILE           := ../Tool_cfg/CANFLASH/hub_bootloader.json
+FLASH_PACK_SEEDKEY           := ../Tool_cfg/CANFLASH/hub_bootloader_xor.py
 FLASH_PACK_OUTPUT            := $(BUILD_OUT_DIR)/$(PROJECT_NAME)_$(VERSION).flashpack
 
 ####################################################################################################

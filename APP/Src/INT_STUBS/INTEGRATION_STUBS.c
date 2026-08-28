@@ -476,9 +476,12 @@ const PDUR_rx_route_st pdur_routing_table_s[] =
     CAN_SENSOR_PDUR_ENTRY( 11u ),
     /* TX-only PDUR route for the cyclic heartbeat frame */
     { 0u, 0xFFFFFFFFu, APP_HEARTBEAT_CAN_ID, 0u, 0u, NULL_P, pdur_hal_can_tx },
-    /* Functional (0x700->0x600) and physical (0x7E0->0x7E8) UDS request/response routes */
-    { APP_UDS_REQUEST_ID, 0xFFFFFFFFu, APP_UDS_RESPONSE_ID, 0u, 2u, UDS_rx_indication, app_cantp_tx_request_wrapper },
-    { APP_CAN_RX_ID,      0xFFFFFFFFu, APP_CAN_TX_ID,       0u, 2u, UDS_rx_indication, app_cantp_tx_request_wrapper },
+    /* Functional (0x700->0x600) and physical (0x7E0->0x7E8) UDS request/response routes.
+       tx_frame_type must be TP (CANTP_frame_type_et) - CANTP_tx_request() only branches on
+       `frame_type == TP`, anything else (including the old `2u` here) falls through to its
+       NORMAL/raw path and skips ISO-TP PCI framing entirely. */
+    { APP_UDS_REQUEST_ID, 0xFFFFFFFFu, APP_UDS_RESPONSE_ID, 0u, TP, UDS_rx_indication, app_cantp_tx_request_wrapper },
+    { APP_CAN_RX_ID,      0xFFFFFFFFu, APP_CAN_TX_ID,       0u, TP, UDS_rx_indication, app_cantp_tx_request_wrapper },
 };
 
 const u16_t pdur_num_routes_s = (u16_t)( sizeof(pdur_routing_table_s) / sizeof(pdur_routing_table_s[0u]) );

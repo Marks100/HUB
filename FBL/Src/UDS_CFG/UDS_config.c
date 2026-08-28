@@ -7,6 +7,7 @@
 ***************************************************************************************************/
 #include "UDS_config.h"
 #include "FBL.h"
+#include "HEADER.h"
 
 /***************************************************************************************************
 **                              Private Function Prototypes                                       **
@@ -68,10 +69,15 @@ STATIC UDS_service_table_st uds_service_table_s[] =
 /* FBL's 0x10 policy - a whitelist, anything absent is refused with NRC 0x7E. See
    UDS_session_transition_st in UDS.h for the matching rules.
 
-   Deliberately looser than APP's table (APP/Src/UDS_CFG/UDS_config.c): getting here at all already
-   required APP to authenticate the tester before rebooting into FBL, and fbl_main() starts this
-   partition pre-unlocked on the strength of that, so re-gating the sessions would only ask the same
-   tester to prove itself twice.
+   Deliberately looser than APP's table (APP/Src/UDS_CFG/UDS_config.c): fbl_main()'s uds_init forces
+   UDS-level security to 1 unconditionally on every boot into FBL, so re-gating these sessions on top
+   of that would just check something already forced true - not a real gate. This holds regardless of
+   how FBL was entered: APP's conventional EXTENDED -> SecurityAccess -> PROGRAMMING path authenticates
+   the tester first, but APP's RoutineControl Force Boot Mode (see APP/Src/UDS_CFG/UDS_config.c's file
+   header) deliberately reaches FBL without that. Either way, actual flashing stays gated behind FBL's
+   own separate seed/key exchange (FBL_security_generate_seed()/FBL_security_verify_key(), starting
+   FBL_SECURITY_LOCKED regardless of entry path) - reaching PROGRAMMING here only gets a tester into
+   the room, not access to FBL_download_request().
 
    Reaching DEFAULT from anywhere is the tester saying "done programming" and resets the ECU so BM
    re-validates APP and boots it. Wildcarding from_session is what makes the conventional exit
@@ -229,16 +235,22 @@ void UDS_erase_complete_notify( false_true_et success )
 /*!
 ****************************************************************************************************
 *   \brief         0x31 StartRoutine 0xFF02 - CheckMemory
-*   \details       Response: [routineStatusRecord: 4-byte big-endian CRC32 over the APP region].
-*                  Lets the tester verify a flashed image without a separate 0x23 ReadMemory pass.
+*   \details       Response: [routineStatusRecord: 4-byte big-endian CRC32 over the APP code
+*                  region]. Lets the tester verify a flashed image without a separate 0x23
+*                  ReadMemory pass. Region is [app_code_start, app_code_end] - header excluded -
+*                  to match exactly what BM_app_calculate_crc32() validates against on the next
+*                  reset (the header holds the CRC value itself, so including it would make this
+*                  unsatisfiable by construction); app_code_start is always app_header_address +
+*                  sizeof(APP_header_st), see HEADER.h.
 ***************************************************************************************************/
 STATIC u8_t uds_handle_routine_check_memory( u8_t* data_p, u16_t* len_p, UDS_response_code_et* nrc_p )
 {
-    const fbl_config_st* cfg_p = FBL_get_config();
+    const fbl_config_st* cfg_p       = FBL_get_config();
+    u32_t                code_start  = cfg_p->app_header_address + (u32_t)sizeof( APP_header_st );
     u32_t                crc;
 
-    crc = FBL_crc_calculate( cfg_p->app_header_address,
-                              FBL_region_length( cfg_p->app_header_address, cfg_p->app_code_end_address ) );
+    crc = FBL_crc_calculate( code_start,
+                              FBL_region_length( code_start, cfg_p->app_code_end_address ) );
 
     data_p[0] = (u8_t)( crc >> 24u );
     data_p[1] = (u8_t)( crc >> 16u );
@@ -258,12 +270,13 @@ STATIC u8_t uds_handle_routine_check_memory( u8_t* data_p, u16_t* len_p, UDS_res
 ***************************************************************************************************/
 STATIC u8_t uds_handle_request_download( u8_t* data_p, u16_t* len_p, UDS_response_code_et* nrc_p )
 {
-    const fbl_config_st* cfg_p       = FBL_get_config();
+    const fbl_config_st* cfg_p        = FBL_get_config();
     u8_t                 addr_len_fmt = data_p[1];
-    u8_t                 addr_len    = (u8_t)( addr_len_fmt & 0x0Fu );
-    u8_t                 size_len    = (u8_t)( ( addr_len_fmt >> 4u ) & 0x0Fu );
+    u8_t                 addr_len     = (u8_t)( addr_len_fmt & 0x0Fu );
+    u8_t                 size_len     = (u8_t)( ( addr_len_fmt >> 4u ) & 0x0Fu );
     u32_t                address;
     u32_t                length;
+    false_true_et        security_denied;
 
     if( ( addr_len == 0u ) || ( addr_len > 4u ) || ( size_len == 0u ) || ( size_len > 4u ) )
     {
@@ -274,7 +287,7 @@ STATIC u8_t uds_handle_request_download( u8_t* data_p, u16_t* len_p, UDS_respons
         address = uds_read_big_endian( &data_p[2], addr_len );
         length  = uds_read_big_endian( &data_p[2u + addr_len], size_len );
 
-        if( FBL_download_request( address, length ) == TRUE )
+        if( FBL_download_request( address, length, &security_denied ) == TRUE )
         {
             data_p[0] = 0x40u;  /* lengthFormatIdentifier: 4-byte maxNumberOfBlockLength follows */
             data_p[1] = (u8_t)( cfg_p->max_transfer_block_len >> 24u );
@@ -283,6 +296,10 @@ STATIC u8_t uds_handle_request_download( u8_t* data_p, u16_t* len_p, UDS_respons
             data_p[4] = (u8_t)( cfg_p->max_transfer_block_len );
             *len_p    = 5u;
             *nrc_p    = UDS_RC_POSITIVE_RESPONSE;
+        }
+        else if( security_denied == TRUE )
+        {
+            *nrc_p = UDS_RC_SECURITY_ACCESS_DENIED;
         }
         else
         {
@@ -347,12 +364,18 @@ STATIC u8_t uds_handle_transfer_data( u8_t* data_p, u16_t* len_p, UDS_response_c
 ***************************************************************************************************/
 STATIC u8_t uds_handle_request_transfer_exit( u8_t* data_p, u16_t* len_p, UDS_response_code_et* nrc_p )
 {
+    false_true_et flush_failed;
+
     (void)data_p;
 
-    if( FBL_download_exit() == TRUE )
+    if( FBL_download_exit( &flush_failed ) == TRUE )
     {
         *len_p = 0u;
         *nrc_p = UDS_RC_POSITIVE_RESPONSE;
+    }
+    else if( flush_failed == TRUE )
+    {
+        *nrc_p = UDS_RC_GENERAL_PROGRAMMING_FAILURE;
     }
     else
     {

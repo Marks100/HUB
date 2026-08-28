@@ -3,12 +3,14 @@
 **
 ** Flash layout (128 KB total - confirmed via live F_SIZE register read at 0x1FFFF7E0; this part
 ** is a "C8" (64 KB nominal) that's physically 128 KB silicon, a known STM32F103 binning quirk):
-**   BM   : 0x08000000 - 0x08002FFF   12 KB  <- this image (grown from 8 KB for future secure
+**   BM   : 0x08000000 - 0x08002BFF   11 KB  <- this image (grown from 8 KB for future secure
 **                                             boot headroom - e.g. ECDSA P-256 verify via
-**                                             xCOMMON_MODULES/Src/CRYPTO/micro-ecc)
-**   FBL  : 0x08003000 - 0x08006FFF   16 KB
-**     .app_header : 0x08003000 - 0x080030FF  256 B
-**     code start  : 0x08003100               (FBL_CODE_START)
+**                                             xCOMMON_MODULES/Src/CRYPTO/micro-ecc - then given
+**                                             back 1 KB of that headroom to FBL, which had none
+**                                             left, since BM still had ~8 KB free either way)
+**   FBL  : 0x08002C00 - 0x08006FFF   17 KB
+**     .app_header : 0x08002C00 - 0x08002CFF  256 B
+**     code start  : 0x08002D00               (FBL_CODE_START)
 **   APP  : 0x08007000 - 0x0801FBFF   99 KB
 **     .app_header : 0x08007000 - 0x080070FF  256 B
 **     code start  : 0x08007100               (APP_CODE_START)
@@ -43,8 +45,8 @@ _Min_Stack_Size = 0x400;   /* 1 KB */
    one-past-the-end - see BM.c's bm_code_length()/FBL.c's FBL_region_length(), both of which
    add +1 to get a byte count from these. FBL's own linker script defines __app_header_start__/
    __app_code_end__ with the same names and the same values, for the same reason. */
-__fbl_header_start__  = 0x08003000;
-__fbl_code_start__    = 0x08003100;
+__fbl_header_start__  = 0x08002C00;
+__fbl_code_start__    = 0x08002D00;
 __fbl_code_end__      = 0x08006FFF;
 __app_header_start__  = 0x08007000;
 __app_code_start__    = 0x08007100;
@@ -52,7 +54,7 @@ __app_code_end__      = 0x0801FBFF;
 
 MEMORY
 {
-    FLASH          (rx)  : ORIGIN = 0x08000000, LENGTH = 12K
+    FLASH          (rx)  : ORIGIN = 0x08000000, LENGTH = 11K
     m_data_shared  (xrw) : ORIGIN = 0x20000000, LENGTH = 0x20
     RAM            (xrw) : ORIGIN = 0x20000020, LENGTH = 0x4FE0
 }

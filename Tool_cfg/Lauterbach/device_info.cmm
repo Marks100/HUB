@@ -1,0 +1,32 @@
+; HUB project - STM32F103C8T6 device info dump
+; Pure silicon facts, read directly off the chip - nothing from this project's own firmware
+; (no shared RAM state, no header/CRC checks, nothing that depends on what's flashed). Safe to
+; run any time while attached - read-only, no writes, no reset.
+;
+; Registers read:
+;   0xE000ED00        - Cortex-M3 CPUID register (implementer/part no/revision)
+;   0xE0042000        - DBGMCU_IDCODE (DEV_ID in bits[11:0], REV_ID in bits[31:16])
+;   0x1FFFF7E0        - F_SIZE register (STM32F1 family), flash size in KB
+;   0x1FFFF7E8-F0     - 96-bit factory-programmed unique ID (3x 32-bit words)
+
+AREA.Create DEVICEINFO 300. 300.
+AREA.view DEVICEINFO
+AREA.select DEVICEINFO
+
+PRINT "===================== DEVICE INFO ====================="
+PRINT "Core CPUID:      " FORMAT.HEX(8,Data.Long(D:0xE000ED00))
+PRINT "  Implementer:   " FORMAT.HEX(2,(Data.Long(D:0xE000ED00)>>24)&0xFF)
+PRINT "  Part No:       " FORMAT.HEX(3,(Data.Long(D:0xE000ED00)>>4)&0xFFF)
+PRINT "  Revision:      r" FORMAT.Decimal(1,(Data.Long(D:0xE000ED00)>>20)&0xF) "p" FORMAT.Decimal(1,Data.Long(D:0xE000ED00)&0xF)
+PRINT ""
+PRINT "Device ID:       " FORMAT.HEX(3,Data.Long(D:0xE0042000)&0xFFF)
+PRINT "Revision ID:     " FORMAT.HEX(4,(Data.Long(D:0xE0042000)>>16)&0xFFFF)
+PRINT ""
+PRINT "Flash size (KB): " FORMAT.Decimal(3,Data.Word(D:0x1FFFF7E0))
+PRINT ""
+PRINT "Unique ID:       " FORMAT.HEX(8,Data.Long(D:0x1FFFF7E8)) FORMAT.HEX(8,Data.Long(D:0x1FFFF7EC)) FORMAT.HEX(8,Data.Long(D:0x1FFFF7F0))
+PRINT "=========================================================="
+
+AREA.select
+
+ENDDO

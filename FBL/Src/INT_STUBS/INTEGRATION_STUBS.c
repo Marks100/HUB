@@ -249,11 +249,14 @@ STATIC void cantp_init( void )
 }
 
 /* Bidirectional routes: functional (0x700->0x600) and physical (0x7E0->0x7E8). TX goes via CANTP so
-   multi-frame UDS responses get segmented - see PDUR_tx(), which calls this per-route. */
+   multi-frame UDS responses get segmented - see PDUR_tx(), which calls this per-route. tx_frame_type
+   must be TP (CANTP_frame_type_et), not a bare frame-length category - CANTP_tx_request() only
+   branches on `frame_type == TP`, anything else (including the old `2u` here) falls through to its
+   NORMAL/raw path and skips ISO-TP PCI framing entirely. */
 STATIC const PDUR_rx_route_st fbl_pdur_routing_table_s[] =
 {
-    { FBL_UDS_REQUEST_ID, 0xFFFFFFFFu, FBL_UDS_RESPONSE_ID, 0u, 2u, UDS_rx_indication, fbl_cantp_tx_request },
-    { FBL_CAN_RX_ID,      0xFFFFFFFFu, FBL_CAN_TX_ID,       0u, 2u, UDS_rx_indication, fbl_cantp_tx_request },
+    { FBL_UDS_REQUEST_ID, 0xFFFFFFFFu, FBL_UDS_RESPONSE_ID, 0u, TP, UDS_rx_indication, fbl_cantp_tx_request },
+    { FBL_CAN_RX_ID,      0xFFFFFFFFu, FBL_CAN_TX_ID,       0u, TP, UDS_rx_indication, fbl_cantp_tx_request },
 };
 
 STATIC void pdur_init( void )
@@ -277,11 +280,18 @@ STATIC void fbl_pdur_tx_uds( u8_t* data_p, u16_t len )
  *  agree: that table decides when the reset happens, this decides which image BM boots after it. */
 STATIC void fbl_uds_session_notify( UDS_session_et old_session, UDS_session_et new_session )
 {
-    (void)old_session;
-
     if( new_session == UDS_SES_DEFAULT )
     {
         SHARED_RAM_set_fbl_request( FALSE );
+    }
+
+    /* Tester left PROGRAMMING for EXTENDED or DEFAULT - cleans up FBL's internal download/security
+       state immediately instead of leaving it dangling until either the 30s programming_timeout
+       self-heal or an eventual MCU reset reinitialises everything from scratch. A self-transition
+       (old==new==PROGRAMMING) does not match, so a healthy in-progress download is untouched. */
+    if( ( old_session == UDS_SES_PROGRAMMING ) && ( new_session != UDS_SES_PROGRAMMING ) )
+    {
+        FBL_download_abort();
     }
 }
 
@@ -292,7 +302,7 @@ const UDS_func_p_st fbl_uds_func_table_s =
     .perform_hard_reset       = MCU_JUMP_software_reset,
     .s3_timeout_notify        = NULL_P,   /* FBL manages its own 30s boot delay instead */
     .session_change_notify    = fbl_uds_session_notify,
-    .message_received_notify  = FBL_session_timeout_reset,
+    .message_received_notify  = NULL_P,   /* FBL has no use for this - see UDS.h's comment on the field */
     .tester_present_notify    = FBL_boot_delay_reset,
 };
 
@@ -339,7 +349,7 @@ const fbl_config_st fbl_config_s =
     .wdg_kick_func_p           = NULL_P,
     .cantp_tick_func_p         = fbl_cantp_tick,
     .time_get_tick_func_p      = TIME_get_cumulative_run_time_ms,
-    .flash_erase_sector_func_p = FLS_STM32F1_erase_sector,
+    .flash_erase_sector_func_p = FLS_STM32F1_erase_sector_checked,
     .flash_write_data_func_p   = FLS_STM32F1_write_data,
     .uds_tx_func_p             = fbl_pdur_tx_uds,
     .crc_calculate_func_p      = CHKSUM_calc_hw_crc32,
