@@ -1,19 +1,38 @@
 /*
 ****************************************************************************************************
 *
-*   \file          erx2_seedkey.cpp
+*   \file          seedkey.cpp
 *
-*   \brief         CCCM3 / Volvo ERX UDS security seed-to-key DLL
+*   \brief         HUB (BM/FBL/APP) UDS security seed-to-key DLL
 *
 *   \details       Exports GenerateKeyEx using the full 7-parameter Vector/CANoe signature
-*                  (KeyGenerator.h from Vector Informatik GmbH).
-*                  Compile as 64-bit DLL — see build.bat.
+*                  (KeyGenerator.h from Vector Informatik GmbH) - same contract CAN_FLASH's
+*                  security.py loads via ctypes, and the same shape as CAN_FLASH's other
+*                  seedkeydll examples (see examples/seedkeydll/erx2/seedkey.cpp).
+*                  Compile as 64-bit DLL - see build.bat.
 *
-*                  Security level map (iSecurityLevel == seed subfunction byte):
-*                    0x01  APP Level  1  — Dual LCG
-*                    0x09  APP Level  9  — Dual LCG  (same algorithm)
-*                    0x13  FBL Level 13  — Fixed key  (any seed -> 0x55 0xAA)
-*                    0x35  FBL Level 35  — LFSR x35,  constant 0x54504D35
+*                  Security level map (iSecurityLevel == seed request subfunction byte):
+*                    0x01  Level 1  -  seed XOR 0xA5A5A5A5
+*                    0x03  Level 2  -  seed XOR 0xA5A5A5A5  (same algorithm)
+*                    0x05  Level 3  -  seed XOR 0xA5A5A5A5  (same algorithm)
+*                    0x07  Level 4  -  seed XOR 0xA5A5A5A5  (same algorithm)
+*
+*                  All four levels are "four doors to one room, not graded access" on both the APP
+*                  and FBL side - see APP_SECURITY_LEVEL_*_SEED/_KEY (APP/Src/UDS_CFG/UDS_config.h)
+*                  and FBL_SECURITY_LEVEL_*_SEED/_KEY (xCOMMON_MODULES/Src/FBL/FBL.h): every level's
+*                  seed/key pair drives the exact same single lock/unlock state on whichever side is
+*                  currently active, there is no per-level algorithm difference to encode here.
+*
+*                  0xA5A5A5A5 is FBL_SECURITY_KEY_XOR_MASK (see xCOMMON_MODULES/Src/FBL/FBL.h) -
+*                  the formula FBL_security_verify_key() would check if a real
+*                  security_calculate_key_func_p were ever wired on this target (currently
+*                  NULL_P, so FBL accepts any key once a seed has been requested - see that
+*                  function's comment in FBL.c). APP's own SendKey handler accepts any key
+*                  unconditionally regardless of value (its seed is a fixed all-zero placeholder -
+*                  see APP/Src/UDS_CFG/UDS_config.c's file header). This DLL computes the one real
+*                  formula that exists anywhere in this codebase rather than returning a dummy
+*                  value, so it keeps working correctly if/when either side's placeholder is
+*                  ever replaced with a real check.
 *
 ****************************************************************************************************
 */
@@ -43,18 +62,13 @@ enum VKeyGenResultEx
 **                              Private constants                                                 **
 ***************************************************************************************************/
 
-static const uint32_t DUAL_LCG_KEY_CONSTANT     = 0x458B7403u;
-static const uint32_t DUAL_LCG_SEEDX_MULTIPLIER = 0x187F415Fu;
-static const uint32_t DUAL_LCG_SEEDX_INCREMENT  = 0x1F2BA78Du;
-static const uint32_t DUAL_LCG_SEEDY_MULTIPLIER = 0x39E21BF9u;
-static const uint32_t DUAL_LCG_SEEDY_INCREMENT  = 0x36B3DFC2u;
+/* FBL_SECURITY_KEY_XOR_MASK - xCOMMON_MODULES/Src/FBL/FBL.h. Must stay in lockstep with that
+   constant; it is not derived from anything at build time, so a change on the firmware side
+   needs the matching change made here by hand. Shared by all four levels - see file header. */
+static const uint32_t SECURITY_KEY_XOR_MASK = 0xA5A5A5A5u;
 
-static const uint32_t LFSR35_CONSTANT           = 0x54504D35u;
-static const int      LFSR35_ITERATIONS         = 35;
-
-static const uint32_t SEED_BYTES_NEEDED         = 4u;
-static const uint32_t KEY_BYTES_4               = 4u;
-static const uint32_t KEY_BYTES_2               = 2u;
+static const uint32_t SEED_BYTES_NEEDED             = 4u;
+static const uint32_t KEY_BYTES_4                   = 4u;
 
 /***************************************************************************************************
 **                              Private function prototypes                                       **
@@ -62,8 +76,6 @@ static const uint32_t KEY_BYTES_2               = 2u;
 
 static uint32_t bytes_to_u32_be( const unsigned char* buf );
 static void     u32_to_bytes_be( uint32_t val, unsigned char* buf );
-static uint32_t lfsr35(          uint32_t seed, uint32_t constant );
-static uint32_t dual_lcg(        uint32_t seed );
 
 /***************************************************************************************************
 **                              Private function implementations                                  **
@@ -110,84 +122,6 @@ static void u32_to_bytes_be( uint32_t val, unsigned char* buf )
     buf[3] = static_cast<unsigned char>(   val           & 0xFFu );
 }
 
-/*!
-****************************************************************************************************
-*
-*   \brief         LFSR-based key derivation — 35 shift-register iterations.
-*
-*   \param[in]     seed      32-bit seed value.
-*   \param[in]     constant  XOR constant applied on each '1' bit shift.
-*
-*   \return        Derived 32-bit key.
-*
-***************************************************************************************************/
-static uint32_t lfsr35( uint32_t seed, uint32_t constant )
-{
-    uint32_t key = seed;
-    int      i;
-
-    if( key != 0u )
-    {
-        for( i = 0; i < LFSR35_ITERATIONS; i++ )
-        {
-            if( ( key & 0x80000000u ) != 0u )
-            {
-                key = ( ( key << 1u ) & 0xFFFFFFFFu ) ^ constant;
-            }
-            else
-            {
-                key = ( key << 1u ) & 0xFFFFFFFFu;
-            }
-        }
-    }
-
-    return key;
-}
-
-/*!
-****************************************************************************************************
-*
-*   \brief         Dual LCG key derivation.
-*
-*   \details       Two linear congruential generators are chained:
-*                    x = LCG_X( seed XOR KEY_CONSTANT )
-*                    y = LCG_Y( x    XOR KEY_CONSTANT )
-*                    key = x XOR y
-*                  Seeds of 0x00000000 and 0xFFFFFFFF yield key 0x00000000 (invalid seed guard).
-*
-*   \param[in]     seed   32-bit seed value.
-*
-*   \return        Derived 32-bit key.
-*
-***************************************************************************************************/
-static uint32_t dual_lcg( uint32_t seed )
-{
-    uint32_t x;
-    uint32_t y;
-    uint32_t key;
-
-    if( ( seed == 0u ) || ( seed == 0xFFFFFFFFu ) )
-    {
-        key = 0u;
-    }
-    else
-    {
-        x = ( seed ^ DUAL_LCG_KEY_CONSTANT ) & 0xFFFFFFFFu;
-        x = static_cast<uint32_t>(
-                ( static_cast<uint64_t>( x ) * DUAL_LCG_SEEDX_MULTIPLIER
-                  + DUAL_LCG_SEEDX_INCREMENT ) & 0xFFFFFFFFu );
-
-        y = ( x ^ DUAL_LCG_KEY_CONSTANT ) & 0xFFFFFFFFu;
-        y = static_cast<uint32_t>(
-                ( static_cast<uint64_t>( y ) * DUAL_LCG_SEEDY_MULTIPLIER
-                  + DUAL_LCG_SEEDY_INCREMENT ) & 0xFFFFFFFFu );
-
-        key = ( x ^ y ) & 0xFFFFFFFFu;
-    }
-
-    return key;
-}
-
 /***************************************************************************************************
 **                              Exported function                                                 **
 ***************************************************************************************************/
@@ -195,7 +129,7 @@ static uint32_t dual_lcg( uint32_t seed )
 /*!
 ****************************************************************************************************
 *
-*   \brief         Generate a UDS security key from a seed — Vector/CANoe GenerateKeyEx contract.
+*   \brief         Generate a UDS security key from a seed - Vector/CANoe GenerateKeyEx contract.
 *
 *   \param[in]     ipSeedArray           Pointer to the seed byte array (big-endian).
 *   \param[in]     iSeedArraySize        Number of bytes in the seed array.
@@ -231,8 +165,10 @@ EXPORT VKeyGenResultEx GenerateKeyEx(
     {
         switch( iSecurityLevel )
         {
-            case 0x01u:   /* APP Level  1 — Dual LCG, 4-byte key */
-            case 0x09u:   /* APP Level  9 — Dual LCG, 4-byte key */
+            case 0x01u:   /* Level 1 - seed XOR 0xA5A5A5A5, 4-byte key */
+            case 0x03u:   /* Level 2 - same algorithm, see file header */
+            case 0x05u:   /* Level 3 - same algorithm, see file header */
+            case 0x07u:   /* Level 4 - same algorithm, see file header */
                 if( ( iSeedArraySize < SEED_BYTES_NEEDED ) ||
                     ( iMaxKeyArraySize < KEY_BYTES_4 ) )
                 {
@@ -241,37 +177,7 @@ EXPORT VKeyGenResultEx GenerateKeyEx(
                 else
                 {
                     seed = bytes_to_u32_be( ipSeedArray );
-                    key  = dual_lcg( seed );
-                    u32_to_bytes_be( key, iopKeyArray );
-                    oActualKeyArraySize = KEY_BYTES_4;
-                    result = KGRE_Ok;
-                }
-                break;
-
-            case 0x13u:   /* FBL Level 13 — fixed 2-byte key 0x55 0xAA */
-                if( iMaxKeyArraySize < KEY_BYTES_2 )
-                {
-                    result = KGRE_BufferToSmall;
-                }
-                else
-                {
-                    iopKeyArray[0]      = 0x55u;
-                    iopKeyArray[1]      = 0xAAu;
-                    oActualKeyArraySize = KEY_BYTES_2;
-                    result = KGRE_Ok;
-                }
-                break;
-
-            case 0x35u:   /* FBL Level 35 — LFSR x35, 4-byte key */
-                if( ( iSeedArraySize < SEED_BYTES_NEEDED ) ||
-                    ( iMaxKeyArraySize < KEY_BYTES_4 ) )
-                {
-                    result = KGRE_BufferToSmall;
-                }
-                else
-                {
-                    seed = bytes_to_u32_be( ipSeedArray );
-                    key  = lfsr35( seed, LFSR35_CONSTANT );
+                    key  = seed ^ SECURITY_KEY_XOR_MASK;
                     u32_to_bytes_be( key, iopKeyArray );
                     oActualKeyArraySize = KEY_BYTES_4;
                     result = KGRE_Ok;

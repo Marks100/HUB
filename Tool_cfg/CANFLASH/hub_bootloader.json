@@ -11,9 +11,10 @@
   },
 
   "security": {
-    "_comment": "APP only implements level 1 (0x01/0x02) and level 2 (0x03/0x04) - see APP_SECURITY_LEVEL_1_SEED/_KEY in APP/Src/UDS_CFG/UDS_config.h. APP also gates the Programming session transition itself on security (unlike the generic SLP3 order), hence before_programming.",
+    "_comment": "APP and FBL both implement levels 1-4 (seed/key pairs 0x01/0x02, 0x03/0x04, 0x05/0x06, 0x07/0x08 - see APP_SECURITY_LEVEL_*_SEED/_KEY in APP/Src/UDS_CFG/UDS_config.h and FBL_SECURITY_LEVEL_*_SEED/_KEY in xCOMMON_MODULES/Src/FBL/FBL.h), all sharing one placeholder algorithm - four doors to one room, not graded access. APP also gates the Programming session transition itself on security (unlike the generic SLP3 order), hence before_programming.",
     "seed_subf": "0x01",
     "key_subf":  "0x02",
+    "levels": ["0x01", "0x03", "0x05", "0x07"],
     "before_programming": true
   },
 
@@ -25,9 +26,6 @@
     "comm_ctrl":               false,
     "functional_tp":           false,
     "functional_tp_interval_s": 2.0,
-
-    "_comment_force_boot": "0x31 0x01 0xF518 - APP_ROUTINE_ID_FORCE_BOOT_MODE. Reaches FBL without SecurityAccess (see APP/Src/UDS_CFG/UDS_config.c's file header) - only sent if the 'Stay In Boot' checkbox is ticked; otherwise the security_before_programming path above is what gets FBL entered.",
-    "force_boot_rid":          "0xF518",
 
     "routine_check_preconditions": null,
 

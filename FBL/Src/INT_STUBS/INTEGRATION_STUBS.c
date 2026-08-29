@@ -302,7 +302,15 @@ const UDS_func_p_st fbl_uds_func_table_s =
     .perform_hard_reset       = MCU_JUMP_software_reset,
     .s3_timeout_notify        = NULL_P,   /* FBL manages its own 30s boot delay instead */
     .session_change_notify    = fbl_uds_session_notify,
-    .message_received_notify  = NULL_P,   /* FBL has no use for this - see UDS.h's comment on the field */
+    /* fbl_tick_timers() decrements app_boot_delay_ms unconditionally every tick regardless of
+       download.state - fbl_run_state_machine() only skips *acting* on it while a download is
+       active, it does not pause the countdown itself. A real transfer (~100 TransferData calls)
+       comfortably outlasts the 30s delay, so without this the timer sits at 0 for the rest of the
+       download, and the instant state flips to FBL_STATE_COMPLETE after a successful 0x37,
+       fbl_run_boot_timer() resets the MCU immediately - before CANTP's TX queue ever gets a tick
+       to transmit the queued positive response. Wiring both notifies to the reset keeps the
+       countdown fresh on ANY diagnostic traffic, not just an explicit TesterPresent ping. */
+    .message_received_notify  = FBL_boot_delay_reset,
     .tester_present_notify    = FBL_boot_delay_reset,
 };
 
@@ -320,7 +328,11 @@ STATIC void uds_init( void )
     /* APP already required security to be unlocked (in EXTENDED session) before it would honour
        the request that got us here - see uds_handle_session_control(). Trust that and start
        unlocked so the tester need not authenticate twice before RequestDownload/TransferData
-       work. */
+       work. This only covers the generic required_sec_level check in the service tables (e.g.
+       ROUTINE_ID_ERASE_MEMORY) - FBL_download_request()'s own separate security check is granted
+       in FBL_init() itself, see its comment (this runs too early: FBL_init() clears and
+       re-initialises fbl_context_s right after uds_init() returns, which would wipe anything set
+       here). */
     UDS_set_security_level( 1u );
 }
 
@@ -349,7 +361,7 @@ const fbl_config_st fbl_config_s =
     .wdg_kick_func_p           = NULL_P,
     .cantp_tick_func_p         = fbl_cantp_tick,
     .time_get_tick_func_p      = TIME_get_cumulative_run_time_ms,
-    .flash_erase_sector_func_p = FLS_STM32F1_erase_sector_checked,
+    .flash_erase_sector_func_p = FLS_STM32F1_erase_sector,
     .flash_write_data_func_p   = FLS_STM32F1_write_data,
     .uds_tx_func_p             = fbl_pdur_tx_uds,
     .crc_calculate_func_p      = CHKSUM_calc_hw_crc32,

@@ -24,10 +24,18 @@ STATIC u32_t uds_read_big_endian( const u8_t* data_p, u8_t num_bytes );
 /***************************************************************************************************
 **                              Sub-function Tables                                               **
 ***************************************************************************************************/
+/* All four levels share the one placeholder algorithm - see FBL.h's comment on why this is
+   "four doors to one room, not graded access", not a real level system. */
 STATIC UDS_subfunction_table_st security_access_subfuncs_s[] =
 {
     { FBL_SECURITY_LEVEL_1_SEED, uds_handle_security_request_seed, UDS_SES_PROGRAMMING, 0u },
     { FBL_SECURITY_LEVEL_1_KEY,  uds_handle_security_send_key,     UDS_SES_PROGRAMMING, 0u },
+    { FBL_SECURITY_LEVEL_2_SEED, uds_handle_security_request_seed, UDS_SES_PROGRAMMING, 0u },
+    { FBL_SECURITY_LEVEL_2_KEY,  uds_handle_security_send_key,     UDS_SES_PROGRAMMING, 0u },
+    { FBL_SECURITY_LEVEL_3_SEED, uds_handle_security_request_seed, UDS_SES_PROGRAMMING, 0u },
+    { FBL_SECURITY_LEVEL_3_KEY,  uds_handle_security_send_key,     UDS_SES_PROGRAMMING, 0u },
+    { FBL_SECURITY_LEVEL_4_SEED, uds_handle_security_request_seed, UDS_SES_PROGRAMMING, 0u },
+    { FBL_SECURITY_LEVEL_4_KEY,  uds_handle_security_send_key,     UDS_SES_PROGRAMMING, 0u },
 };
 
 STATIC UDS_subfunction_table_st routine_control_subfuncs_s[] =
@@ -56,7 +64,8 @@ STATIC UDS_subfunction_table_st request_transfer_exit_subfuncs_s[] =
 ***************************************************************************************************/
 STATIC UDS_service_table_st uds_service_table_s[] =
 {
-    { UDS_SID_SECURITY_ACCESS,   security_access_subfuncs_s,        2u },
+    { UDS_SID_SECURITY_ACCESS,   security_access_subfuncs_s,
+      (u8_t)( sizeof( security_access_subfuncs_s ) / sizeof( security_access_subfuncs_s[0] ) ) },
     { UDS_SID_ROUTINE_CONTROL,   routine_control_subfuncs_s,        2u },
     { UDS_SID_REQUEST_DOWNLOAD,  request_download_subfuncs_s,       1u },
     { UDS_SID_TRANSFER_DATA,     transfer_data_subfuncs_s,          1u },
@@ -69,15 +78,10 @@ STATIC UDS_service_table_st uds_service_table_s[] =
 /* FBL's 0x10 policy - a whitelist, anything absent is refused with NRC 0x7E. See
    UDS_session_transition_st in UDS.h for the matching rules.
 
-   Deliberately looser than APP's table (APP/Src/UDS_CFG/UDS_config.c): fbl_main()'s uds_init forces
-   UDS-level security to 1 unconditionally on every boot into FBL, so re-gating these sessions on top
-   of that would just check something already forced true - not a real gate. This holds regardless of
-   how FBL was entered: APP's conventional EXTENDED -> SecurityAccess -> PROGRAMMING path authenticates
-   the tester first, but APP's RoutineControl Force Boot Mode (see APP/Src/UDS_CFG/UDS_config.c's file
-   header) deliberately reaches FBL without that. Either way, actual flashing stays gated behind FBL's
-   own separate seed/key exchange (FBL_security_generate_seed()/FBL_security_verify_key(), starting
-   FBL_SECURITY_LOCKED regardless of entry path) - reaching PROGRAMMING here only gets a tester into
-   the room, not access to FBL_download_request().
+   Deliberately looser than APP's table (APP/Src/UDS_CFG/UDS_config.c): getting here at all already
+   required APP to authenticate the tester before rebooting into FBL, and fbl_main() starts this
+   partition pre-unlocked on the strength of that, so re-gating the sessions would only ask the same
+   tester to prove itself twice.
 
    Reaching DEFAULT from anywhere is the tester saying "done programming" and resets the ECU so BM
    re-validates APP and boots it. Wildcarding from_session is what makes the conventional exit

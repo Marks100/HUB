@@ -97,7 +97,7 @@ FINAL_IMAGE_WITH_EOL         := $(BUILD_OUT_DIR)/BM_FBL_APP_with_EOL.hex
 # Flash pack
 FLASH_PACK_SCRIPT            := ../scripts/create_flash_pack
 FLASH_PACK_PROFILE           := ../Tool_cfg/CANFLASH/hub_bootloader.json
-FLASH_PACK_SEEDKEY           := ../Tool_cfg/CANFLASH/hub_bootloader_xor.py
+FLASH_PACK_SEEDKEY           := ../Tool_cfg/CANFLASH/seedkeydll/seedkey.dll
 FLASH_PACK_OUTPUT            := $(BUILD_OUT_DIR)/$(PROJECT_NAME)_$(VERSION).flashpack
 
 ####################################################################################################
