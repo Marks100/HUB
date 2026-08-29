@@ -109,7 +109,7 @@ STATIC void display_init( void )
     SH1106_init( &fbl_display_instance_s, fbl_display_framebuffer_s, fbl_display_page_dirty_s, &display_cfg_s );
 
     /* First frame through the same path every later update uses - matches what FBL_init() sets. */
-    display_render( 0u, (u8_t)( FBL_BOOT_DELAY_MS / 1000u ) );
+    display_render( 0u, (u8_t)FBL_BOOT_DELAY_S );
 }
 
 /***************************************************************************************************
@@ -302,14 +302,11 @@ const UDS_func_p_st fbl_uds_func_table_s =
     .perform_hard_reset       = MCU_JUMP_software_reset,
     .s3_timeout_notify        = NULL_P,   /* FBL manages its own 30s boot delay instead */
     .session_change_notify    = fbl_uds_session_notify,
-    /* fbl_tick_timers() decrements app_boot_delay_ms unconditionally every tick regardless of
-       download.state - fbl_run_state_machine() only skips *acting* on it while a download is
-       active, it does not pause the countdown itself. A real transfer (~100 TransferData calls)
-       comfortably outlasts the 30s delay, so without this the timer sits at 0 for the rest of the
-       download, and the instant state flips to FBL_STATE_COMPLETE after a successful 0x37,
-       fbl_run_boot_timer() resets the MCU immediately - before CANTP's TX queue ever gets a tick
-       to transmit the queued positive response. Wiring both notifies to the reset keeps the
-       countdown fresh on ANY diagnostic traffic, not just an explicit TesterPresent ping. */
+    /* fbl_run_boot_timer() (FBL.c) already pauses the countdown itself for the duration of an
+       erase or download, so this is only for the genuinely-idle case: a tester that has an active
+       session but takes its time between separate commands. Wiring both notifies to the reset
+       keeps the countdown fresh on ANY diagnostic traffic in that window, not just an explicit
+       TesterPresent ping. */
     .message_received_notify  = FBL_boot_delay_reset,
     .tester_present_notify    = FBL_boot_delay_reset,
 };
@@ -336,6 +333,25 @@ STATIC void uds_init( void )
     UDS_set_security_level( 1u );
 }
 
+/* Placeholder seed/key algorithm - not real challenge/response security, just enough to exercise
+   the UDS exchange end to end. STM32F103 (medium-density) has no hardware RNG peripheral, so the
+   seed is tick-based rather than truly random; TIME_get_cumulative_run_time_ms() is the same
+   public time source already wired as time_get_tick_func_p, not FBL's own private tick counter.
+   The XOR mask matches Tool_cfg/CANFLASH/seedkeydll/seedkey.cpp's SECURITY_KEY_XOR_MASK exactly -
+   change both together if this is ever replaced with a real customer/OEM algorithm. */
+#define FBL_SECURITY_SEED_MULTIPLIER (0x12345678u)
+#define FBL_SECURITY_KEY_XOR_MASK    (0xA5A5A5A5u)
+
+STATIC u32_t fbl_security_generate_seed( void )
+{
+    return( (u32_t)TIME_get_cumulative_run_time_ms() * FBL_SECURITY_SEED_MULTIPLIER );
+}
+
+STATIC u32_t fbl_security_calculate_key( u32_t seed )
+{
+    return( seed ^ FBL_SECURITY_KEY_XOR_MASK );
+}
+
 /***************************************************************************************************
 **                              Field Bootloader Configuration                                    **
 ***************************************************************************************************/
@@ -360,6 +376,7 @@ const fbl_config_st fbl_config_s =
     /* Runtime function pointers */
     .wdg_kick_func_p           = NULL_P,
     .cantp_tick_func_p         = fbl_cantp_tick,
+    .uds_tick_func_p           = UDS_tick,
     .time_get_tick_func_p      = TIME_get_cumulative_run_time_ms,
     .flash_erase_sector_func_p = FLS_STM32F1_erase_sector,
     .flash_write_data_func_p   = FLS_STM32F1_write_data,
@@ -367,11 +384,10 @@ const fbl_config_st fbl_config_s =
     .crc_calculate_func_p      = CHKSUM_calc_hw_crc32,
     .display_update_func_p     = display_render,
     .erase_complete_func_p     = UDS_erase_complete_notify,   /* answers the deferred 0x31 */
-    .security_generate_seed_func_p = NULL_P,  /* no HSM/RNG wired on this target - falls back to
-                                                  FBL_security_generate_seed()'s tick-based seed */
-    .security_calculate_key_func_p = NULL_P,  /* no customer-specific algorithm wired on this
-                                                  target - falls back to FBL_security_verify_key()'s
-                                                  XOR-mask algorithm */
+    .security_generate_seed_func_p = fbl_security_generate_seed,  /* placeholder tick-based seed,
+                                                                       see its comment */
+    .security_calculate_key_func_p = fbl_security_calculate_key,  /* placeholder XOR-mask, see its
+                                                                       comment */
 
     /* Shared RAM interface - same module/contract BM already uses */
     .shared_ram_get_request_func_p = SHARED_RAM_get_fbl_request,

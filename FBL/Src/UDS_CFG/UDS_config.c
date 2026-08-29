@@ -254,7 +254,7 @@ STATIC u8_t uds_handle_routine_check_memory( u8_t* data_p, u16_t* len_p, UDS_res
     u32_t                crc;
 
     crc = FBL_crc_calculate( code_start,
-                              FBL_region_length( code_start, cfg_p->app_code_end_address ) );
+                              FBL_calc_region_length( code_start, cfg_p->app_code_end_address ) );
 
     data_p[0] = (u8_t)( crc >> 24u );
     data_p[1] = (u8_t)( crc >> 16u );
@@ -368,18 +368,12 @@ STATIC u8_t uds_handle_transfer_data( u8_t* data_p, u16_t* len_p, UDS_response_c
 ***************************************************************************************************/
 STATIC u8_t uds_handle_request_transfer_exit( u8_t* data_p, u16_t* len_p, UDS_response_code_et* nrc_p )
 {
-    false_true_et flush_failed;
-
     (void)data_p;
 
-    if( FBL_download_exit( &flush_failed ) == TRUE )
+    if( FBL_download_exit() == TRUE )
     {
         *len_p = 0u;
         *nrc_p = UDS_RC_POSITIVE_RESPONSE;
-    }
-    else if( flush_failed == TRUE )
-    {
-        *nrc_p = UDS_RC_GENERAL_PROGRAMMING_FAILURE;
     }
     else
     {

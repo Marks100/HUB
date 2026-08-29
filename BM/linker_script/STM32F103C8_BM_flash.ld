@@ -42,7 +42,7 @@ _Min_Stack_Size = 0x400;   /* 1 KB */
    Convention (used identically everywhere in the boot chain - BM.h, FBL.h, the Makefiles):
    *_header_start__ is the first byte of a region; *_code_start__ is the first byte of code,
    256 bytes later; *_code_end__ is the LAST VALID BYTE of the region (inclusive), never
-   one-past-the-end - see BM.c's bm_code_length()/FBL.c's FBL_region_length(), both of which
+   one-past-the-end - see BM.c's bm_code_length()/FBL.c's FBL_calc_region_length(), both of which
    add +1 to get a byte count from these. FBL's own linker script defines __app_header_start__/
    __app_code_end__ with the same names and the same values, for the same reason. */
 __fbl_header_start__  = 0x08002C00;
