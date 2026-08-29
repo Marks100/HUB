@@ -1,7 +1,7 @@
 {
-  "_comment": "Flash sequence profile for this project's own BM -> FBL -> APP boot chain (STM32F103C8T6). Functional addressing 0x700(tx)/0x600(rx), 500 kbit/s - see FBL/Src/UDS_CFG/UDS_config.h and Common_Src/HAL_CAN/HAL_CAN.c. Canonical copy of this file also lives in the CAN_FLASH tool's own profiles/ directory so it shows up in its Profile dropdown.",
+  "_comment": "STM32F103C8T6 target.",
   "name": "HUB Bootloader",
-  "description": "APP/FBL UDS flash sequence for this project's own BM/FBL/APP boot chain.",
+  "description": "UDS flash sequence for this ECU's bootloader.",
 
   "can": {
     "tx_id":   "0x700",
@@ -11,7 +11,7 @@
   },
 
   "security": {
-    "_comment": "APP and FBL both implement levels 1-4 (seed/key pairs 0x01/0x02, 0x03/0x04, 0x05/0x06, 0x07/0x08 - see APP_SECURITY_LEVEL_*_SEED/_KEY in APP/Src/UDS_CFG/UDS_config.h and FBL_SECURITY_LEVEL_*_SEED/_KEY in xCOMMON_MODULES/Src/FBL/FBL.h), all sharing one placeholder algorithm - four doors to one room, not graded access. APP also gates the Programming session transition itself on security (unlike the generic SLP3 order), hence before_programming.",
+    "_comment": "All four security levels share one algorithm - four doors to one room, not graded access. This ECU also requires SecurityAccess before entering the Programming session, unlike the standard SLP3 order - see before_programming.",
     "seed_subf": "0x01",
     "key_subf":  "0x02",
     "levels": ["0x01", "0x03", "0x05", "0x07"],
@@ -29,19 +29,19 @@
 
     "routine_check_preconditions": null,
 
-    "_comment_erase": "ROUTINE_ID_ERASE_MEMORY (FBL/Src/UDS_CFG/UDS_config.h) - FBL's handler ignores any request payload and always erases the whole configured APP region, so no address/size needed.",
+    "_comment_erase": "Erase honours an optional address/size option record, sector-aligning and bounds-checking it, so each datablock only erases its own region instead of the whole area every time. Omitting the option record (routine_erase_send_addr_size=false) erases the whole configured region instead.",
     "routine_erase":               "0xFF00",
-    "routine_erase_send_addr_size": false,
+    "routine_erase_send_addr_size": true,
 
-    "_comment_fingerprint": "APP/FBL do not implement 0x2E WriteDataByIdentifier (cut for size - see FBL/Src/UDS_CFG/UDS_config.h's file header) - sending it would abort the flash with serviceNotSupported.",
+    "_comment_fingerprint": "This ECU does not implement 0x2E WriteDataByIdentifier - sending it would abort the flash with serviceNotSupported.",
     "write_fingerprint":           false,
 
     "pad_final_chunk":             false,
 
-    "_comment_checksum": "FBL has no per-segment checksum routine, only a whole-region one (see routine_validate_all).",
+    "_comment_checksum": "This ECU has no per-segment checksum routine, only a whole-region one - see routine_validate_all.",
     "routine_check_checksum":      null,
 
-    "_comment_validate": "ROUTINE_ID_CHECK_MEMORY (FBL/Src/UDS_CFG/UDS_config.h) - returns a live CRC32 over the whole APP region for the tester to compare; this tool currently only checks that the request itself didn't NRC, it doesn't compare the returned CRC against the flashed image.",
+    "_comment_validate": "Returns a live CRC32 over the whole region for the tester to compare; this tool currently only checks that the request itself didn't NRC, it doesn't compare the returned CRC against the flashed image.",
     "routine_validate_all":        "0xFF02"
   }
 }

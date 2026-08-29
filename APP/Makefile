@@ -273,8 +273,6 @@ $(APP_ELF_FILE): build_banner autoversion $(APP_OBJ_DIR) #$(BearSSL_LIB)
 	@$(LD) $(LDFLAGS) $(APP_C_OBJS) $(APP_S_OBJS) $(COMMON_OBJS) $(MCAL_C_OBJS) $(MCAL_S_OBJS) $(BearSSL_LIB)
 	@$(OBJCOPY) -O binary $(APP_ELF_FILE) $(BUILD_OUT_DIR)/$(PROJECT_NAME).bin
 	@$(OBJCOPY) -O ihex $(APP_ELF_FILE) $(APP_HEX_FILE)
-	@echo "--> Filling gaps in HEX file with 0xFF (from code end to EOL section start)..."
-	@$(SREC) $(APP_HEX_FILE) -Intel --fill 0xFF $(APP_CODE_START) $(APP_CODE_END) -Output $(APP_HEX_FILE) -Intel -address-length=4
 	@$(SREC) $(APP_HEX_FILE) -Intel -o $(BUILD_OUT_DIR)/$(PROJECT_NAME).srec -Motorola
 	@echo ""
 	@echo "--> Injecting CRC32 into APP header (HEX file)..."

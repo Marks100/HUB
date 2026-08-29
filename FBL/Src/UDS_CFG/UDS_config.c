@@ -21,11 +21,18 @@
    concept of graded levels - see FBL.h's comment on why this is "four doors to one room, not
    graded access" - so rather than enumerate every level's seed/key pair as its own row, match on
    the low bit alone and let the handler take whatever value actually arrived (see the subfunc
-   parameter): any odd value is a seed request, any even value is a key send, full stop. */
+   parameter): any odd value is a seed request, any even value is a key send, full stop.
+
+   required_session is UDS_SES_ANY rather than UDS_SES_PROGRAMMING: a tester normally unlocks
+   security against APP (in EXTENDED) before ever entering FBL, so FBL's own copy of this table
+   only gets exercised when the ECU is unexpectedly already sitting in FBL (e.g. stuck there from
+   a previous failed flash attempt) and the generic flash sequence blindly sends its standard
+   EXTENDED-session handshake. The handlers themselves don't care what session they're called
+   from, so gating on session here only serves to reject that recovery case for no benefit. */
 STATIC UDS_subfunction_table_st security_access_subfuncs_s[] =
 {
-    { 0x01u, 0x01u, FBL_uds_handle_request_seed, UDS_SES_PROGRAMMING, 0u },  /* odd  - RequestSeed */
-    { 0x02u, 0x01u, FBL_uds_handle_send_key,     UDS_SES_PROGRAMMING, 0u },  /* even - SendKey     */
+    { 0x01u, 0x01u, FBL_uds_handle_request_seed, UDS_SES_ANY, 0u },  /* odd  - RequestSeed */
+    { 0x02u, 0x01u, FBL_uds_handle_send_key,     UDS_SES_ANY, 0u },  /* even - SendKey     */
 };
 
 STATIC UDS_subfunction_table_st routine_control_subfuncs_s[] =

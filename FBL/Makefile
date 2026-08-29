@@ -189,8 +189,6 @@ $(FBL_ELF_FILE): $(FBL_C_OBJS) $(MCAL_C_OBJS)
 	@$(LD) $(LDFLAGS) $(FBL_C_OBJS) $(MCAL_C_OBJS)
 	@$(OBJCOPY) -O ihex   $(FBL_ELF_FILE) $(FBL_HEX_FILE)
 	@$(OBJCOPY) -O binary $(FBL_ELF_FILE) $(FBL_BIN_FILE)
-	@echo "--> Filling gaps in HEX file with 0xFF (from code end to region end)..."
-	@$(SREC) $(FBL_HEX_FILE) -Intel --fill 0xFF $(FBL_CODE_START) $(FBL_CODE_END) -Output $(FBL_HEX_FILE) -Intel -address-length=4
 	@echo "--> Injecting CRC32 into FBL header (HEX file)..."
 	@$(BUILD_ENV_BIN)/app_crc_injector $(FBL_HEX_FILE) --output=$(FBL_HEX_WITH_CRC_FILE) --header-addr=$(FBL_HEADER_ADDR) --code-start=$(FBL_CODE_START) --code-end=$(FBL_CODE_END) --crc-type=$(FBL_CRC_TYPE)
 	@echo "--> Signing firmware ($(SIGN_ALGORITHM))..."
