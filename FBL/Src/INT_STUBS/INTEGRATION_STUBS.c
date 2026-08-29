@@ -347,10 +347,24 @@ STATIC u32_t fbl_security_generate_seed( void )
     return( (u32_t)TIME_get_cumulative_run_time_ms() * FBL_SECURITY_SEED_MULTIPLIER );
 }
 
-STATIC u32_t fbl_security_calculate_key( u32_t seed )
+STATIC u32_t fbl_security_calculate_key_placeholder( u32_t seed )
 {
     return( seed ^ FBL_SECURITY_KEY_XOR_MASK );
 }
+
+/* One row per documented level (FBL_security_level_key_st - see FBL.h). All four point at the same
+   placeholder function today, but each is independently repointable: giving level 3 a real,
+   different algorithm later means changing this one row, not touching FBL_security_verify_key()
+   or any other level. A RequestSeed for a level with no row here (FBL's UDS_config.c accepts any
+   odd value) always fails SendKey - see fbl_security_find_level_key_entry() in FBL.c. */
+STATIC const FBL_security_level_key_st fbl_security_level_key_table_s[] =
+{
+    { 0x01u, fbl_security_calculate_key_placeholder },  /* Level 1 */
+    { 0x03u, fbl_security_calculate_key_placeholder },  /* Level 2 */
+    { 0x05u, fbl_security_calculate_key_placeholder },  /* Level 3 */
+    { 0x07u, fbl_security_calculate_key_placeholder },  /* Level 4 */
+    { 0x09u, fbl_security_calculate_key_placeholder },  /* Level 4 */
+};
 
 /***************************************************************************************************
 **                              Field Bootloader Configuration                                    **
@@ -384,10 +398,11 @@ const fbl_config_st fbl_config_s =
     .crc_calculate_func_p      = CHKSUM_calc_hw_crc32,
     .display_update_func_p     = display_render,
     .erase_complete_func_p     = UDS_erase_complete_notify,   /* answers the deferred 0x31 */
-    .security_generate_seed_func_p = fbl_security_generate_seed,  /* placeholder tick-based seed,
-                                                                       see its comment */
-    .security_calculate_key_func_p = fbl_security_calculate_key,  /* placeholder XOR-mask, see its
-                                                                       comment */
+    .security_generate_seed_func_p    = fbl_security_generate_seed,  /* placeholder tick-based seed,
+                                                                          see its comment */
+    .security_level_key_table_p       = fbl_security_level_key_table_s,
+    .security_level_key_table_size    = (u8_t)( sizeof( fbl_security_level_key_table_s ) /
+                                                 sizeof( fbl_security_level_key_table_s[0] ) ),
 
     /* Shared RAM interface - same module/contract BM already uses */
     .shared_ram_get_request_func_p = SHARED_RAM_get_fbl_request,

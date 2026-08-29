@@ -16,25 +16,23 @@
 /***************************************************************************************************
 **                              Private Function Prototypes                                       **
 ***************************************************************************************************/
-STATIC u8_t uds_handle_security_request_seed( u8_t* data_p, u16_t* len_p, UDS_response_code_et* nrc_p );
-STATIC u8_t uds_handle_security_send_key( u8_t* data_p, u16_t* len_p, UDS_response_code_et* nrc_p );
+STATIC u8_t uds_handle_security_request_seed( u16_t subfunc, u8_t* data_p, u16_t* len_p, UDS_response_code_et* nrc_p );
+STATIC u8_t uds_handle_security_send_key( u16_t subfunc, u8_t* data_p, u16_t* len_p, UDS_response_code_et* nrc_p );
 
 /***************************************************************************************************
 **                              Sub-function Tables                                               **
 ***************************************************************************************************/
-/* All four levels share the one stub algorithm - see the constants' comment in UDS_config.h for
-   why all four are listed. Every row is EXTENDED-only: SecurityAccess is what authorises the jump
-   into the bootloader, so it must not be reachable from DEFAULT. */
+/* ISO 14229-1's standard SecurityAccess convention: odd = requestSeed, even = sendKey. APP has no
+   concept of graded levels (see the stub note above - one placeholder algorithm behind everything),
+   so rather than enumerate every level's seed/key pair as its own row, match on the low bit alone
+   and let the handler take whatever value actually arrived (see the subfunc parameter): any odd
+   value is a seed request, any even value is a key send, full stop. Every row is EXTENDED-only:
+   SecurityAccess is what authorises the jump into the bootloader, so it must not be reachable from
+   DEFAULT. */
 STATIC UDS_subfunction_table_st security_access_subfuncs_s[] =
 {
-    { APP_SECURITY_LEVEL_1_SEED, uds_handle_security_request_seed, UDS_SES_EXTENDED, 0u },
-    { APP_SECURITY_LEVEL_1_KEY,  uds_handle_security_send_key,     UDS_SES_EXTENDED, 0u },
-    { APP_SECURITY_LEVEL_2_SEED, uds_handle_security_request_seed, UDS_SES_EXTENDED, 0u },
-    { APP_SECURITY_LEVEL_2_KEY,  uds_handle_security_send_key,     UDS_SES_EXTENDED, 0u },
-    { APP_SECURITY_LEVEL_3_SEED, uds_handle_security_request_seed, UDS_SES_EXTENDED, 0u },
-    { APP_SECURITY_LEVEL_3_KEY,  uds_handle_security_send_key,     UDS_SES_EXTENDED, 0u },
-    { APP_SECURITY_LEVEL_4_SEED, uds_handle_security_request_seed, UDS_SES_EXTENDED, 0u },
-    { APP_SECURITY_LEVEL_4_KEY,  uds_handle_security_send_key,     UDS_SES_EXTENDED, 0u },
+    { 0x01u, 0x01u, uds_handle_security_request_seed, UDS_SES_EXTENDED, 0u },  /* odd  - RequestSeed */
+    { 0x02u, 0x01u, uds_handle_security_send_key,     UDS_SES_EXTENDED, 0u },  /* even - SendKey     */
 };
 
 /***************************************************************************************************
@@ -101,8 +99,10 @@ u8_t UDS_get_session_table_size( void )
 *   \brief         0x27 0x01 - SecurityAccess RequestSeed
 *   \details       Placeholder: always returns a fixed all-zero seed - see file header note.
 ***************************************************************************************************/
-STATIC u8_t uds_handle_security_request_seed( u8_t* data_p, u16_t* len_p, UDS_response_code_et* nrc_p )
+STATIC u8_t uds_handle_security_request_seed( u16_t subfunc, u8_t* data_p, u16_t* len_p, UDS_response_code_et* nrc_p )
 {
+    (void)subfunc;
+
     data_p[0] = 0x00u;
     data_p[1] = 0x00u;
     data_p[2] = 0x00u;
@@ -120,8 +120,9 @@ STATIC u8_t uds_handle_security_request_seed( u8_t* data_p, u16_t* len_p, UDS_re
 *                  see file header note. Real verification (matching whatever RequestSeed actually
 *                  hands out) belongs here before this is exposed on an untrusted bus.
 ***************************************************************************************************/
-STATIC u8_t uds_handle_security_send_key( u8_t* data_p, u16_t* len_p, UDS_response_code_et* nrc_p )
+STATIC u8_t uds_handle_security_send_key( u16_t subfunc, u8_t* data_p, u16_t* len_p, UDS_response_code_et* nrc_p )
 {
+    (void)subfunc;
     (void)data_p;
 
     UDS_set_security_level( APP_SECURITY_LEVEL_1 );
