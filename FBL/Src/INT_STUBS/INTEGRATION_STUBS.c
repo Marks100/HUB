@@ -69,6 +69,15 @@ STATIC void clk_init( void )
     CLK_STM32F1_init( &hse8_72mhz_s );
 }
 
+/* fbl_config_st's board_init - flash driver bring-up and shared RAM bring-up are independent of
+   each other (order between the two does not matter), but shared RAM must be up before
+   reprog_request_clear_func_p runs, so both are combined into that one early slot. */
+STATIC void fbl_board_init( void )
+{
+    FLS_STM32F1_init();
+    SHARED_RAM_init();
+}
+
 /***************************************************************************************************
 **                              OLED Progress Display (SH1106 via I2C1)                           **
 ***************************************************************************************************/
@@ -170,16 +179,13 @@ STATIC const TJA1051_config_st tja1051_config_s =
    APP/Src/INT_STUBS/INTEGRATION_STUBS.c: CANTP_instance_st embeds ~1.7KB of near-all-zero RX/TX
    queue and TP session arrays, and any non-zero designated field forces the compiler to store the
    WHOLE struct as flash-resident .data. On FBL's flash budget that is the difference between
-   fitting and not. Zero-initialised in .bss, populated at runtime in cantp_init(). */
+   fitting and not. Zero-initialised in .bss, populated at runtime in fbl_comms_init(). */
 STATIC CANTP_instance_st fbl_cantp_instance_s;
 
 /* Unpacks CANTP's message struct into HAL_CAN's argument list. */
 STATIC void fbl_cantp_send( CANTP_can_msg_format_st* msg_p )
 {
-    if( msg_p != NULL_P )
-    {
-        (void)HAL_CAN_send_frame( msg_p->Id, (u8_t)msg_p->id_type, msg_p->Data, msg_p->DLC );
-    }
+    (void)HAL_CAN_send_frame( msg_p->Id, (u8_t)msg_p->id_type, msg_p->Data, msg_p->DLC );
 }
 
 /* CANTP_message_rx_func_p carries CANTP_id_type_et, but PDUR stays CANTP-agnostic and takes a plain
@@ -201,16 +207,59 @@ STATIC void fbl_cantp_tx_request( u32_t id, u8_t id_type, u8_t frame_type, u8_t*
     (void)CANTP_tx_request( &fbl_cantp_instance_s, id, (CANTP_id_type_et)id_type, (CANTP_frame_type_et)frame_type, data_p, len, NULL_P );
 }
 
-STATIC void fbl_cantp_tick( void )
+/* fbl_config_st's comms_tick_func_p - CAN-TP must pump its queue before UDS_tick() can see
+   anything it finished reassembling this cycle, so this owns the order rather than exposing two
+   separately-orderable slots. */
+STATIC void fbl_comms_tick( void )
 {
     CANTP_tick( &fbl_cantp_instance_s );
+    UDS_tick();
 }
 
-STATIC void can_init( void )
+/* Bidirectional routes: functional (0x700->0x600) and physical (0x7E0->0x7E8). TX goes via CANTP so
+   multi-frame UDS responses get segmented - see PDUR_tx(), which calls this per-route. tx_frame_type
+   must be TP (CANTP_frame_type_et), not a bare frame-length category - CANTP_tx_request() only
+   branches on `frame_type == TP`, anything else (including the old `2u` here) falls through to its
+   NORMAL/raw path and skips ISO-TP PCI framing entirely. */
+STATIC const PDUR_rx_route_st fbl_pdur_routing_table_s[] =
+{
+    { FBL_UDS_REQUEST_ID, 0xFFFFFFFFu, FBL_UDS_RESPONSE_ID, 0u, TP, UDS_rx_indication, fbl_cantp_tx_request },
+    { FBL_CAN_RX_ID,      0xFFFFFFFFu, FBL_CAN_TX_ID,       0u, TP, UDS_rx_indication, fbl_cantp_tx_request },
+};
+
+/* Supplies the response CAN ID, which UDS's tp_send_func_p signature has no room for. */
+STATIC void fbl_pdur_tx_uds( u8_t* data_p, u16_t len )
+{
+    PDUR_tx( FBL_UDS_RESPONSE_ID, 0u, data_p, len );
+}
+
+/***************************************************************************************************
+**                              UDS                                                               **
+***************************************************************************************************/
+const UDS_func_p_st fbl_uds_func_table_s =
+{
+    .tp_send_func_p           = fbl_pdur_tx_uds,
+    .perform_soft_reset       = MCU_JUMP_software_reset,
+    .perform_hard_reset       = MCU_JUMP_software_reset,
+    .s3_timeout_notify        = NULL_P,   /* FBL manages its own 30s boot delay instead */
+    .session_change_notify    = NULL_P,
+    /* fbl_run_auto_boot_timer() (FBL.c) already pauses the countdown itself for the duration of an
+       erase or download, so this is only for the genuinely-idle case: a tester that has an active
+       session but takes its time between separate commands. Wiring both notifies to the reset
+       keeps the countdown fresh on ANY diagnostic traffic in that window, not just an explicit
+       TesterPresent ping. */
+    .message_received_notify  = FBL_reset_auto_boot_timer,
+    .tester_present_notify    = FBL_reset_auto_boot_timer,
+};
+
+/* fbl_config_st's comms_init - one slot for the whole stack instead of four, since CAN-TP needs a
+   working CAN driver, PDUR needs CAN-TP, and UDS needs PDUR: a strict dependency chain, not four
+   independently optional stages, so nothing is lost by not exposing them separately. */
+STATIC void fbl_comms_init( void )
 {
     GPIO_InitTypeDef gpio_init;
 
-    /* TJA1051 EN pin - push-pull output, driven via tja1051_en_pin_set() */
+    /* CAN: TJA1051 EN pin - push-pull output, driven via tja1051_en_pin_set() */
     RCC_APB2PeriphClockCmd( RCC_APB2Periph_GPIOB, ENABLE );
     gpio_init.GPIO_Pin   = TJA1051_EN_PIN;
     gpio_init.GPIO_Mode  = GPIO_Mode_Out_PP;
@@ -221,15 +270,10 @@ STATIC void can_init( void )
 
     HAL_CAN_init();
     HAL_CAN_set_rx_callback( fbl_can_rx );
-}
 
-STATIC void cantp_init( void )
-{
-    /* Compound-literal assignment rather than field-by-field: costs ~32 bytes more than individual
-       assignments at -Og (measured - GCC doesn't lower this to the same store sequence), which is
-       real but accepted here for readability. Still .bss, not .data: fbl_cantp_instance_s's own
-       declaration above has no initializer, so this assignment doesn't change where the object
-       itself lives - only how the initial values get written into it. */
+    /* CAN-TP: compound-literal assignment for readability. Still .bss, not .data:
+       fbl_cantp_instance_s's own declaration above has no initializer, so this assignment doesn't
+       change where the object itself lives - only how the initial values get written into it. */
     fbl_cantp_instance_s = (CANTP_instance_st)
     {
         .CANTP_message_rx_func_p = fbl_cantp_rx_indication,
@@ -246,74 +290,11 @@ STATIC void cantp_init( void )
     };
 
     CANTP_init( &fbl_cantp_instance_s );
-}
 
-/* Bidirectional routes: functional (0x700->0x600) and physical (0x7E0->0x7E8). TX goes via CANTP so
-   multi-frame UDS responses get segmented - see PDUR_tx(), which calls this per-route. tx_frame_type
-   must be TP (CANTP_frame_type_et), not a bare frame-length category - CANTP_tx_request() only
-   branches on `frame_type == TP`, anything else (including the old `2u` here) falls through to its
-   NORMAL/raw path and skips ISO-TP PCI framing entirely. */
-STATIC const PDUR_rx_route_st fbl_pdur_routing_table_s[] =
-{
-    { FBL_UDS_REQUEST_ID, 0xFFFFFFFFu, FBL_UDS_RESPONSE_ID, 0u, TP, UDS_rx_indication, fbl_cantp_tx_request },
-    { FBL_CAN_RX_ID,      0xFFFFFFFFu, FBL_CAN_TX_ID,       0u, TP, UDS_rx_indication, fbl_cantp_tx_request },
-};
-
-STATIC void pdur_init( void )
-{
+    /* PDU Router */
     PDUR_init( fbl_pdur_routing_table_s, (u16_t)( sizeof( fbl_pdur_routing_table_s ) / sizeof( PDUR_rx_route_st ) ) );
-}
 
-/* Supplies the response CAN ID, which UDS's tp_send_func_p signature has no room for. */
-STATIC void fbl_pdur_tx_uds( u8_t* data_p, u16_t len )
-{
-    PDUR_tx( FBL_UDS_RESPONSE_ID, 0u, data_p, len );
-}
-
-/***************************************************************************************************
-**                              UDS                                                               **
-***************************************************************************************************/
-/*! Any transition to DEFAULT means "exit FBL" - clear the request flag so BM boots APP after the
- *  soft reset that transition schedules. Keyed on new_session alone because being in FBL space at
- *  all means we are programming, even if the tester hopped via EXTENDED - which is why the session
- *  table in UDS_CFG/UDS_config.c wildcards from_session on its ANY -> DEFAULT entry. The two must
- *  agree: that table decides when the reset happens, this decides which image BM boots after it. */
-STATIC void fbl_uds_session_notify( UDS_session_et old_session, UDS_session_et new_session )
-{
-    if( new_session == UDS_SES_DEFAULT )
-    {
-        SHARED_RAM_set_fbl_request( FALSE );
-    }
-
-    /* Tester left PROGRAMMING for EXTENDED or DEFAULT - cleans up FBL's internal download/security
-       state immediately instead of leaving it dangling until either the 30s programming_timeout
-       self-heal or an eventual MCU reset reinitialises everything from scratch. A self-transition
-       (old==new==PROGRAMMING) does not match, so a healthy in-progress download is untouched. */
-    if( ( old_session == UDS_SES_PROGRAMMING ) && ( new_session != UDS_SES_PROGRAMMING ) )
-    {
-        FBL_download_abort();
-    }
-}
-
-const UDS_func_p_st fbl_uds_func_table_s =
-{
-    .tp_send_func_p           = fbl_pdur_tx_uds,
-    .perform_soft_reset       = MCU_JUMP_software_reset,
-    .perform_hard_reset       = MCU_JUMP_software_reset,
-    .s3_timeout_notify        = NULL_P,   /* FBL manages its own 30s boot delay instead */
-    .session_change_notify    = fbl_uds_session_notify,
-    /* fbl_run_boot_timer() (FBL.c) already pauses the countdown itself for the duration of an
-       erase or download, so this is only for the genuinely-idle case: a tester that has an active
-       session but takes its time between separate commands. Wiring both notifies to the reset
-       keeps the countdown fresh on ANY diagnostic traffic in that window, not just an explicit
-       TesterPresent ping. */
-    .message_received_notify  = FBL_boot_delay_reset,
-    .tester_present_notify    = FBL_boot_delay_reset,
-};
-
-/* fbl_config_st's uds_init - called from inside FBL_init(), right after pdur_init (see FBL.c). */
-STATIC void uds_init( void )
-{
+    /* UDS */
     UDS_init( &fbl_uds_func_table_s,
               UDS_get_service_table(), UDS_get_service_table_size(),
               UDS_get_session_table(), UDS_get_session_table_size(),
@@ -328,8 +309,8 @@ STATIC void uds_init( void )
        work. This only covers the generic required_sec_level check in the service tables (e.g.
        ROUTINE_ID_ERASE_MEMORY) - FBL_download_request()'s own separate security check is granted
        in FBL_init() itself, see its comment (this runs too early: FBL_init() clears and
-       re-initialises fbl_context_s right after uds_init() returns, which would wipe anything set
-       here). */
+       re-initialises fbl_context_s right after fbl_comms_init() returns, which would wipe anything
+       set here). */
     UDS_set_security_level( 1u );
 }
 
@@ -363,7 +344,8 @@ STATIC const FBL_security_level_key_st fbl_security_level_key_table_s[] =
     { 0x03u, fbl_security_calculate_key_placeholder },  /* Level 2 */
     { 0x05u, fbl_security_calculate_key_placeholder },  /* Level 3 */
     { 0x07u, fbl_security_calculate_key_placeholder },  /* Level 4 */
-    { 0x09u, fbl_security_calculate_key_placeholder },  /* Level 4 */
+    { 0x09u, fbl_security_calculate_key_placeholder },  /* Level 5 */
+    { 0x0Bu, fbl_security_calculate_key_placeholder },  /* Level 6 */
 };
 
 /***************************************************************************************************
@@ -376,44 +358,34 @@ const fbl_config_st fbl_config_s =
 {
     /* Initialisation functions */
     .clk_init        = clk_init,
-    .wdg_init        = NULL_P,  /* APP controls the watchdog, same convention as BM */
-    .can_init        = can_init,
-    .cantp_init      = cantp_init,
-    .pdur_init       = pdur_init,
-    .uds_init        = uds_init,
+    .wdg_init        = NULL_P,
+    .comms_init      = fbl_comms_init,
     .crc_init        = crc_init,
-    .flash_init      = FLS_STM32F1_init,
-    .shared_ram_init = SHARED_RAM_init,
+    .board_init      = fbl_board_init,
     .systick_init    = systick_init,
     .display_init    = display_init,
 
     /* Runtime function pointers */
     .wdg_kick_func_p           = NULL_P,
-    .cantp_tick_func_p         = fbl_cantp_tick,
-    .uds_tick_func_p           = UDS_tick,
+    .comms_tick_func_p         = fbl_comms_tick,
     .time_get_tick_func_p      = TIME_get_cumulative_run_time_ms,
     .flash_erase_sector_func_p = FLS_STM32F1_erase_sector,
     .flash_write_data_func_p   = FLS_STM32F1_write_data,
-    .uds_tx_func_p             = fbl_pdur_tx_uds,
     .crc_calculate_func_p      = CHKSUM_calc_hw_crc32,
     .display_update_func_p     = display_render,
-    .erase_complete_func_p     = UDS_erase_complete_notify,   /* answers the deferred 0x31 */
     .security_generate_seed_func_p    = fbl_security_generate_seed,  /* placeholder tick-based seed,
                                                                           see its comment */
     .security_level_key_table_p       = fbl_security_level_key_table_s,
     .security_level_key_table_size    = (u8_t)( sizeof( fbl_security_level_key_table_s ) /
                                                  sizeof( fbl_security_level_key_table_s[0] ) ),
 
-    /* Shared RAM interface - same module/contract BM already uses */
-    .shared_ram_get_request_func_p = SHARED_RAM_get_fbl_request,
-    .shared_ram_set_request_func_p = SHARED_RAM_set_fbl_request,
-    .shared_ram_is_valid_func_p    = SHARED_RAM_is_valid,
+    .reprog_request_clear_func_p = SHARED_RAM_set_fbl_request,
 
     /* Configuration values */
     .flash_sector_size          = FLS_STM32F1_PAGE_SIZE,
     .max_transfer_block_len     = FLS_STM32F1_PAGE_SIZE,
     .transfer_sector_buffer_p   = fbl_transfer_sector_buffer_s,
-    .transfer_sector_buffer_len = FLS_STM32F1_PAGE_SIZE,
+    .transfer_sector_buffer_len = (uint32_t)sizeof( fbl_transfer_sector_buffer_s ),
     .app_header_address         = (u32_t)&__app_header_start__,
     .app_code_end_address       = (u32_t)&__app_code_end__,
 };

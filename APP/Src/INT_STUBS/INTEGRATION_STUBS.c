@@ -409,8 +409,7 @@ STATIC void app_uds_tx( u8_t* data_p, u16_t len )
 *                  Whether the transition is allowed at all is not decided here - UDS_CFG/
 *                  UDS_config.c's session table owns that, and only permits EXTENDED -> PROGRAMMING
 *                  with security unlocked. By the time this runs the request has already been
-*                  authorised, so it just records the intent. Same module, opposite direction:
-*                  FBL's own fbl_uds_session_notify clears the flag on the way back to DEFAULT.
+*                  authorised, so it just records the intent.
 ***************************************************************************************************/
 STATIC void app_uds_session_notify( UDS_session_et old_session, UDS_session_et new_session )
 {

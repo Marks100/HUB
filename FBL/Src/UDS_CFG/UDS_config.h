@@ -50,10 +50,6 @@ u8_t                             UDS_get_service_table_size( void );
 const UDS_session_transition_st* UDS_get_session_table( void );
 u8_t                             UDS_get_session_table_size( void );
 
-/* Wired to fbl_config_st.erase_complete_func_p in fbl_main.c - sends the 0x31 EraseMemory response
-   that the handler deferred when it started the erase. See UDS_config.c. */
-void                             UDS_erase_complete_notify( false_true_et success );
-
 #endif /* UDS_CONFIG_H */
 
 /****************************** END OF FILE *******************************************************/

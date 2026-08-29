@@ -110,38 +110,4 @@ u8_t UDS_get_session_table_size( void )
     return( (u8_t)( sizeof( uds_session_table_s ) / sizeof( uds_session_table_s[0] ) ) );
 }
 
-/*!
-****************************************************************************************************
-*
-*   \brief         End of the erase run started above - wired to fbl_config_st.erase_complete_func_p
-*
-*   \author        MS
-*
-*   \details       Sends the 0x31 answer that FBL_uds_handle_erase_memory() deferred. The payload
-*                  is the routine echo the tester expects back (routineControlType then the 2-byte
-*                  routine identifier), supplied explicitly because the interim 0x78 frames have
-*                  long since overwritten the request bytes in the shared buffer. Stays here rather
-*                  than in FBL.c because it must echo back this platform's own ROUTINE_ID_ERASE_
-*                  MEMORY value - a different platform's UDS_config.c would use a different one.
-*
-***************************************************************************************************/
-void UDS_erase_complete_notify( false_true_et success )
-{
-    STATIC const u8_t erase_echo_s[3] =
-    {
-        0x01u,                                      /* routineControlType: startRoutine   */
-        (u8_t)( ROUTINE_ID_ERASE_MEMORY >> 8u ),
-        (u8_t)( ROUTINE_ID_ERASE_MEMORY & 0xFFu ),
-    };
-
-    if( success == TRUE )
-    {
-        UDS_send_deferred_response( erase_echo_s, (u16_t)sizeof( erase_echo_s ), UDS_RC_POSITIVE_RESPONSE );
-    }
-    else
-    {
-        UDS_send_deferred_response( NULL_P, 0u, UDS_RC_GENERAL_PROGRAMMING_FAILURE );
-    }
-}
-
 /****************************** END OF FILE *******************************************************/
