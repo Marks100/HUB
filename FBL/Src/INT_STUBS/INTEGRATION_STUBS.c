@@ -280,14 +280,11 @@ STATIC void fbl_comms_init( void )
         .tx_func_p               = fbl_cantp_send,
         .tp_buffer               = pdur_buffer_s,
         .tp_ids                  = { FBL_UDS_REQUEST_ID, FBL_CAN_RX_ID },
-        .st_min                  = 3u,    /* FBL ticks CANTP every 1ms (genuine SysTick), so 3ms
-                                              leaves headroom without paying for a full 5ms wait -
-                                              relies on cantp_handle_rx_frame() draining its whole
-                                              queue per tick instead of one frame at a time. APP's
-                                              own st_min stays at 10 - MODE_MGR_tick() only services
-                                              CANTP every APP_TIMER_TICK_RATE_MS (10ms), so it can't
-                                              usefully go lower. */
-        .rx_block_size           = 10u,
+        .st_min                  = 0x03,
+        .rx_block_size           = 10u,     /* 0 = unlimited (ISO 15765-2) - CANTP_init() no longer
+                                              rewrites this to a default, so it genuinely means one
+                                              Flow Control per TransferData PDU instead of one every
+                                              N frames. */
         .N_Cr                    = CANTP_DEFAULT_N_CR,
         .N_Bs                    = CANTP_DEFAULT_N_BS,
         .N_Ar                    = CANTP_DEFAULT_N_AR,

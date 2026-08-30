@@ -20,7 +20,7 @@
 
   "sequence": {
     "session_change_delay_s":  0.010,
-    "post_prog_boot_delay_s":  3.0,
+    "post_prog_boot_delay_s":  1.5,
 
     "dtc_setting":             false,
     "comm_ctrl":               false,
