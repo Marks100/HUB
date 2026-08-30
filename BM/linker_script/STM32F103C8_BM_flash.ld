@@ -8,16 +8,34 @@
 **                                             xCOMMON_MODULES/Src/CRYPTO/micro-ecc - then given
 **                                             back 1 KB of that headroom to FBL, which had none
 **                                             left, since BM still had ~8 KB free either way)
-**   FBL  : 0x08002C00 - 0x08006FFF   17 KB
+**   FBL  : 0x08002C00 - 0x080077FF   19 KB  (grown by 2 KB from 17 KB to fit NVM.c - FBL now
+**                                            persists a WriteDataByIdentifier fingerprint at the
+**                                            fixed NVM base page (see fbl_nvm_hw_interface_s in
+**                                            FBL/Src/INT_STUBS/INTEGRATION_STUBS.c) - taken from
+**                                            APP's flash budget, not BM's, since APP had
+**                                            ~54 KB of slack and BM's ~7 KB is earmarked for the
+**                                            ECDSA upgrade above)
 **     .app_header : 0x08002C00 - 0x08002CFF  256 B
 **     code start  : 0x08002D00               (FBL_CODE_START)
-**   APP  : 0x08007000 - 0x0801FBFF   99 KB
-**     .app_header : 0x08007000 - 0x080070FF  256 B
-**     code start  : 0x08007100               (APP_CODE_START)
-**   NVM  : 0x0801FC00 - 0x0801FFFF   1 KB  (reserved - not a linker section here; placed
-**                                            dynamically by FLS_STM32F1_get_nvm_base_address()
-**                                            at the top page of whatever flash size the device
-**                                            actually reports. Nothing above may claim this page.)
+**   APP  : 0x08007800 - 0x0801F7FF   96 KB  (shrunk from 99 KB - see FBL/NVM growth above)
+**     .app_header : 0x08007800 - 0x080078FF  256 B
+**     code start  : 0x08007900               (APP_CODE_START)
+**   NVM  : 0x0801F800 - 0x0801FFFF   2 KB  (grown from 1 KB - reserved, not a linker section
+**                                            here; placed dynamically by FLS_STM32F1_get_nvm_
+**                                            base_address() at the top two pages of whatever flash
+**                                            size the device actually reports. Nothing above may
+**                                            claim these pages. Page 1 (0x0801F800-0x0801FBFF) is
+**                                            FBL's NVM block (fixed base page - FBL carries exactly
+**                                            one block and isn't expected to grow a second), page 2
+**                                            (0x0801FC00-0x0801FFFF) is APP's (computed via APP's
+**                                            own app_nvm_page2_base_address() in APP/Src/INT_STUBS/
+**                                            INTEGRATION_STUBS.c, since APP already has one NVM
+**                                            block and is the side most likely to add more - see
+**                                            that function's comment for the full reasoning) - kept
+**                                            physically separate because BM/FBL/APP never run
+**                                            concurrently, so NVM.c's per-image block-offset
+**                                            allocator would otherwise hand both images' first
+**                                            block the same address.)
 **
 ** RAM layout (20 KB total - fixed regardless of the 64/128 KB flash bin on this part family):
 **   .noinit_shared : 0x20000000 - 0x2000001F   32 B  (BM/FBL/APP handoff - see SHARED_RAM.h)
@@ -33,7 +51,7 @@ _Min_Stack_Size = 0x400;   /* 1 KB */
 
 /* Flash addresses BM validates but does not itself occupy any section in - just constants
    MAIN.c's bm_config_s is built from. Must match APP/Makefile's APP_HEADER_ADDR/APP_CODE_START/
-   APP_CODE_END (BM_FLASH_START + BM_FLASH_SIZE + FBL_FLASH_SIZE = 0x08007000) and
+   APP_CODE_END (BM_FLASH_START + BM_FLASH_SIZE + FBL_FLASH_SIZE = 0x08007800) and
    xCOMMON_MODULES/Src/HEADER/HEADER.h's 256-byte header (code start = header + 0x100).
    __app_code_end__ in particular MUST exactly equal APP/Makefile's APP_CODE_END - that's the
    range app_crc_injector/app_signer actually sign over, so a mismatch here makes every
@@ -47,10 +65,10 @@ _Min_Stack_Size = 0x400;   /* 1 KB */
    __app_code_end__ with the same names and the same values, for the same reason. */
 __fbl_header_start__  = 0x08002C00;
 __fbl_code_start__    = 0x08002D00;
-__fbl_code_end__      = 0x08006FFF;
-__app_header_start__  = 0x08007000;
-__app_code_start__    = 0x08007100;
-__app_code_end__      = 0x0801FBFF;
+__fbl_code_end__      = 0x080077FF;
+__app_header_start__  = 0x08007800;
+__app_code_start__    = 0x08007900;
+__app_code_end__      = 0x0801F7FF;
 
 MEMORY
 {

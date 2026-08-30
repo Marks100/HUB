@@ -20,6 +20,7 @@
 #include "CLK_STM32F1.h"
 #include "SHARED_RAM.h"
 #include "FLS_STM32F1.h"
+#include "NVM.h"
 #include "SYSTICK.h"
 #include "TIME_MGR.h"
 #include "HAL_CAN.h"
@@ -69,13 +70,75 @@ STATIC void clk_init( void )
     CLK_STM32F1_init( &hse8_72mhz_s );
 }
 
-/* fbl_config_st's board_init - flash driver bring-up and shared RAM bring-up are independent of
-   each other (order between the two does not matter), but shared RAM must be up before
-   reprog_request_clear_func_p runs, so both are combined into that one early slot. */
+/***************************************************************************************************
+**                              NVM / Fingerprint                                                 **
+***************************************************************************************************/
+/* FBL's own NVM block lives on the base reserved page, deliberately NOT computed via any offset
+   arithmetic - it is the fixed point APP's own (potentially multi-block, growing) NVM allocation
+   builds outward from, not the other way around. FBL carries exactly one block (this fingerprint)
+   and is not expected to ever need a second, whereas APP already has one block (PERSIST_BLK) and
+   is the far more likely side to grow another - if APP ever did, NVM.c's per-image block-offset
+   allocator (which counts from 0 within whichever image is currently running, with no visibility
+   into what a *different* image already claimed) would place APP's next block at APP's-base +
+   1 sector. Anchoring FBL at the fixed base and APP at base + 1 sector (see APP's own
+   app_nvm_page2_base_address() in APP/Src/INT_STUBS/INTEGRATION_STUBS.c) means APP's future
+   growth extends to page 3, 4, ... away from FBL, instead of landing straight on top of it on the
+   very first block APP ever adds. See FLS_STM32F1.h's top comment for why the shared FLS module
+   only exposes the reservation's base/size, not a per-project page assignment. */
+STATIC const NVM_hw_interface_st fbl_nvm_hw_interface_s =
+{
+    .init_func       = FLS_STM32F1_init,
+    .get_flash_size  = FLS_STM32F1_get_nvm_total_size,
+    .get_flash_base  = FLS_STM32F1_get_nvm_base_address,
+    .get_sector_size = FLS_STM32F1_get_sector_size,
+    .erase_func      = FLS_STM32F1_erase_sector,
+    .write_func      = FLS_STM32F1_write_data,
+    .compare_func    = FLS_STM32F1_compare_data,
+    .recover_func    = FLS_STM32F1_recover_data
+};
+
+/* Only block FBL ever registers, so its ID just needs to not collide with anything else in FBL's
+   own (empty) block table - it shares no address space with APP's block(s), see above. */
+#define FBL_NVM_BLOCK_ID_FINGERPRINT ( 0u )
+
+typedef struct
+{
+    u8_t len;                             /* Bytes actually used in data[], 0..FBL_FINGERPRINT_MAX_LEN */
+    u8_t data[FBL_FINGERPRINT_MAX_LEN];
+} fbl_fingerprint_blk_st;
+
+STATIC const fbl_fingerprint_blk_st fbl_fingerprint_default_s = { 0u, { 0u } };
+STATIC fbl_fingerprint_blk_st       fbl_fingerprint_current_s;
+
+STATIC const NVM_func_p_st fbl_nvm_fingerprint_block_s =
+{
+    .default_data     = &fbl_fingerprint_default_s,
+    .current_data     = &fbl_fingerprint_current_s,
+    .data_len         = sizeof( fbl_fingerprint_blk_st ),
+    .expected_version = 1u,
+    .event_fn         = NULL_P
+};
+
+/* fbl_config_st's fingerprint_write_func_p. Commits immediately via NVM_tick() rather than
+   waiting for FBL's next periodic tick to notice write_requested - the whole point of writing now
+   is durability before the tester proceeds to erase/download/reset, not background persistence. */
+STATIC void fbl_fingerprint_write( const u8_t* data_p, u8_t len )
+{
+    fbl_fingerprint_current_s.len = len;
+    STDC_memcpy( fbl_fingerprint_current_s.data, data_p, len );
+    NVM_request_write_block( FBL_NVM_BLOCK_ID_FINGERPRINT );
+    NVM_tick();
+}
+
+/* fbl_config_st's board_init - flash driver bring-up, shared RAM bring-up and NVM bring-up are
+   independent of each other (order between them does not matter), but shared RAM must be up
+   before reprog_request_clear_func_p runs, so all three are combined into that one early slot. */
 STATIC void fbl_board_init( void )
 {
     FLS_STM32F1_init();
     SHARED_RAM_init();
+    NVM_init( &fbl_nvm_hw_interface_s );
+    NVM_register_block( FBL_NVM_BLOCK_ID_FINGERPRINT, &fbl_nvm_fingerprint_block_s );
 }
 
 /***************************************************************************************************
@@ -383,6 +446,7 @@ const fbl_config_st fbl_config_s =
                                                  sizeof( fbl_security_level_key_table_s[0] ) ),
 
     .reprog_request_clear_func_p = SHARED_RAM_set_fbl_request,
+    .fingerprint_write_func_p    = fbl_fingerprint_write,
 
     /* Configuration values */
     .flash_sector_size          = FLS_STM32F1_PAGE_SIZE,

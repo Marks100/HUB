@@ -22,26 +22,29 @@
     "session_change_delay_s":  0.010,
     "post_prog_boot_delay_s":  1.5,
 
-    "dtc_setting":             false,
-    "comm_ctrl":               false,
+    "_comment_dtc_comm": "APP now implements both (see APP/Src/UDS_CFG/UDS_config.c): ControlDTCSetting ($85) gates FAULT_MGR's DTC storage, CommunicationControl ($28) gates MSG_SCHED's non-diagnostic CAN TX (sensor telemetry + heartbeat). Defaults for comm_ctrl_subtype_disable/comm_ctrl_type (0x03/0x03) match what APP's handler accepts.",
+    "dtc_setting":             true,
+    "comm_ctrl":               true,
     "functional_tp":           false,
     "functional_tp_interval_s": 2.0,
 
-    "routine_check_preconditions": null,
+    "_comment_preconditions": "APP now implements CheckProgrammingPreconditions (RoutineControl $0203, see uds_handle_check_programming_preconditions() in APP/Src/UDS_CFG/UDS_config.c) - infrastructure only, always reports every precondition fulfilled since this product has no real interlock defined yet.",
+    "routine_check_preconditions": "0x0203",
 
     "_comment_erase": "Erase honours an optional address/size option record, sector-aligning and bounds-checking it, so each datablock only erases its own region instead of the whole area every time. Omitting the option record (routine_erase_send_addr_size=false) erases the whole configured region instead.",
     "routine_erase":               "0xFF00",
     "routine_erase_send_addr_size": true,
 
-    "_comment_fingerprint": "This ECU does not implement 0x2E WriteDataByIdentifier - sending it would abort the flash with serviceNotSupported.",
-    "write_fingerprint":           false,
+    "_comment_fingerprint": "FBL now implements 0x2E WriteDataByIdentifier for the fingerprint DID (see FBL_uds_handle_write_fingerprint() in xCOMMON_MODULES/Src/FBL/FBL.c), persisted via FBL's own dedicated NVM page. did_fingerprint is set explicitly to 0xF184 (applicationSoftwareFingerprint, ISO 14229-1 Table C.1) since that's what FBL actually implements - this tool's own default (0xF15A) does not match and would NRC requestOutOfRange if left unset.",
+    "write_fingerprint":           true,
+    "did_fingerprint":             "0xF184",
 
     "pad_final_chunk":             false,
 
     "_comment_checksum": "This ECU has no per-segment checksum routine, only a whole-region one - see routine_validate_all.",
     "routine_check_checksum":      null,
 
-    "_comment_validate": "Returns a live CRC32 over the whole region for the tester to compare; this tool currently only checks that the request itself didn't NRC, it doesn't compare the returned CRC against the flashed image.",
+    "_comment_validate": "FBL now accepts an optional 4-byte big-endian expected-CRC32 in the routine's Option Record: send it and FBL reports back a single pass($00)/fail($01) status byte instead of a raw CRC (see FBL_uds_handle_check_memory() in xCOMMON_MODULES/Src/FBL/FBL.c). Sending no Option Record keeps the old raw-CRC response for backward compatibility. This tool still only checks that the request itself didn't NRC - it does not yet send the expected CRC or check the status byte, so a bad transfer still isn't caught until BM's post-reset validation. Wiring that up is a CANFLASH-side follow-up, not an FBL firmware change.",
     "routine_validate_all":        "0xFF02"
   }
 }

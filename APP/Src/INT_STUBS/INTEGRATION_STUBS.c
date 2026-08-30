@@ -208,16 +208,28 @@ NRF24_instance_st nrf24_instance_s =
 /***************************************************************************************************
 **                              NVM                                                               **
 ***************************************************************************************************/
+/* APP's NVM block(s) start at base + 1 sector, NOT the raw reservation base - FBL owns that fixed
+   point instead (see fbl_nvm_hw_interface_s's comment in FBL/Src/INT_STUBS/INTEGRATION_STUBS.c for
+   the full reasoning). APP already has one block (PERSIST_BLK below) and is the side of this
+   project most likely to grow a second one; anchoring APP one page up means NVM.c's per-image
+   block-offset allocator (which knows nothing about what a *different* image already claimed)
+   extends APP's future blocks into page 3, 4, ... away from FBL's fixed page, rather than landing
+   on top of it the moment APP registers a second block. */
+STATIC u32_t app_nvm_page2_base_address( void )
+{
+    return( FLS_STM32F1_get_nvm_base_address() + FLS_STM32F1_get_sector_size() );
+}
+
 const NVM_hw_interface_st nvm_hw_interface_s =
 {
     .init_func       = FLS_STM32F1_init,
     .get_flash_size  = FLS_STM32F1_get_nvm_total_size,
-    .get_flash_base  = FLS_STM32F1_get_nvm_base_address,
+    .get_flash_base  = app_nvm_page2_base_address,
     .get_sector_size = FLS_STM32F1_get_sector_size,
     .erase_func      = FLS_STM32F1_erase_sector,
     .write_func      = FLS_STM32F1_write_data,
-    .compare_func    = NULL,
-    .recover_func    = NULL
+    .compare_func    = FLS_STM32F1_compare_data,
+    .recover_func    = FLS_STM32F1_recover_data
 };
 
 const NVM_func_p_st nvm_persist_block_s =

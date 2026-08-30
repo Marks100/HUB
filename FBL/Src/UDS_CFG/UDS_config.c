@@ -39,6 +39,11 @@ STATIC UDS_subfunction_table_st routine_control_subfuncs_s[] =
 {
     { ROUTINE_ID_ERASE_MEMORY, 0xFFFFu, FBL_uds_handle_erase_memory, UDS_SES_PROGRAMMING, 1u },
     { ROUTINE_ID_CHECK_MEMORY, 0xFFFFu, FBL_uds_handle_check_memory, UDS_SES_PROGRAMMING, 0u },
+    { ROUTINE_ID_STAY_IN_BOOT, 0xFFFFu, FBL_uds_handle_stay_in_boot, UDS_SES_PROGRAMMING, 0u },
+    { ROUTINE_ID_CHECK_PROGRAMMING_DEPENDENCIES, 0xFFFFu,
+      FBL_uds_handle_check_programming_dependencies, UDS_SES_PROGRAMMING, 0u },
+    { ROUTINE_ID_CHECK_PROGRAMMING_PRECONDITIONS, 0xFFFFu,
+      FBL_uds_handle_check_programming_preconditions, UDS_SES_PROGRAMMING, 0u },
 };
 
 STATIC UDS_subfunction_table_st request_download_subfuncs_s[] =
@@ -56,6 +61,12 @@ STATIC UDS_subfunction_table_st request_transfer_exit_subfuncs_s[] =
     { 0x0000u, 0xFFFFu, FBL_uds_handle_request_transfer_exit, UDS_SES_PROGRAMMING, 1u },
 };
 
+/* Security level 1 - writing the fingerprint is a write to the ECU, same gate EraseMemory uses. */
+STATIC UDS_subfunction_table_st write_data_by_identifier_subfuncs_s[] =
+{
+    { DID_APPLICATION_SOFTWARE_FINGERPRINT, 0xFFFFu, FBL_uds_handle_write_fingerprint, UDS_SES_PROGRAMMING, 1u },
+};
+
 /***************************************************************************************************
 **                              Service Table                                                     **
 ***************************************************************************************************/
@@ -63,10 +74,11 @@ STATIC UDS_service_table_st uds_service_table_s[] =
 {
     { UDS_SID_SECURITY_ACCESS,   security_access_subfuncs_s,
       (u8_t)( sizeof( security_access_subfuncs_s ) / sizeof( security_access_subfuncs_s[0] ) ) },
-    { UDS_SID_ROUTINE_CONTROL,   routine_control_subfuncs_s,        2u },
+    { UDS_SID_ROUTINE_CONTROL,   routine_control_subfuncs_s,        5u },
     { UDS_SID_REQUEST_DOWNLOAD,  request_download_subfuncs_s,       1u },
     { UDS_SID_TRANSFER_DATA,     transfer_data_subfuncs_s,          1u },
     { UDS_SID_REQUEST_TRANSFER_EXIT, request_transfer_exit_subfuncs_s, 1u },
+    { UDS_SID_WRITE_DATA_BY_IDENTIFIER, write_data_by_identifier_subfuncs_s, 1u },
 };
 
 /***************************************************************************************************

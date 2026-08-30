@@ -46,25 +46,34 @@ RELEASE_PACKAGE_NAME         := $(RELEASE_PACKAGE_BASE_DIR)/$(PROJECT_TYPE)_$(VE
 # Flash memory partition layout — must match the linker scripts in BM/, FBL/, APP/
 # STM32F103C8T6: 128KB total flash (0x20000) starting at 0x08000000, 1KB pages — confirmed via a
 # live F_SIZE register read (0x1FFFF7E0): this "C8" (64KB nominal) part is physically 128KB
-# silicon, a known STM32F103 binning quirk. The top 1KB (0x0801FC00-0x0801FFFF) is reserved for
-# the NVM emulation page - FLS_STM32F1_get_nvm_base_address() places it there dynamically
-# (xCOMMON_MODULES/Src/FLS/FLS_STM32F1.c), so APP must not grow into it.
-# BM=11KB  FBL=17KB  APP=99KB (+ 1KB reserved for NVM) — adjust sizes and update linker scripts
-# accordingly, and keep APP_FLASH_END below the reserved NVM page. BM sized at 12KB (up from the
+# silicon, a known STM32F103 binning quirk. The top 2KB (0x0801F800-0x0801FFFF) is reserved for
+# the NVM emulation pages - FLS_STM32F1_get_nvm_base_address() places the region dynamically
+# (xCOMMON_MODULES/Src/FLS/FLS_STM32F1.c), so APP must not grow into it. Page 1 (lower address,
+# the fixed base) is FBL's own NVM block - FBL carries exactly one block and isn't expected to
+# grow a second; page 2 (upper) is APP's own, computed by APP's own app_nvm_page2_base_address()
+# (APP/Src/INT_STUBS/INTEGRATION_STUBS.c) - APP already has one NVM block and is the side more
+# likely to add more, so its allocation is the one offset outward - kept physically separate
+# because BM/FBL/APP never run concurrently, so NVM.c's per-image block-offset allocator would
+# otherwise hand both images' first block the same address.
+# BM=11KB  FBL=19KB  APP=96KB (+ 2KB reserved for NVM) — adjust sizes and update linker scripts
+# accordingly, and keep APP_FLASH_END below the reserved NVM pages. BM sized at 12KB (up from the
 # minimum-viable 8KB) for future secure boot headroom - e.g. switching signature_verify over to
 # ECDSA P-256 (xCOMMON_MODULES/Src/CRYPTO/micro-ecc) adds ~3.5KB over the current HMAC-SHA256 path -
 # then gave back 1KB of that headroom to FBL, which had run out of its own margin entirely, since
-# BM still has ~7KB free either way (see BM/linker_script/STM32F103C8_BM_flash.ld).
+# BM still has ~7KB free either way (see BM/linker_script/STM32F103C8_BM_flash.ld). FBL later grew
+# a further 2KB (17KB -> 19KB) to fit NVM.c for its own WriteDataByIdentifier fingerprint block;
+# that 2KB plus the extra 1KB of reserved NVM space came out of APP's budget instead (99KB -> 96KB),
+# since APP had ~54KB of slack and BM's headroom above is earmarked for the ECDSA upgrade.
 BM_FLASH_START               := 0x08000000
 BM_FLASH_SIZE                := 0x2C00
 BM_FLASH_END                 := $(shell printf '0x%08X' $$(( $(BM_FLASH_START) + $(BM_FLASH_SIZE) - 1 )))
 
 FBL_FLASH_START               := $(shell printf '0x%08X' $$(( $(BM_FLASH_START) + $(BM_FLASH_SIZE) )))
-FBL_FLASH_SIZE                := 0x4400
+FBL_FLASH_SIZE                := 0x4C00
 FBL_FLASH_END                 := $(shell printf '0x%08X' $$(( $(BM_FLASH_START) + $(BM_FLASH_SIZE) + $(FBL_FLASH_SIZE) - 1 )))
 
 APP_FLASH_START               := $(shell printf '0x%08X' $$(( $(BM_FLASH_START) + $(BM_FLASH_SIZE) + $(FBL_FLASH_SIZE) )))
-APP_FLASH_SIZE                := 0x18C00
+APP_FLASH_SIZE                := 0x18000
 APP_FLASH_END                 := $(shell printf '0x%08X' $$(( $(BM_FLASH_START) + $(BM_FLASH_SIZE) + $(FBL_FLASH_SIZE) + $(APP_FLASH_SIZE) - 1 )))
 
 # TODO: Set APP_HEADER_ADDR and APP_CODE_START to match your linker script APP section layout
@@ -164,8 +173,12 @@ else
     MCAL_OPTIMISATION        := -Os
 endif
 
-# APP vector table offset: APP_FLASH_START (0x08007000) + 256-byte app_header = 0x08007100.
-CFLAGS += -DVECT_TAB_OFFSET=0x7100
+# APP vector table offset: APP_CODE_START (APP_FLASH_START + 256-byte app_header). Purely
+# cosmetic - system_stm32f10x.c defines VECT_TAB_OFFSET but never reads SCB->VTOR from it; the
+# real relocation happens at runtime via MCU_JUMP_set_vector_table() in APP's own main.c, from the
+# linker's __isr_vector_start symbol, which always tracks the linker script correctly regardless
+# of this define. Kept in sync anyway so it doesn't sit there silently wrong.
+CFLAGS += -DVECT_TAB_OFFSET=$(APP_CODE_START)
 
 # Linker flags configuration
 LDFLAGS := \

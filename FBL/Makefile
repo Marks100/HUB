@@ -25,7 +25,7 @@ FBL_MEM_CSV_FILE      := $(BUILD_OUT_DIR)/memory_analysis.csv
 BUILD_ENV_BIN         := ../BuildEnv/xBuildEnv/bin
 
 # FBL carries the same header/CRC/signature layout as APP (see xCOMMON_MODULES/Src/HEADER/
-# HEADER.h) at the start of its own 17K region - BM validates it the same way before jumping
+# HEADER.h) at the start of its own 19K region - BM validates it the same way before jumping
 # here (see BM.c's BM_jump_to_fbl()). Must match FBL/linker_script/STM32F103C8_FBL_flash.ld and
 # APP/Makefile's FBL_FLASH_START (0x08002C00). FBL_CODE_END in particular must exactly match
 # BM's __fbl_code_end__ (BM/linker_script/STM32F103C8_BM_flash.ld) - that's the range
@@ -33,7 +33,7 @@ BUILD_ENV_BIN         := ../BuildEnv/xBuildEnv/bin
 # image fail BM's validation.
 FBL_HEADER_ADDR := 0x08002C00
 FBL_CODE_START  := 0x08002D00
-FBL_CODE_END    := 0x08006FFF
+FBL_CODE_END    := 0x080077FF
 FBL_CRC_TYPE    := stm32-hw-crc32
 
 # Signing key - must stay in lockstep with APP/Makefile's SIGN_ALGORITHM/SIGNING_KEY and with
@@ -67,6 +67,7 @@ FBL_C_SRCS := \
     $(COMMON_MODULES_DIR)/CHKSUM/CRC_HW_STM32F103.c \
     $(COMMON_MODULES_DIR)/CLKS/CLK_STM32F1.c \
     $(COMMON_MODULES_DIR)/FLS/FLS_STM32F1.c \
+    $(COMMON_MODULES_DIR)/NVM/NVM.c \
     $(COMMON_MODULES_DIR)/SYSTICK/SYSTICK.c \
     $(COMMON_MODULES_DIR)/TIME_MGR/TIME_MGR.c \
     $(COMMON_MODULES_DIR)/STDC/STDC.c \
@@ -116,6 +117,7 @@ INCLUDES  := \
     -I $(COMMON_MODULES_DIR)/CHKSUM \
     -I $(COMMON_MODULES_DIR)/CLKS \
     -I $(COMMON_MODULES_DIR)/FLS \
+    -I $(COMMON_MODULES_DIR)/NVM \
     -I $(COMMON_MODULES_DIR)/SYSTICK \
     -I $(COMMON_MODULES_DIR)/TIME_MGR \
     -I $(COMMON_MODULES_DIR)/STDC \
@@ -139,7 +141,7 @@ INCLUDES  := \
 # Same RELEASE/DEBUG toggle APP/Makefile uses, so `make RELEASE=y` still builds the size-optimised
 # image while a plain `make` is debuggable (-Og keeps variables live and control flow in source
 # order, which -Os destroys). MCAL_OPTIMISATION stays pinned to -Os either way: it is vendored code
-# we never step through, and FBL's 16KB partition is tight enough that there is no reason to spend
+# we never step through, and FBL's 19KB partition is tight enough that there is no reason to spend
 # flash making it debuggable.
 ifeq ($(RELEASE),y)
     FBL_OPTIMISATION  := -Os

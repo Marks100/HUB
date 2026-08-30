@@ -4,11 +4,12 @@
 ;
 ; Flash layout (128 KB total - confirmed via live F_SIZE register read at 0x1FFFF7E0; this "C8"
 ; part is physically 128 KB silicon, a known STM32F103 binning quirk):
-;   BM  : 0x08000000 - 0x08002FFF  12 KB
-;   FBL : 0x08003000 - 0x08006FFF  16 KB
-;   APP : 0x08007000 - 0x0801FBFF  99 KB  (vectors at 0x08007100)
-;   NVM : 0x0801FC00 - 0x0801FFFF   1 KB  (reserved, placed dynamically - see
-;                                          FLS_STM32F1_get_nvm_base_address())
+;   BM  : 0x08000000 - 0x08002BFF  11 KB
+;   FBL : 0x08002C00 - 0x080077FF  19 KB
+;   APP : 0x08007800 - 0x0801F7FF  96 KB  (vectors at 0x08007900)
+;   NVM : 0x0801F800 - 0x0801FFFF   2 KB  (reserved, placed dynamically - page 1 (FBL's, fixed
+;                                          base) via FLS_STM32F1_get_nvm_base_address(), page 2
+;                                          (APP's) via APP's own app_nvm_page2_base_address())
 ;
 ; Required environment variables:
 ;   LAUTERBACH_APP_EXE  path to APP/Build/APP.elf
