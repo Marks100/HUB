@@ -16,11 +16,12 @@
 **                              Includes                                                          **
 ***************************************************************************************************/
 #include "INTEGRATION_STUBS.h"
+#include "FBL_NVM_BLOCKS.h"
 #include "CHKSUM.h"
 #include "CLK_STM32F1.h"
 #include "SHARED_RAM.h"
 #include "FLS_STM32F1.h"
-#include "NVM.h"
+#include "NVM_GEN2.h"
 #include "SYSTICK.h"
 #include "TIME_MGR.h"
 #include "HAL_CAN.h"
@@ -73,61 +74,53 @@ STATIC void clk_init( void )
 /***************************************************************************************************
 **                              NVM / Fingerprint                                                 **
 ***************************************************************************************************/
-/* FBL's own NVM block lives on the base reserved page, deliberately NOT computed via any offset
-   arithmetic - it is the fixed point APP's own (potentially multi-block, growing) NVM allocation
-   builds outward from, not the other way around. FBL carries exactly one block (this fingerprint)
-   and is not expected to ever need a second, whereas APP already has one block (PERSIST_BLK) and
-   is the far more likely side to grow another - if APP ever did, NVM.c's per-image block-offset
-   allocator (which counts from 0 within whichever image is currently running, with no visibility
-   into what a *different* image already claimed) would place APP's next block at APP's-base +
-   1 sector. Anchoring FBL at the fixed base and APP at base + 1 sector (see APP's own
-   app_nvm_page2_base_address() in APP/Src/INT_STUBS/INTEGRATION_STUBS.c) means APP's future
-   growth extends to page 3, 4, ... away from FBL, instead of landing straight on top of it on the
-   very first block APP ever adds. See FLS_STM32F1.h's top comment for why the shared FLS module
-   only exposes the reservation's base/size, not a per-project page assignment. */
-STATIC const NVM_hw_interface_st fbl_nvm_hw_interface_s =
+/* Both reserved pages, handed to NVM_GEN2 as its two partitions. FBL and APP deliberately point
+   at the SAME two pages and no longer take a page each: NVM_GEN2 packs blocks into a shared,
+   append-only log keyed by block ID instead of giving each block a page of its own, the two
+   images own separate ID ranges (NVM_GEN2_BLOCK_ID_FBL_* here, _APP_* over in APP), and
+   compaction carries any record it has no config for across verbatim. So APP compacting can
+   never delete this fingerprint, and FBL compacting can never delete APP's blocks. See
+   FLS_STM32F1.h's top comment and NVM_GEN2/README.md for the full argument. */
+STATIC const NVM_GEN2_hw_interface_st fbl_nvm_gen2_hw_interface_s =
 {
-    .init_func       = FLS_STM32F1_init,
-    .get_flash_size  = FLS_STM32F1_get_nvm_total_size,
-    .get_flash_base  = FLS_STM32F1_get_nvm_base_address,
-    .get_sector_size = FLS_STM32F1_get_sector_size,
-    .erase_func      = FLS_STM32F1_erase_sector,
-    .write_func      = FLS_STM32F1_write_data,
-    .compare_func    = FLS_STM32F1_compare_data,
-    .recover_func    = FLS_STM32F1_recover_data
+    .init_func          = FLS_STM32F1_init,
+    .get_base_address   = FLS_STM32F1_get_nvm_base_address,
+    .get_partition_size = FLS_STM32F1_get_sector_size,
+    .get_total_size     = FLS_STM32F1_get_nvm_total_size,
+    .erase_func         = FLS_STM32F1_erase_sector,
+    .write_func         = FLS_STM32F1_write_data,
+    .compare_func       = FLS_STM32F1_compare_data,
+    .read_func          = FLS_STM32F1_recover_data
 };
 
-/* Only block FBL ever registers, so its ID just needs to not collide with anything else in FBL's
-   own (empty) block table - it shares no address space with APP's block(s), see above. */
-#define FBL_NVM_BLOCK_ID_FINGERPRINT ( 0u )
+/* All three blocks FBL registers - IDs, struct shapes, RAM mirrors and NVM_GEN2_block_cfg_st
+   configs (fbl_nvm_gen2_fingerprint_block_s / _boot_count_block_s / _download_attempt_count_
+   block_s) - live in FBL_NVM_BLOCKS.h/.c, not here. None of that touches hardware, so none of it
+   belongs in board wiring; only the NVM_GEN2_hw_interface_st above and the register_block() calls
+   in fbl_board_init() below are genuinely this board's concern. APP reads the fingerprint via
+   NVM_GEN2_read_block( FBL_FINGERPRINT_BLOCK_ID, ... ) and needs the ID and struct shape (also in
+   FBL_NVM_BLOCKS.h) to decode it. */
 
-typedef struct
-{
-    u8_t len;                             /* Bytes actually used in data[], 0..FBL_FINGERPRINT_MAX_LEN */
-    u8_t data[FBL_FINGERPRINT_MAX_LEN];
-} fbl_fingerprint_blk_st;
-
-STATIC const fbl_fingerprint_blk_st fbl_fingerprint_default_s = { 0u, { 0u } };
-STATIC fbl_fingerprint_blk_st       fbl_fingerprint_current_s;
-
-STATIC const NVM_func_p_st fbl_nvm_fingerprint_block_s =
-{
-    .default_data     = &fbl_fingerprint_default_s,
-    .current_data     = &fbl_fingerprint_current_s,
-    .data_len         = sizeof( fbl_fingerprint_blk_st ),
-    .expected_version = 1u,
-    .event_fn         = NULL_P
-};
-
-/* fbl_config_st's fingerprint_write_func_p. Commits immediately via NVM_tick() rather than
-   waiting for FBL's next periodic tick to notice write_requested - the whole point of writing now
-   is durability before the tester proceeds to erase/download/reset, not background persistence. */
+/* fbl_config_st's fingerprint_write_func_p. Blocks via NVM_GEN2_write_block_now() rather than
+   leaving the request for the next periodic tick - the whole point of writing now is durability
+   before the tester proceeds to erase/download/reset, not background persistence. Blocks for one
+   small write, or for a full compaction if the log happens to be full. */
 STATIC void fbl_fingerprint_write( const u8_t* data_p, u8_t len )
 {
-    fbl_fingerprint_current_s.len = len;
-    STDC_memcpy( fbl_fingerprint_current_s.data, data_p, len );
-    NVM_request_write_block( FBL_NVM_BLOCK_ID_FINGERPRINT );
-    NVM_tick();
+    fbl_fingerprint_g.len = len;
+    STDC_memcpy( fbl_fingerprint_g.data, data_p, len );
+    fbl_fingerprint_g.flash_count++;
+    NVM_GEN2_write_block_now( FBL_FINGERPRINT_BLOCK_ID );
+}
+
+/* fbl_config_st's download_attempt_notify_func_p - called once per accepted 0x34 RequestDownload,
+   see FBL_download_attempt_notify_func_t's comment in FBL.h. Flushes immediately for the same
+   reason fbl_fingerprint_write() does: FBL never ticks NVM_GEN2 in the background, so a request
+   left merely pending here would never actually reach flash this boot. */
+STATIC void fbl_download_attempt_notify( void )
+{
+    fbl_download_attempt_count_g.count++;
+    NVM_GEN2_write_block_now( FBL_DOWNLOAD_ATTEMPT_COUNT_BLOCK_ID );
 }
 
 /* fbl_config_st's board_init - flash driver bring-up, shared RAM bring-up and NVM bring-up are
@@ -137,8 +130,23 @@ STATIC void fbl_board_init( void )
 {
     FLS_STM32F1_init();
     SHARED_RAM_init();
-    NVM_init( &fbl_nvm_hw_interface_s );
-    NVM_register_block( FBL_NVM_BLOCK_ID_FINGERPRINT, &fbl_nvm_fingerprint_block_s );
+    NVM_GEN2_init( &fbl_nvm_gen2_hw_interface_s );
+
+    /* Registration leaves a write pending if no record exists yet for a given block, and FBL
+       deliberately never runs NVM_GEN2_tick() periodically to service it - the only thing that
+       would achieve is burning a record on empty data at every virgin boot. Everything here that
+       needs to reach flash does so via an explicit flush (fbl_fingerprint_write(),
+       fbl_download_attempt_notify(), and the boot-count increment below) - an interrupted
+       compaction is discarded at mount, never resumed, so there is no other NVM work for FBL to
+       do in the background. */
+    NVM_GEN2_register_block( FBL_FINGERPRINT_BLOCK_ID, &fbl_nvm_gen2_fingerprint_block_s );
+    NVM_GEN2_register_block( FBL_BOOT_COUNT_BLOCK_ID, &fbl_nvm_gen2_boot_count_block_s );
+    NVM_GEN2_register_block( FBL_DOWNLOAD_ATTEMPT_COUNT_BLOCK_ID, &fbl_nvm_gen2_download_attempt_count_block_s );
+
+    /* Unconditional, once per boot - this is literally what "boot count" means. Flushed
+       immediately rather than left pending for the same reason as the two writers above. */
+    fbl_boot_count_g.count++;
+    NVM_GEN2_write_block_now( FBL_BOOT_COUNT_BLOCK_ID );
 }
 
 /***************************************************************************************************
@@ -445,8 +453,9 @@ const fbl_config_st fbl_config_s =
     .security_level_key_table_size    = (u8_t)( sizeof( fbl_security_level_key_table_s ) /
                                                  sizeof( fbl_security_level_key_table_s[0] ) ),
 
-    .reprog_request_clear_func_p = SHARED_RAM_set_fbl_request,
-    .fingerprint_write_func_p    = fbl_fingerprint_write,
+    .reprog_request_clear_func_p    = SHARED_RAM_set_fbl_request,
+    .fingerprint_write_func_p       = fbl_fingerprint_write,
+    .download_attempt_notify_func_p = fbl_download_attempt_notify,
 
     /* Configuration values */
     .flash_sector_size          = FLS_STM32F1_PAGE_SIZE,

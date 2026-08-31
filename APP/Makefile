@@ -48,32 +48,36 @@ RELEASE_PACKAGE_NAME         := $(RELEASE_PACKAGE_BASE_DIR)/$(PROJECT_TYPE)_$(VE
 # live F_SIZE register read (0x1FFFF7E0): this "C8" (64KB nominal) part is physically 128KB
 # silicon, a known STM32F103 binning quirk. The top 2KB (0x0801F800-0x0801FFFF) is reserved for
 # the NVM emulation pages - FLS_STM32F1_get_nvm_base_address() places the region dynamically
-# (xCOMMON_MODULES/Src/FLS/FLS_STM32F1.c), so APP must not grow into it. Page 1 (lower address,
-# the fixed base) is FBL's own NVM block - FBL carries exactly one block and isn't expected to
-# grow a second; page 2 (upper) is APP's own, computed by APP's own app_nvm_page2_base_address()
-# (APP/Src/INT_STUBS/INTEGRATION_STUBS.c) - APP already has one NVM block and is the side more
-# likely to add more, so its allocation is the one offset outward - kept physically separate
-# because BM/FBL/APP never run concurrently, so NVM.c's per-image block-offset allocator would
-# otherwise hand both images' first block the same address.
-# BM=11KB  FBL=19KB  APP=96KB (+ 2KB reserved for NVM) — adjust sizes and update linker scripts
+# (xCOMMON_MODULES/Src/FLS/FLS_STM32F1.c), so APP must not grow into it. Both pages belong to
+# NVM_GEN2 as its two flip-flop partitions, and FBL and APP SHARE both rather than taking a page
+# each: blocks are packed into an append-only log keyed by block ID, the two images own separate
+# ID ranges (NVM_GEN2_BLOCK_ID_FBL_* / _APP_*), and compaction copies any record it has no config
+# for across verbatim, so neither image can overwrite the other's data.
+# See xCOMMON_MODULES/Src/NVM_GEN2/README.md.
+# BM=11KB  FBL=21KB  APP=94KB (+ 2KB reserved for NVM) — adjust sizes and update linker scripts
 # accordingly, and keep APP_FLASH_END below the reserved NVM pages. BM sized at 12KB (up from the
 # minimum-viable 8KB) for future secure boot headroom - e.g. switching signature_verify over to
 # ECDSA P-256 (xCOMMON_MODULES/Src/CRYPTO/micro-ecc) adds ~3.5KB over the current HMAC-SHA256 path -
 # then gave back 1KB of that headroom to FBL, which had run out of its own margin entirely, since
 # BM still has ~7KB free either way (see BM/linker_script/STM32F103C8_BM_flash.ld). FBL later grew
-# a further 2KB (17KB -> 19KB) to fit NVM.c for its own WriteDataByIdentifier fingerprint block;
-# that 2KB plus the extra 1KB of reserved NVM space came out of APP's budget instead (99KB -> 96KB),
-# since APP had ~54KB of slack and BM's headroom above is earmarked for the ECDSA upgrade.
+# a further 2KB (17KB -> 19KB) to fit the NVM driver for its own WriteDataByIdentifier fingerprint
+# block; that 2KB plus the extra 1KB of reserved NVM space came out of APP's budget instead
+# (99KB -> 96KB), since APP had ~54KB of slack and BM's headroom above is earmarked for the ECDSA
+# upgrade. FBL's 19KB then went effectively full once NVM_GEN2 landed (~2.3KB, -Og debug build at
+# 100%), so FBL grew a further 2KB (19KB -> 21KB) - again out of APP's budget (96KB -> 94KB), APP
+# being the side with slack to spare. NVM_GEN2.c stays pinned to -Os in FBL/Makefile regardless
+# (FBL has no reason to want that file debuggable), which is what gives FBL's -Og build headroom
+# again rather than sitting at 100%.
 BM_FLASH_START               := 0x08000000
 BM_FLASH_SIZE                := 0x2C00
 BM_FLASH_END                 := $(shell printf '0x%08X' $$(( $(BM_FLASH_START) + $(BM_FLASH_SIZE) - 1 )))
 
 FBL_FLASH_START               := $(shell printf '0x%08X' $$(( $(BM_FLASH_START) + $(BM_FLASH_SIZE) )))
-FBL_FLASH_SIZE                := 0x4C00
+FBL_FLASH_SIZE                := 0x5400
 FBL_FLASH_END                 := $(shell printf '0x%08X' $$(( $(BM_FLASH_START) + $(BM_FLASH_SIZE) + $(FBL_FLASH_SIZE) - 1 )))
 
 APP_FLASH_START               := $(shell printf '0x%08X' $$(( $(BM_FLASH_START) + $(BM_FLASH_SIZE) + $(FBL_FLASH_SIZE) )))
-APP_FLASH_SIZE                := 0x18000
+APP_FLASH_SIZE                := 0x17800
 APP_FLASH_END                 := $(shell printf '0x%08X' $$(( $(BM_FLASH_START) + $(BM_FLASH_SIZE) + $(FBL_FLASH_SIZE) + $(APP_FLASH_SIZE) - 1 )))
 
 # TODO: Set APP_HEADER_ADDR and APP_CODE_START to match your linker script APP section layout

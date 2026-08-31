@@ -346,6 +346,10 @@ void mode_mgr_action_schedule_normal( void )
 
 	if( mode_mgr_check_time_interval( 50u ) == TRUE )
 	{
+		/* Commits any block whose RAM mirror has been marked dirty. A plain append is a short
+		   flash write; only a partition switch erases a page, and that costs ~20-40 ms in this
+		   slot - rare enough to live here rather than needing its own deferred context. */
+		NVM_GEN2_tick();
 	}
 
 	if( mode_mgr_check_time_interval( 100u ) == TRUE )

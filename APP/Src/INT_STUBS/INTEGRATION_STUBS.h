@@ -13,7 +13,7 @@
 #include "BUZZER.h"
 #include "WS2811.h"
 #include "NRF24.h"
-#include "NVM.h"
+#include "NVM_GEN2.h"
 #include "CTRL_AXIS.h"
 #include "WDG_HW_STM32.h"
 #include "ESP01.h"
@@ -43,8 +43,7 @@ extern const BUZZER_func_table_st    buzzer_func_table_s;
 extern       BUZZER_instance_st      buzzer_instance_s;
 extern       WS2811_instance_st      ws2811_instance_s;
 extern       NRF24_instance_st       nrf24_instance_s;
-extern const NVM_hw_interface_st     nvm_hw_interface_s;
-extern const NVM_func_p_st           nvm_persist_block_s;
+extern const NVM_GEN2_hw_interface_st nvm_gen2_hw_interface_s;
 extern const WDG_HW_STM32_config_st  wdg_cfg_s;
 extern const ESP01_cfg_st            esp01_cfg_s;
 extern const WIFI_config_st          wifi_cfg_s;

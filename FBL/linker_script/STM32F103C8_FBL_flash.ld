@@ -4,32 +4,36 @@
 ** Flash layout (128 KB total - confirmed via live F_SIZE register read at 0x1FFFF7E0; this part
 ** is a "C8" (64 KB nominal) that's physically 128 KB silicon, a known STM32F103 binning quirk):
 **   BM   : 0x08000000 - 0x08002BFF   11 KB
-**   FBL  : 0x08002C00 - 0x080077FF   19 KB  <- this image (grown by 2 KB from 17 KB to fit
-**                                             NVM.c - FBL now persists a WriteDataByIdentifier
-**                                             fingerprint at the fixed NVM base page, see
-**                                             fbl_nvm_hw_interface_s in this project's own
-**                                             INT_STUBS/INTEGRATION_STUBS.c. Taken from APP's
-**                                             flash budget (it had ~54 KB of slack), not BM's
-**                                             ~7 KB free, which is earmarked for a future ECDSA
-**                                             signature upgrade - see BM's own linker script)
+**   FBL  : 0x08002C00 - 0x08007FFF   21 KB  <- this image (grown twice from 17 KB, both times to
+**                                             fit the NVM driver - FBL persists a
+**                                             WriteDataByIdentifier fingerprint, see
+**                                             fbl_nvm_gen2_hw_interface_s in this project's own
+**                                             INT_STUBS/INTEGRATION_STUBS.c. 17->19 KB was NVM.c's
+**                                             fixed page; 19->21 KB was NVM_GEN2, which had filled
+**                                             the -Og debug build to 100%. Both times taken from
+**                                             APP's flash budget, not BM's ~7 KB free, which is
+**                                             earmarked for a future ECDSA signature upgrade -
+**                                             see BM's own linker script.
+**                                             NVM_GEN2.c stays pinned to -Os in FBL/Makefile
+**                                             regardless of this extra headroom - there is no
+**                                             reason to want that file debuggable here.)
 **     .app_header : 0x08002C00 - 0x08002CFF  256 B  (presence pattern + CRC, see HEADER.h -
 **                                                     BM validates this before jumping here,
 **                                                     same tooling/layout as APP's header)
 **     .isr_vector : 0x08002D00 ...            code start
-**   APP  : 0x08007800 - 0x0801F7FF   96 KB
-**   NVM  : 0x0801F800 - 0x0801FFFF    2 KB  (grown from 1 KB - reserved, not a linker section
-**                                             here; placed dynamically by FLS_STM32F1_get_nvm_
-**                                             base_address() at the top two pages of actual flash
-**                                             size. Nothing above may claim these pages. Page 1 is
-**                                             this image's own NVM block (the fixed base page -
-**                                             FBL carries exactly one block and isn't expected to
-**                                             grow a second), page 2 is APP's (APP already has one
-**                                             NVM block and is more likely to add more, so its
-**                                             allocation is the one offset outward) - see
-**                                             FLS_STM32F1.h's comment for why they must be
-**                                             physically separate pages, and APP's own
-**                                             app_nvm_page2_base_address() (APP/Src/INT_STUBS/
-**                                             INTEGRATION_STUBS.c) for how page 2 is computed.)
+**   APP  : 0x08008000 - 0x0801F7FF   94 KB
+**   NVM  : 0x0801F800 - 0x0801FFFF    2 KB  (reserved, not a linker section here; placed
+**                                             dynamically by FLS_STM32F1_get_nvm_base_address()
+**                                             at the top two pages of actual flash size. Nothing
+**                                             above may claim these pages. Both pages belong to
+**                                             NVM_GEN2 as its two flip-flop partitions, and BOTH
+**                                             images share both - FBL and APP no longer take a
+**                                             page each. Blocks are packed into an append-only
+**                                             log keyed by block ID, the images own separate ID
+**                                             ranges, and compaction copies records it has no
+**                                             config for across verbatim, so neither image can
+**                                             overwrite the other. See xCOMMON_MODULES/Src/
+**                                             NVM_GEN2/README.md.)
 **
 ** RAM layout (20 KB total - fixed regardless of the 64/128 KB flash bin on this part family):
 **   .noinit_shared : 0x20000000 - 0x2000001F   32 B  (BM/FBL/APP handoff - see SHARED_RAM.h)
@@ -52,12 +56,12 @@ _Min_Stack_Size = 0x400;   /* 1 KB */
    fbl_config_s is built from. Must match BM's __app_header_start__/__app_code_end__ (BM/
    linker_script/STM32F103C8_BM_flash.ld) - same names, same values, both describing the
    identical physical addresses. __app_code_end__ is inclusive (last valid byte). */
-__app_header_start__  = 0x08007800;
+__app_header_start__  = 0x08008000;
 __app_code_end__      = 0x0801F7FF;
 
 MEMORY
 {
-    FLASH          (rx)  : ORIGIN = 0x08002C00, LENGTH = 19K
+    FLASH          (rx)  : ORIGIN = 0x08002C00, LENGTH = 21K
     m_data_shared  (xrw) : ORIGIN = 0x20000000, LENGTH = 0x20
     RAM            (xrw) : ORIGIN = 0x20000020, LENGTH = 0x4FE0
 }

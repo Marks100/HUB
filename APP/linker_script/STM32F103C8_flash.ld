@@ -4,28 +4,30 @@
 ** Flash layout (128 KB total - confirmed via live F_SIZE register read at 0x1FFFF7E0; this part
 ** is a "C8" (64 KB nominal) that's physically 128 KB silicon, a known STM32F103 binning quirk):
 **   BM   : 0x08000000 - 0x08002BFF   11 KB
-**   FBL  : 0x08002C00 - 0x080077FF   19 KB  (grown from 17 KB to fit NVM.c - FBL now persists a
-**                                            WriteDataByIdentifier fingerprint)
-**   APP  : 0x08007800 - 0x0801F7FF   96 KB  <- this image (shrunk from 99 KB - see FBL/NVM growth;
-**                                             this project had ~54 KB of flash slack, so the room
-**                                             came from here rather than BM's earmarked headroom)
-**   NVM  : 0x0801F800 - 0x0801FFFF    2 KB  (grown from 1 KB - reserved, not a linker section
-**                                             here; placed dynamically by FLS_STM32F1_get_nvm_
-**                                             base_address() at the top two pages of actual flash
-**                                             size. This image must not grow into it. Page 1 is
-**                                             FBL's NVM block (the fixed base page - FBL carries
-**                                             exactly one block and isn't expected to grow a
-**                                             second), page 2 is this image's own, computed via
-**                                             app_nvm_page2_base_address() in this project's own
-**                                             INT_STUBS/INTEGRATION_STUBS.c (APP already has one
-**                                             NVM block and is more likely to add more, so its
-**                                             allocation is the one offset outward) - see
-**                                             FLS_STM32F1.h's comment for why they must be
-**                                             physically separate.)
+**   FBL  : 0x08002C00 - 0x08007FFF   21 KB  (grown twice from 17 KB to fit the NVM driver - FBL
+**                                            persists a WriteDataByIdentifier fingerprint. See
+**                                            that image's own linker script for the history. If
+**                                            FBL needs more still, this image has slack to fund it.)
+**   APP  : 0x08008000 - 0x0801F7FF   94 KB  <- this image (shrunk from 99 KB across two FBL/NVM
+**                                             growths; this project had ~54 KB of flash slack, so
+**                                             the room came from here rather than BM's earmarked
+**                                             headroom)
+**   NVM  : 0x0801F800 - 0x0801FFFF    2 KB  (reserved, not a linker section here; placed
+**                                             dynamically by FLS_STM32F1_get_nvm_base_address()
+**                                             at the top two pages of actual flash size. This
+**                                             image must not grow into it. Both pages belong to
+**                                             NVM_GEN2 as its two flip-flop partitions, and BOTH
+**                                             images share both - FBL and APP no longer take a
+**                                             page each. Blocks are packed into an append-only
+**                                             log keyed by block ID, the images own separate ID
+**                                             ranges, and compaction copies records it has no
+**                                             config for across verbatim, so neither image can
+**                                             overwrite the other. See xCOMMON_MODULES/Src/
+**                                             NVM_GEN2/README.md.)
 **
 ** APP internal layout:
-**   .app_header : 0x08007800 - 0x080078FF  256 B  (presence pattern + CRC)
-**   .isr_vector : 0x08007900 ...            code start (APP_CODE_START)
+**   .app_header : 0x08008000 - 0x080080FF  256 B  (presence pattern + CRC)
+**   .isr_vector : 0x08008100 ...            code start (APP_CODE_START)
 **
 ** RAM layout (20 KB total - fixed regardless of the 64/128 KB flash bin on this part family):
 **   .noinit_shared : 0x20000000 - 0x2000001F   32 B  (BM/FBL/APP handoff - see SHARED_RAM.h)
@@ -41,7 +43,7 @@ _Min_Stack_Size = 0x400;   /* 1 KB  */
 
 MEMORY
 {
-    FLASH          (rx)  : ORIGIN = 0x08007800, LENGTH = 96K
+    FLASH          (rx)  : ORIGIN = 0x08008000, LENGTH = 94K
     m_data_shared  (xrw) : ORIGIN = 0x20000000, LENGTH = 0x20
     RAM            (xrw) : ORIGIN = 0x20000020, LENGTH = 0x4FE0
 }
@@ -54,10 +56,10 @@ SECTIONS
     {
         . = ALIGN(4);
         KEEP(*(.app_header))
-        . = ALIGN(0x100);   /* pad to 256-byte boundary -> next addr = 0x08007900 */
+        . = ALIGN(0x100);   /* pad to 256-byte boundary -> next addr = 0x08008100 */
     } >FLASH
 
-    /* Vector table at APP_CODE_START = 0x08007900 */
+    /* Vector table at APP_CODE_START = 0x08008100 */
     .isr_vector :
     {
         . = ALIGN(4);

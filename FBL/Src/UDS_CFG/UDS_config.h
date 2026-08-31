@@ -15,9 +15,9 @@
 *   CheckProgrammingDependencies + CheckProgrammingPreconditions), 0x34/0x36/0x37 the actual
 *   download sequence, 0x2E WriteDataByIdentifier (fingerprint only - see
 *   DID_APPLICATION_SOFTWARE_FINGERPRINT below). 0x2E was previously cut for NVM persistence size,
-*   until FBL got its own dedicated NVM page (the fixed base page - see fbl_nvm_hw_interface_s's
-*   comment in FBL/Src/INT_STUBS/INTEGRATION_STUBS.c for why FBL anchors there and APP is the one
-*   offset a page up).
+*   until FBL gained an NVM driver - it now stores the fingerprint as an NVM_GEN2 block in the
+*   partitions it shares with APP, see fbl_nvm_gen2_hw_interface_s's comment in
+*   FBL/Src/INT_STUBS/INTEGRATION_STUBS.c.
 *
 *   CheckProgrammingPreconditions ($0203) is duplicated here AND in APP/Src/UDS_CFG/UDS_config.c,
 *   both "no real gate yet" - not redundant: CANFLASH's actual sequence (Tool_cfg/CANFLASH/

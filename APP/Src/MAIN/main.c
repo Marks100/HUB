@@ -20,7 +20,8 @@
 #include "WS2811.h"
 #include "RF_MGR.h"
 #include "NRF24.h"
-#include "NVM.h"
+#include "NVM_GEN2.h"
+#include "PERSIST_BLK.h"
 #include "BUZZER.h"
 #include "CTRL_AXIS.h"
 #include "nvic_driver.h"
@@ -41,8 +42,12 @@ void app_main( void )
     MCU_JUMP_set_vector_table( (u32_t)&__isr_vector_start );
 
     CLK_STM32F1_init( &hse8_72mhz_s );
-    NVM_init( &nvm_hw_interface_s );
-    NVM_register_block( 0u, &nvm_persist_block_s );
+    NVM_GEN2_init( &nvm_gen2_hw_interface_s );
+    NVM_GEN2_register_block( PERSIST_BLK_ID_GENERIC, &nvm_gen2_persist_block_s );
+    NVM_GEN2_register_block( PERSIST_BLK_ID_KEY_1, &nvm_gen2_key_1_block_s );
+    NVM_GEN2_register_block( PERSIST_BLK_ID_KEY_2, &nvm_gen2_key_2_block_s );
+    NVM_GEN2_register_block( PERSIST_BLK_ID_CHASSIS_NUM, &nvm_gen2_chassis_num_block_s );
+    PERSIST_read_fbl_fingerprint_at_boot();
 
     DBG_MGR_init( &dbg_mgr_cfg_s, SystemCoreClock );
     DWT_init( SystemCoreClock );
