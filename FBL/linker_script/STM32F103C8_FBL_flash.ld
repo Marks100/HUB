@@ -13,10 +13,7 @@
 **                                             the -Og debug build to 100%. Both times taken from
 **                                             APP's flash budget, not BM's ~7 KB free, which is
 **                                             earmarked for a future ECDSA signature upgrade -
-**                                             see BM's own linker script.
-**                                             NVM_GEN2.c stays pinned to -Os in FBL/Makefile
-**                                             regardless of this extra headroom - there is no
-**                                             reason to want that file debuggable here.)
+**                                             see BM's own linker script.)
 **     .app_header : 0x08002C00 - 0x08002CFF  256 B  (presence pattern + CRC, see HEADER.h -
 **                                                     BM validates this before jumping here,
 **                                                     same tooling/layout as APP's header)

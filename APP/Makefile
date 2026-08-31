@@ -65,9 +65,7 @@ RELEASE_PACKAGE_NAME         := $(RELEASE_PACKAGE_BASE_DIR)/$(PROJECT_TYPE)_$(VE
 # (99KB -> 96KB), since APP had ~54KB of slack and BM's headroom above is earmarked for the ECDSA
 # upgrade. FBL's 19KB then went effectively full once NVM_GEN2 landed (~2.3KB, -Og debug build at
 # 100%), so FBL grew a further 2KB (19KB -> 21KB) - again out of APP's budget (96KB -> 94KB), APP
-# being the side with slack to spare. NVM_GEN2.c stays pinned to -Os in FBL/Makefile regardless
-# (FBL has no reason to want that file debuggable), which is what gives FBL's -Og build headroom
-# again rather than sitting at 100%.
+# being the side with slack to spare.
 BM_FLASH_START               := 0x08000000
 BM_FLASH_SIZE                := 0x2C00
 BM_FLASH_END                 := $(shell printf '0x%08X' $$(( $(BM_FLASH_START) + $(BM_FLASH_SIZE) - 1 )))

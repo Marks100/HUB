@@ -180,15 +180,6 @@ $(OBJ_DIR):
 $(MCAL_OBJ_DIR):
 	@mkdir -p $(MCAL_OBJ_DIR)
 
-# NVM_GEN2 is pinned to -Os even in the debug build, for the same reason MCAL_OPTIMISATION is: this
-# module is what pushed FBL from 19KB to 21KB in the first place (~2.8 KB at -Og vs ~2.3 KB at -Os),
-# and FBL barely exercises it - it writes one fingerprint block and in normal use never compacts -
-# so the debuggability given up here is debuggability FBL work does not need. APP builds the
-# identical source at the RELEASE/DEBUG level, so step through it there.
-$(OBJ_DIR)/NVM_GEN2.o: $(COMMON_MODULES_DIR)/NVM_GEN2/NVM_GEN2.c | $(OBJ_DIR)
-	@echo "--> Compiling $(notdir $@) (pinned -Os, see Makefile)..."
-	@$(CC) $(CFLAGS) -Os $(INCLUDES) -c $< -o $@
-
 $(OBJ_DIR)/%.o: %.c | $(OBJ_DIR)
 	@echo "--> Compiling $(notdir $@)..."
 	@$(CC) $(CFLAGS) $(FBL_OPTIMISATION) $(INCLUDES) -c $< -o $@
