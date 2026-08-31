@@ -47,7 +47,10 @@ extern u32_t __app_code_end__;
 ***************************************************************************************************/
 /* Passed to TIME_init(), called directly from fbl_main() rather than through fbl_config_st, since
    it has to run before FBL_init() (which is what actually consumes fbl_config_s). */
-const TIME_cfg_st time_cfg_s = { .time_increment_ms = 1u };
+const TIME_cfg_st time_cfg_s = 
+{
+    .time_increment_ms = 1u 
+};
 
 /***************************************************************************************************
 **                              Clock / CRC                                                       **
@@ -74,19 +77,20 @@ STATIC void clk_init( void )
 /***************************************************************************************************
 **                              NVM / Fingerprint                                                 **
 ***************************************************************************************************/
-/* Both reserved pages, handed to NVM_GEN2 as its two partitions. FBL and APP deliberately point
-   at the SAME two pages and no longer take a page each: NVM_GEN2 packs blocks into a shared,
-   append-only log keyed by block ID instead of giving each block a page of its own, the two
-   images own separate ID ranges (NVM_GEN2_BLOCK_ID_FBL_* here, _APP_* over in APP), and
-   compaction carries any record it has no config for across verbatim. So APP compacting can
-   never delete this fingerprint, and FBL compacting can never delete APP's blocks. See
-   FLS_STM32F1.h's top comment and NVM_GEN2/README.md for the full argument. */
+/* Both reserved pages (NVM_BASE_ADDRESS/NVM_TOTAL_SIZE, PROJ_config.h), handed to NVM_GEN2 as its
+   two partitions. FBL and APP deliberately point at the SAME two pages and no longer take a page
+   each: NVM_GEN2 packs blocks into a shared, append-only log keyed by block ID instead of giving
+   each block a page of its own, the two images own separate ID ranges (NVM_GEN2_BLOCK_ID_FBL_*
+   here, _APP_* over in APP), and compaction carries any record it has no config for across
+   verbatim. So APP compacting can never delete this fingerprint, and FBL compacting can never
+   delete APP's blocks. See PROJ_config.h's NVM_BASE_ADDRESS comment and NVM_GEN2/README.md for
+   the full argument. */
 STATIC const NVM_GEN2_hw_interface_st fbl_nvm_gen2_hw_interface_s =
 {
     .init_func          = FLS_STM32F1_init,
-    .get_base_address   = FLS_STM32F1_get_nvm_base_address,
-    .get_partition_size = FLS_STM32F1_get_sector_size,
-    .get_total_size     = FLS_STM32F1_get_nvm_total_size,
+    .base_address       = NVM_BASE_ADDRESS,
+    .partition_size     = FLS_STM32F1_PAGE_SIZE,
+    .total_size         = NVM_TOTAL_SIZE,
     .erase_func         = FLS_STM32F1_erase_sector,
     .write_func         = FLS_STM32F1_write_data,
     .compare_func       = FLS_STM32F1_compare_data,
@@ -110,6 +114,9 @@ STATIC void fbl_fingerprint_write( const u8_t* data_p, u8_t len )
     fbl_fingerprint_g.len = len;
     STDC_memcpy( fbl_fingerprint_g.data, data_p, len );
     fbl_fingerprint_g.flash_count++;
+    fbl_fingerprint_g.last_flash_timestamp_ms         = TIME_get_cumulative_run_time_ms_u32();
+    fbl_fingerprint_g.boot_count_at_flash             = fbl_boot_count_g.count;
+    fbl_fingerprint_g.download_attempt_count_at_flash = fbl_download_attempt_count_g.count;
     NVM_GEN2_write_block_now( FBL_FINGERPRINT_BLOCK_ID );
 }
 

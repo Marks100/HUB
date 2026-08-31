@@ -39,7 +39,24 @@ typedef struct
     false_true_et bl_request;
     u16_t         weld_time_ms;
     u32_t         total_num_welds;
+    u32_t         total_weld_time_ms;  /* Cumulative ON-time across every weld, milliseconds. Added
+                                           in version 2 - see persist_generic_data_migrate() in
+                                           PERSIST_BLK_MIGRATE.c for the upgrade from version 1;
+                                           that file's worked example. */
 } PERSIST_generic_data_blk_st;
+
+/* Version 1 - before total_weld_time_ms existed. Kept ONLY so persist_generic_data_migrate() (see
+   PERSIST_BLK_MIGRATE.c) can read an old record still sitting on flash; nothing else should ever
+   construct one. */
+typedef struct
+{
+    u8_t          screen_brightness;
+    false_true_et reset_request;
+    u8_t          reset_type;
+    false_true_et bl_request;
+    u16_t         weld_time_ms;
+    u32_t         total_num_welds;
+} PERSIST_generic_data_blk_v1_st;
 
 typedef struct
 {
@@ -64,8 +81,9 @@ extern PERSIST_key_blk_st         PERSIST_key_1_blk_g;
 extern PERSIST_key_blk_st         PERSIST_key_2_blk_g;
 extern PERSIST_chassis_num_blk_st PERSIST_chassis_num_blk_g;
 
-/* One-shot debug snapshot of FBL's fingerprint - see PERSIST_read_fbl_fingerprint_at_boot()'s
-   comment. Not a live mirror; do not write to these. */
+/* One-shot debug snapshot of FBL's fingerprint, populated by app_main()'s PERSIST_read_fbl_
+   fingerprint() call at start-up - see that function's comment below. Not a live mirror; do not
+   write to these. */
 extern FBL_fingerprint_blk_st PERSIST_fbl_fingerprint_g;
 extern pass_fail_et           PERSIST_fbl_fingerprint_result_g;
 
@@ -84,9 +102,12 @@ extern const NVM_GEN2_block_cfg_st nvm_gen2_chassis_num_block_s;
 ***************************************************************************************************/
 /* Reads FBL's fingerprint block - APP does not own or register this block (see PERSIST_blk_id_et's
    comment: it's inside NVM_GEN2_BLOCK_ID_OWNER_A_FIRST..OWNER_A_LAST, not APP's range), so there
-   is no RAM mirror for it. This reads it straight out of the shared NVM partitions each call. */
+   is no RAM mirror for it. This reads it straight out of the shared NVM partitions each call.
+   app_main() calls this once at start-up (after NVM_GEN2_init()) and stores the result into
+   PERSIST_fbl_fingerprint_g/PERSIST_fbl_fingerprint_result_g purely so a debugger has something
+   to watch; anything else needing a live/current read should call this directly instead of
+   relying on that snapshot. */
 pass_fail_et PERSIST_read_fbl_fingerprint( FBL_fingerprint_blk_st* dest_p );
-void         PERSIST_read_fbl_fingerprint_at_boot( void );
 
 #endif /* PERSIST_BLK_H multiple inclusion guard */
 

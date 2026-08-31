@@ -47,7 +47,7 @@ void app_main( void )
     NVM_GEN2_register_block( PERSIST_BLK_ID_KEY_1, &nvm_gen2_key_1_block_s );
     NVM_GEN2_register_block( PERSIST_BLK_ID_KEY_2, &nvm_gen2_key_2_block_s );
     NVM_GEN2_register_block( PERSIST_BLK_ID_CHASSIS_NUM, &nvm_gen2_chassis_num_block_s );
-    PERSIST_read_fbl_fingerprint_at_boot();
+    (void)PERSIST_read_fbl_fingerprint( &PERSIST_fbl_fingerprint_g );
 
     DBG_MGR_init( &dbg_mgr_cfg_s, SystemCoreClock );
     DWT_init( SystemCoreClock );

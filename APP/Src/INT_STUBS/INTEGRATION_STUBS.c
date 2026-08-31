@@ -208,21 +208,22 @@ NRF24_instance_st nrf24_instance_s =
 /***************************************************************************************************
 **                              NVM                                                               **
 ***************************************************************************************************/
-/* Both reserved pages, handed to NVM_GEN2 as its two partitions - APP no longer offsets itself a
-   page up to stay clear of FBL. It does not need to: NVM_GEN2 packs blocks into a shared log
-   keyed by block ID rather than assigning each one a page, FBL and APP own separate ID ranges
-   (NVM_GEN2_BLOCK_ID_FBL_* / _APP_*), and compaction carries records it has no config for across
-   verbatim. So the two images write into the same two pages without either being able to
-   overwrite the other. See FLS_STM32F1.h's top comment and NVM_GEN2/README.md.
+/* Both reserved pages (NVM_BASE_ADDRESS/NVM_TOTAL_SIZE, PROJ_config.h), handed to NVM_GEN2 as its
+   two partitions - APP no longer offsets itself a page up to stay clear of FBL. It does not need
+   to: NVM_GEN2 packs blocks into a shared log keyed by block ID rather than assigning each one a
+   page, FBL and APP own separate ID ranges (NVM_GEN2_BLOCK_ID_FBL_* / _APP_*), and compaction
+   carries records it has no config for across verbatim. So the two images write into the same two
+   pages without either being able to overwrite the other. See PROJ_config.h's NVM_BASE_ADDRESS
+   comment and NVM_GEN2/README.md.
    The NVM_GEN2_block_cfg_st for each of APP's blocks lives in PERSIST_BLK.h/.c instead of here -
    default_data/version/event_fn describe the block's data, not this board's hardware, so only the
    hardware interface itself (below) and the register_block() calls in app_main() belong here. */
 const NVM_GEN2_hw_interface_st nvm_gen2_hw_interface_s =
 {
     .init_func          = FLS_STM32F1_init,
-    .get_base_address   = FLS_STM32F1_get_nvm_base_address,
-    .get_partition_size = FLS_STM32F1_get_sector_size,
-    .get_total_size     = FLS_STM32F1_get_nvm_total_size,
+    .base_address       = NVM_BASE_ADDRESS,
+    .partition_size     = FLS_STM32F1_PAGE_SIZE,
+    .total_size         = NVM_TOTAL_SIZE,
     .erase_func         = FLS_STM32F1_erase_sector,
     .write_func         = FLS_STM32F1_write_data,
     .compare_func       = FLS_STM32F1_compare_data,

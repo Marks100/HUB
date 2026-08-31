@@ -47,8 +47,8 @@ RELEASE_PACKAGE_NAME         := $(RELEASE_PACKAGE_BASE_DIR)/$(PROJECT_TYPE)_$(VE
 # STM32F103C8T6: 128KB total flash (0x20000) starting at 0x08000000, 1KB pages — confirmed via a
 # live F_SIZE register read (0x1FFFF7E0): this "C8" (64KB nominal) part is physically 128KB
 # silicon, a known STM32F103 binning quirk. The top 2KB (0x0801F800-0x0801FFFF) is reserved for
-# the NVM emulation pages - FLS_STM32F1_get_nvm_base_address() places the region dynamically
-# (xCOMMON_MODULES/Src/FLS/FLS_STM32F1.c), so APP must not grow into it. Both pages belong to
+# the NVM emulation pages - fixed by NVM_BASE_ADDRESS/NVM_TOTAL_SIZE in
+# Common_Src/PROJ_CONFIG/PROJ_config.h, so APP must not grow into it. Both pages belong to
 # NVM_GEN2 as its two flip-flop partitions, and FBL and APP SHARE both rather than taking a page
 # each: blocks are packed into an append-only log keyed by block ID, the two images own separate
 # ID ranges (NVM_GEN2_BLOCK_ID_FBL_* / _APP_*), and compaction copies any record it has no config

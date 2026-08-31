@@ -56,13 +56,73 @@
 ***************************************************************************************************/
 typedef struct
 {
+    u32_t download_attempt_count_at_flash; /* fbl_download_attempt_count_g.count at the moment of
+                                               the last successful write - how many download
+                                               attempts (see FBL_DOWNLOAD_ATTEMPT_COUNT_BLOCK_ID,
+                                               successful or not) preceded this one. Deliberately
+                                               placed FIRST, unlike every field added before it -
+                                               proves fbl_fingerprint_migrate() does not depend on
+                                               new fields always landing at the end; see
+                                               fbl_fingerprint_migrate_v4_to_v5()'s comment for why
+                                               field position never matters to a migration stage. */
     u8_t  len;                             /* Bytes actually used in data[], 0..FBL_FINGERPRINT_MAX_LEN */
     u8_t  data[FBL_FINGERPRINT_MAX_LEN];
     u32_t flash_count;                     /* Incremented on every successful fingerprint write - see
                                                fbl_fingerprint_write() in FBL/Src/INT_STUBS/
                                                INTEGRATION_STUBS.c. Every write of this DID already
                                                means a flash succeeded - see that function's comment. */
+    u32_t last_flash_timestamp_ms;         /* TIME_get_cumulative_run_time_ms_u32() at the moment of
+                                               the last successful write - milliseconds since THIS
+                                               boot, NOT a wall-clock time (FBL has no RTC). Reset to
+                                               a small number on every power cycle; only meaningful
+                                               within one power-on session (e.g. "how long after
+                                               boot did the tester write this"). */
+    u32_t boot_count_at_flash;             /* fbl_boot_count_g.count at the moment of the last
+                                               successful write - which power cycle (see
+                                               FBL_BOOT_COUNT_BLOCK_ID) the tester flashed this ECU
+                                               in, independent of last_flash_timestamp_ms resetting
+                                               every boot. */
 } FBL_fingerprint_blk_st;
+
+/* Every prior version this block has had lives here, next to the current shape, so the full
+   history is in one place - see NVM_GEN2/README.md's migration section. Kept ONLY so
+   fbl_fingerprint_migrate() (see FBL_NVM_BLOCKS_MIGRATE.c) can read an old record still sitting on
+   flash; nothing else should ever construct one. */
+
+/* Version 1 - before flash_count existed. */
+typedef struct
+{
+    u8_t len;
+    u8_t data[FBL_FINGERPRINT_MAX_LEN];
+} FBL_fingerprint_v1_blk_st;
+
+/* Version 2 - before last_flash_timestamp_ms existed. */
+typedef struct
+{
+    u8_t  len;
+    u8_t  data[FBL_FINGERPRINT_MAX_LEN];
+    u32_t flash_count;
+} FBL_fingerprint_v2_blk_st;
+
+/* Version 3 - before boot_count_at_flash existed. */
+typedef struct
+{
+    u8_t  len;
+    u8_t  data[FBL_FINGERPRINT_MAX_LEN];
+    u32_t flash_count;
+    u32_t last_flash_timestamp_ms;
+} FBL_fingerprint_v3_blk_st;
+
+/* Version 4 - before download_attempt_count_at_flash existed (and before the struct had any
+   field ahead of len). */
+typedef struct
+{
+    u8_t  len;
+    u8_t  data[FBL_FINGERPRINT_MAX_LEN];
+    u32_t flash_count;
+    u32_t last_flash_timestamp_ms;
+    u32_t boot_count_at_flash;
+} FBL_fingerprint_v4_blk_st;
 
 /* Shared by both counter blocks above - two separate NVM_GEN2 registrations (different IDs,
    different RAM mirrors), identical shape, so one type instead of two that would only differ by

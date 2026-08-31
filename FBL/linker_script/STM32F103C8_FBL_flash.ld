@@ -22,9 +22,10 @@
 **                                                     same tooling/layout as APP's header)
 **     .isr_vector : 0x08002D00 ...            code start
 **   APP  : 0x08008000 - 0x0801F7FF   94 KB
-**   NVM  : 0x0801F800 - 0x0801FFFF    2 KB  (reserved, not a linker section here; placed
-**                                             dynamically by FLS_STM32F1_get_nvm_base_address()
-**                                             at the top two pages of actual flash size. Nothing
+**   NVM  : 0x0801F800 - 0x0801FFFF    2 KB  (reserved, not a linker section here; fixed by
+**                                             NVM_BASE_ADDRESS/NVM_TOTAL_SIZE in
+**                                             Common_Src/PROJ_CONFIG/PROJ_config.h - keep this
+**                                             comment in sync with those if either changes. Nothing
 **                                             above may claim these pages. Both pages belong to
 **                                             NVM_GEN2 as its two flip-flop partitions, and BOTH
 **                                             images share both - FBL and APP no longer take a

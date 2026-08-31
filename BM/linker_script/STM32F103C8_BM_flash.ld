@@ -22,11 +22,12 @@
 **   APP  : 0x08008000 - 0x0801F7FF   94 KB  (shrunk from 99 KB across two FBL/NVM growths above)
 **     .app_header : 0x08008000 - 0x080080FF  256 B
 **     code start  : 0x08008100               (APP_CODE_START)
-**   NVM  : 0x0801F800 - 0x0801FFFF   2 KB  (reserved, not a linker section here; placed
-**                                            dynamically by FLS_STM32F1_get_nvm_base_address() at
-**                                            the top two pages of whatever flash size the device
-**                                            actually reports. Nothing above may claim these
-**                                            pages. Both are NVM_GEN2's two flip-flop partitions -
+**   NVM  : 0x0801F800 - 0x0801FFFF   2 KB  (reserved, not a linker section here; fixed by
+**                                            NVM_BASE_ADDRESS/NVM_TOTAL_SIZE in
+**                                            Common_Src/PROJ_CONFIG/PROJ_config.h - keep this
+**                                            comment in sync with those if either changes. Nothing
+**                                            above may claim these pages. Both are NVM_GEN2's two
+**                                            flip-flop partitions -
 **                                            partition A at 0x0801F800, partition B at 0x0801FC00 -
 **                                            and FBL and APP SHARE both rather than taking a page
 **                                            each. Blocks are packed into an append-only log keyed

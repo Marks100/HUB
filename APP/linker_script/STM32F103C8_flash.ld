@@ -12,9 +12,10 @@
 **                                             growths; this project had ~54 KB of flash slack, so
 **                                             the room came from here rather than BM's earmarked
 **                                             headroom)
-**   NVM  : 0x0801F800 - 0x0801FFFF    2 KB  (reserved, not a linker section here; placed
-**                                             dynamically by FLS_STM32F1_get_nvm_base_address()
-**                                             at the top two pages of actual flash size. This
+**   NVM  : 0x0801F800 - 0x0801FFFF    2 KB  (reserved, not a linker section here; fixed by
+**                                             NVM_BASE_ADDRESS/NVM_TOTAL_SIZE in
+**                                             Common_Src/PROJ_CONFIG/PROJ_config.h - keep this
+**                                             comment in sync with those if either changes. This
 **                                             image must not grow into it. Both pages belong to
 **                                             NVM_GEN2 as its two flip-flop partitions, and BOTH
 **                                             images share both - FBL and APP no longer take a
