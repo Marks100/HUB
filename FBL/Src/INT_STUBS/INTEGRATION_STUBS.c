@@ -105,7 +105,7 @@ STATIC const NVM_GEN2_hw_interface_st fbl_nvm_gen2_hw_interface_s =
    NVM_GEN2_read_block( FBL_FINGERPRINT_BLOCK_ID, ... ) and needs the ID and struct shape (also in
    FBL_NVM_BLOCKS.h) to decode it. */
 
-/* fbl_config_st's fingerprint_write_func_p. Blocks via NVM_GEN2_write_block_now() rather than
+/* fbl_config_st's fingerprint_write_func_p. Blocks via NVM_GEN2_flush_block() rather than
    leaving the request for the next periodic tick - the whole point of writing now is durability
    before the tester proceeds to erase/download/reset, not background persistence. Blocks for one
    small write, or for a full compaction if the log happens to be full. */
@@ -117,7 +117,7 @@ STATIC void fbl_fingerprint_write( const u8_t* data_p, u8_t len )
     fbl_fingerprint_g.last_flash_timestamp_ms         = TIME_get_cumulative_run_time_ms_u32();
     fbl_fingerprint_g.boot_count_at_flash             = fbl_boot_count_g.count;
     fbl_fingerprint_g.download_attempt_count_at_flash = fbl_download_attempt_count_g.count;
-    NVM_GEN2_write_block_now( FBL_FINGERPRINT_BLOCK_ID );
+    NVM_GEN2_flush_block( FBL_FINGERPRINT_BLOCK_ID );
 }
 
 /* fbl_config_st's download_attempt_notify_func_p - called once per accepted 0x34 RequestDownload,
@@ -127,7 +127,7 @@ STATIC void fbl_fingerprint_write( const u8_t* data_p, u8_t len )
 STATIC void fbl_download_attempt_notify( void )
 {
     fbl_download_attempt_count_g.count++;
-    NVM_GEN2_write_block_now( FBL_DOWNLOAD_ATTEMPT_COUNT_BLOCK_ID );
+    NVM_GEN2_flush_block( FBL_DOWNLOAD_ATTEMPT_COUNT_BLOCK_ID );
 }
 
 /* fbl_config_st's board_init - flash driver bring-up, shared RAM bring-up and NVM bring-up are
@@ -153,7 +153,7 @@ STATIC void fbl_board_init( void )
     /* Unconditional, once per boot - this is literally what "boot count" means. Flushed
        immediately rather than left pending for the same reason as the two writers above. */
     fbl_boot_count_g.count++;
-    NVM_GEN2_write_block_now( FBL_BOOT_COUNT_BLOCK_ID );
+    NVM_GEN2_flush_block( FBL_BOOT_COUNT_BLOCK_ID );
 }
 
 /***************************************************************************************************
