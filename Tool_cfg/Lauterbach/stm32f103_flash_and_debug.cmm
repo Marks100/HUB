@@ -13,11 +13,13 @@
 ;                                          16-byte header; dump both and the higher seq wins. See
 ;                                          xCOMMON_MODULES/Src/NVM_GEN2/README.md)
 ;
-; NOTE: SYStem.CPU STM32F103C8 below selects Trace32's device-database entry for the nominal
-; 64 KB part. Its flash algorithm (~~/demo/arm/flash/stm32f10x.cmm, in the Trace32 install tree,
-; not this repo) may hardcode a 64 KB erase/program range - NOT VERIFIED on hardware yet. If
-; FLASH.ReProgram fails or silently doesn't program past 0x0800FFFF, try SYStem.CPU STM32F103CB
-; (the 128 KB part number) or an explicit FLASH.CFG override instead.
+; NOTE: SYStem.CPU STM32F103CB below (not C8) - C8's device-database entry in Trace32 selects a
+; flash algorithm (~~/demo/arm/flash/stm32f10x.cmm, in the Trace32 install tree, not this repo)
+; that hardcodes the nominal 64 KB erase/program range and silently doesn't program past
+; 0x0800FFFF. APP spans well past that boundary, so with C8 selected most of APP's actual code
+; stays as stale/erased flash even though FLASH.ReProgram reports success. CB is the 128 KB part
+; number and its flash algorithm covers the real physical size of this "C8" part (see the binning
+; quirk note above) - use it for any script that actually programs flash.
 ;
 ; BM is no longer an unconditional jump to APP - it validates the APP header's presence pattern
 ; and hardware CRC (xCOMMON_MODULES/Src/BM/BM.c's BM_run()) before jumping, so "Go.direct app_main"
@@ -40,7 +42,7 @@
 ; --------------------------------------------------------------------------------
 ; Connect
 SYStem.RESet
-SYStem.CPU STM32F103C8
+SYStem.CPU STM32F103CB
 SYStem.CONFIG.DEBUGPORTTYPE SWD
 IF COMBIPROBE()||UTRACE()
 (

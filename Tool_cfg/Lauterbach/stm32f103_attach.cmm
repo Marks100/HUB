@@ -23,7 +23,12 @@
 
 ; --------------------------------------------------------------------------------
 ; Attach without reset
-SYStem.CPU STM32F103C8
+; Uses STM32F103CB (128 KB part number), not C8 - this chip is a "C8" that's physically 128 KB
+; silicon (see the binning quirk note above), and C8's device-database entry in Trace32 caps
+; things at the nominal 64 KB. This script never writes flash, but keeping both .cmm files on the
+; same device entry as stm32f103_flash_and_debug.cmm avoids reading/verifying against a
+; different idea of the flash size than what was actually programmed.
+SYStem.CPU STM32F103CB
 SYStem.CONFIG.DEBUGPORTTYPE SWD
 IF COMBIPROBE()||UTRACE()
 (
