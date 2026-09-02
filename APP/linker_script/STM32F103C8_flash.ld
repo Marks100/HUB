@@ -10,9 +10,24 @@
 **                                            rather than APP's. See that image's own linker script
 **                                            for the full history. If FBL needs more still, this
 **                                            image has slack to fund it.)
-**   APP  : 0x08008000 - 0x0801F7FF   94 KB  <- this image (shrunk from 99 KB across two FBL/NVM
-**                                             growths; this project had ~54 KB of flash slack, so
-**                                             the room came from here rather than BM's free space)
+**   APP  : 0x08008000 - 0x0801EFFF   92 KB  <- this image (shrunk from 99 KB across three FBL/NVM
+**                                             growths, then a further 2 KB to make room for
+**                                             DATASET0/1 below; this project had the most flash
+**                                             slack of any partition, so the room kept coming
+**                                             from here)
+**   DATASET0 : 0x0801F000 - 0x0801F3FF   1 KB  (independently field-downloadable via FBL - see
+**                                               FBL_download_request() in xCOMMON_MODULES/Src/
+**                                               FBL/FBL.c. Same header/CRC/signature layout as
+**                                               this image, validated by BM the same 3-stage way
+**                                               but informationally only - see BM_run()'s dataset
+**                                               step in BM.c. Read SHARED_RAM_get_dataset0_valid()
+**                                               after boot before trusting its contents.)
+**     .app_header : 0x0801F000 - 0x0801F0FF  256 B
+**     payload     : 0x0801F100 - 0x0801F3FF  768 B
+**   DATASET1 : 0x0801F400 - 0x0801F7FF   1 KB  (same as DATASET0, a second independent slot -
+**                                               see SHARED_RAM_get_dataset1_valid())
+**     .app_header : 0x0801F400 - 0x0801F4FF  256 B
+**     payload     : 0x0801F500 - 0x0801F7FF  768 B
 **   NVM  : 0x0801F800 - 0x0801FFFF    2 KB  (reserved, not a linker section here; fixed by
 **                                             NVM_BASE_ADDRESS/NVM_TOTAL_SIZE in
 **                                             Common_Src/PROJ_CONFIG/PROJ_config.h - keep this
@@ -45,7 +60,7 @@ _Min_Stack_Size = 0x400;   /* 1 KB  */
 
 MEMORY
 {
-    FLASH          (rx)  : ORIGIN = 0x08008000, LENGTH = 94K
+    FLASH          (rx)  : ORIGIN = 0x08008000, LENGTH = 92K
     m_data_shared  (xrw) : ORIGIN = 0x20000000, LENGTH = 0x20
     RAM            (xrw) : ORIGIN = 0x20000020, LENGTH = 0x4FE0
 }

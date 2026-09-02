@@ -54,19 +54,23 @@ RELEASE_PACKAGE_NAME         := $(RELEASE_PACKAGE_BASE_DIR)/$(PROJECT_TYPE)_$(VE
 # ID ranges (NVM_GEN2_BLOCK_ID_FBL_* / _APP_*), and compaction copies any record it has no config
 # for across verbatim, so neither image can overwrite the other's data.
 # See xCOMMON_MODULES/Src/NVM_GEN2/README.md.
-# BM=10KB  FBL=22KB  APP=94KB (+ 2KB reserved for NVM) — adjust sizes and update linker scripts
-# accordingly, and keep APP_FLASH_END below the reserved NVM pages. BM was sized at 12KB (up from
-# 8KB), then gave back 1KB to FBL, which had run out of its own margin entirely, since BM still
-# has ~7KB free either way (see BM/linker_script/STM32F103C8_BM_flash.ld). FBL later grew a
-# further 2KB (17KB -> 19KB) to fit the NVM driver for its own WriteDataByIdentifier fingerprint
-# block; that 2KB plus the extra 1KB of reserved NVM space came out of APP's budget instead
-# (99KB -> 96KB), since APP had ~54KB of slack. FBL's 19KB then went effectively full once
-# NVM_GEN2 landed (~2.3KB, -Og debug build at 100%), so FBL grew a further 2KB (19KB -> 21KB) -
-# again out of APP's budget (96KB -> 94KB), APP being the side with slack to spare. FBL then
-# gained a UDS 0x22 ReadDataByIdentifier boot-version DID (VER module + sVersion-generated
-# autoversion.h), which left its -Og debug build at 96.9% with no further margin of its own; this
-# time the extra 1KB (21KB -> 22KB) came out of BM's own free space instead (11KB -> 10KB), since
-# BM still has ~6KB free either way.
+# BM=10KB  FBL=22KB  APP=92KB  DATASET0=1KB  DATASET1=1KB (+ 2KB reserved for NVM) — adjust sizes
+# and update linker scripts accordingly, and keep APP_FLASH_END below the reserved NVM pages.
+# BM was sized at 12KB (up from 8KB), then gave back 1KB to FBL, which had run out of its own
+# margin entirely, since BM still has ~7KB free either way (see BM/linker_script/
+# STM32F103C8_BM_flash.ld). FBL later grew a further 2KB (17KB -> 19KB) to fit the NVM driver for
+# its own WriteDataByIdentifier fingerprint block; that 2KB plus the extra 1KB of reserved NVM
+# space came out of APP's budget instead (99KB -> 96KB), since APP had ~54KB of slack. FBL's 19KB
+# then went effectively full once NVM_GEN2 landed (~2.3KB, -Og debug build at 100%), so FBL grew a
+# further 2KB (19KB -> 21KB) - again out of APP's budget (96KB -> 94KB), APP being the side with
+# slack to spare. FBL then gained a UDS 0x22 ReadDataByIdentifier boot-version DID (VER module +
+# sVersion-generated autoversion.h), which left its -Og debug build at 96.9% with no further
+# margin of its own; this time the extra 1KB (21KB -> 22KB) came out of BM's own free space
+# instead (11KB -> 10KB), since BM still has ~6KB free either way. DATASET0/1 (1KB each) then
+# carved a further 2KB out of APP's budget (94KB -> 92KB) - two independently field-downloadable
+# data blocks via FBL, sized to exactly one flash sector each so an erase never touches more than
+# one dataset at a time - see FBL_download_request() in xCOMMON_MODULES/Src/FBL/FBL.c and
+# BM_run()'s dataset step in xCOMMON_MODULES/Src/BM/BM.c.
 BM_FLASH_START               := 0x08000000
 BM_FLASH_SIZE                := 0x2800
 BM_FLASH_END                 := $(shell printf '0x%08X' $$(( $(BM_FLASH_START) + $(BM_FLASH_SIZE) - 1 )))
@@ -76,8 +80,22 @@ FBL_FLASH_SIZE                := 0x5800
 FBL_FLASH_END                 := $(shell printf '0x%08X' $$(( $(BM_FLASH_START) + $(BM_FLASH_SIZE) + $(FBL_FLASH_SIZE) - 1 )))
 
 APP_FLASH_START               := $(shell printf '0x%08X' $$(( $(BM_FLASH_START) + $(BM_FLASH_SIZE) + $(FBL_FLASH_SIZE) )))
-APP_FLASH_SIZE                := 0x17800
+APP_FLASH_SIZE                := 0x17000
 APP_FLASH_END                 := $(shell printf '0x%08X' $$(( $(BM_FLASH_START) + $(BM_FLASH_SIZE) + $(FBL_FLASH_SIZE) + $(APP_FLASH_SIZE) - 1 )))
+
+# DATASET0/1 - two independent 1KB slots immediately after APP, before the reserved NVM pages.
+# Each is header(256B)+payload(768B), same APP_header_st layout/tooling as APP/FBL/BM's own
+# headers (see xCOMMON_MODULES/Src/HEADER/HEADER.h) - not a separate build here, just the address
+# range FBL writes into and BM validates; must match BM's/FBL's own linker script constants
+# (__dataset0_header_start__/__dataset0_code_end__ etc.) exactly, same contract as
+# __fbl_code_end__/FBL_CODE_END above.
+DATASET0_FLASH_START          := $(shell printf '0x%08X' $$(( $(BM_FLASH_START) + $(BM_FLASH_SIZE) + $(FBL_FLASH_SIZE) + $(APP_FLASH_SIZE) )))
+DATASET0_FLASH_SIZE           := 0x400
+DATASET0_FLASH_END            := $(shell printf '0x%08X' $$(( $(DATASET0_FLASH_START) + $(DATASET0_FLASH_SIZE) - 1 )))
+
+DATASET1_FLASH_START          := $(shell printf '0x%08X' $$(( $(DATASET0_FLASH_START) + $(DATASET0_FLASH_SIZE) )))
+DATASET1_FLASH_SIZE           := 0x400
+DATASET1_FLASH_END            := $(shell printf '0x%08X' $$(( $(DATASET1_FLASH_START) + $(DATASET1_FLASH_SIZE) - 1 )))
 
 # TODO: Set APP_HEADER_ADDR and APP_CODE_START to match your linker script APP section layout
 APP_HEADER_ADDR              := $(APP_FLASH_START)

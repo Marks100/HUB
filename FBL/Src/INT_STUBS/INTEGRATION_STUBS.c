@@ -41,6 +41,10 @@
 ***************************************************************************************************/
 extern u32_t __app_header_start__;
 extern u32_t __app_code_end__;
+extern u32_t __dataset0_header_start__;
+extern u32_t __dataset0_code_end__;
+extern u32_t __dataset1_header_start__;
+extern u32_t __dataset1_code_end__;
 
 /***************************************************************************************************
 **                              Timekeeping                                                       **
@@ -97,13 +101,13 @@ STATIC const NVM_GEN2_hw_interface_st fbl_nvm_gen2_hw_interface_s =
     .read_func          = FLS_STM32F1_recover_data
 };
 
-/* All three blocks FBL registers - IDs, struct shapes, RAM mirrors and NVM_GEN2_block_cfg_st
+/* All four blocks FBL registers - IDs, struct shapes, RAM mirrors and NVM_GEN2_block_cfg_st
    configs (fbl_nvm_gen2_fingerprint_block_s / _boot_count_block_s / _download_attempt_count_
-   block_s) - live in FBL_NVM_BLOCKS.h/.c, not here. None of that touches hardware, so none of it
-   belongs in board wiring; only the NVM_GEN2_hw_interface_st above and the register_block() calls
-   in fbl_board_init() below are genuinely this board's concern. APP reads the fingerprint via
-   NVM_GEN2_read_block( FBL_FINGERPRINT_BLOCK_ID, ... ) and needs the ID and struct shape (also in
-   FBL_NVM_BLOCKS.h) to decode it. */
+   block_s / _dataset_download_count_block_s) - live in FBL_NVM_BLOCKS.h/.c, not here. None of
+   that touches hardware, so none of it belongs in board wiring; only the NVM_GEN2_hw_interface_st
+   above and the register_block() calls in fbl_board_init() below are genuinely this board's
+   concern. APP reads the fingerprint via NVM_GEN2_read_block( FBL_FINGERPRINT_BLOCK_ID, ... ) and
+   needs the ID and struct shape (also in FBL_NVM_BLOCKS.h) to decode it. */
 
 /* fbl_config_st's fingerprint_write_func_p. Blocks via NVM_GEN2_flush_block() rather than
    leaving the request for the next periodic tick - the whole point of writing now is durability
@@ -130,6 +134,20 @@ STATIC void fbl_download_attempt_notify( void )
     NVM_GEN2_flush_block( FBL_DOWNLOAD_ATTEMPT_COUNT_BLOCK_ID );
 }
 
+/* fbl_config_st's dataset_download_notify_func_p - called once per accepted 0x34 RequestDownload
+   that targets a dataset region, alongside (not instead of) fbl_download_attempt_notify() above.
+   index is always < FBL_DATASET_DOWNLOAD_COUNT_MAX in practice (FBL.c only ever passes a valid
+   dataset_table_p index), but bounds-checked anyway since this writes flash - never trust an index
+   into a fixed-size array without checking, even one this codebase itself computed. */
+STATIC void fbl_dataset_download_notify( u8_t index )
+{
+    if( index < FBL_DATASET_DOWNLOAD_COUNT_MAX )
+    {
+        fbl_dataset_download_count_g.count[index]++;
+        NVM_GEN2_flush_block( FBL_DATASET_DOWNLOAD_COUNT_BLOCK_ID );
+    }
+}
+
 /* fbl_config_st's board_init - flash driver bring-up, shared RAM bring-up and NVM bring-up are
    independent of each other (order between them does not matter), but shared RAM must be up
    before reprog_request_clear_func_p runs, so all three are combined into that one early slot. */
@@ -149,6 +167,7 @@ STATIC void fbl_board_init( void )
     NVM_GEN2_register_block( FBL_FINGERPRINT_BLOCK_ID, &fbl_nvm_gen2_fingerprint_block_s );
     NVM_GEN2_register_block( FBL_BOOT_COUNT_BLOCK_ID, &fbl_nvm_gen2_boot_count_block_s );
     NVM_GEN2_register_block( FBL_DOWNLOAD_ATTEMPT_COUNT_BLOCK_ID, &fbl_nvm_gen2_download_attempt_count_block_s );
+    NVM_GEN2_register_block( FBL_DATASET_DOWNLOAD_COUNT_BLOCK_ID, &fbl_nvm_gen2_dataset_download_count_block_s );
 
     /* Unconditional, once per boot - this is literally what "boot count" means. Flushed
        immediately rather than left pending for the same reason as the two writers above. */
@@ -435,6 +454,16 @@ STATIC const FBL_security_level_key_st fbl_security_level_key_table_s[] =
 /* Caller-owned staging buffer for sector writes - STM32F103 medium-density page size (1KB). */
 STATIC u8_t fbl_transfer_sector_buffer_s[ FLS_STM32F1_PAGE_SIZE ];
 
+/* Two independently downloadable/erasable 1KB data blocks - see fbl_is_region_valid() in FBL.c.
+   Add/remove entries here (and the matching extern symbols above, defined in this project's own
+   linker script) to change how many datasets this platform has - FBL.c itself has no hardcoded
+   count. Must match bm_dataset_table_s in BM/Src/bm_main.c entry-for-entry. */
+STATIC const FBL_dataset_region_st fbl_dataset_table_s[] =
+{
+    { .header_address = (u32_t)&__dataset0_header_start__, .code_end_address = (u32_t)&__dataset0_code_end__ },
+    { .header_address = (u32_t)&__dataset1_header_start__, .code_end_address = (u32_t)&__dataset1_code_end__ },
+};
+
 const fbl_config_st fbl_config_s =
 {
     /* Initialisation functions */
@@ -463,6 +492,7 @@ const fbl_config_st fbl_config_s =
     .reprog_request_clear_func_p    = SHARED_RAM_set_fbl_request,
     .fingerprint_write_func_p       = fbl_fingerprint_write,
     .download_attempt_notify_func_p = fbl_download_attempt_notify,
+    .dataset_download_notify_func_p = fbl_dataset_download_notify,
 
     /* Configuration values */
     .flash_sector_size          = FLS_STM32F1_PAGE_SIZE,
@@ -471,6 +501,8 @@ const fbl_config_st fbl_config_s =
     .transfer_sector_buffer_len = (uint32_t)sizeof( fbl_transfer_sector_buffer_s ),
     .app_header_address         = (u32_t)&__app_header_start__,
     .app_code_end_address       = (u32_t)&__app_code_end__,
+    .dataset_table_p            = fbl_dataset_table_s,
+    .dataset_table_size         = (u8_t)( sizeof( fbl_dataset_table_s ) / sizeof( fbl_dataset_table_s[0] ) ),
 };
 
 /****************************** END OF FILE *******************************************************/

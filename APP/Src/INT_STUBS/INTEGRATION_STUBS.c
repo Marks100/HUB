@@ -14,7 +14,7 @@
 #include "HAL_UART.h"
 #include "MODE_MGR.h"
 #include "RF_MGR.h"
-#include "PERSIST_BLK.h"
+#include "APP_NVM_BLOCKS.h"
 #include "FLS_STM32F1.h"
 #include "nvic_driver.h"
 #include "TB_CBK.h"
@@ -215,7 +215,7 @@ NRF24_instance_st nrf24_instance_s =
    carries records it has no config for across verbatim. So the two images write into the same two
    pages without either being able to overwrite the other. See PROJ_config.h's NVM_BASE_ADDRESS
    comment and NVM_GEN2/README.md.
-   The NVM_GEN2_block_cfg_st for each of APP's blocks lives in PERSIST_BLK.h/.c instead of here -
+   The NVM_GEN2_block_cfg_st for each of APP's blocks lives in APP_NVM_BLOCKS.h/.c instead of here -
    default_data/version/event_fn describe the block's data, not this board's hardware, so only the
    hardware interface itself (below) and the register_block() calls in app_main() belong here. */
 const NVM_GEN2_hw_interface_st nvm_gen2_hw_interface_s =
@@ -361,11 +361,23 @@ STATIC void pdur_hal_can_tx( u32_t id, u8_t id_type, u8_t frame_type, u8_t* data
 #define APP_CAN_RX_ID        ( 0x7E0u )
 #define APP_CAN_TX_ID        ( 0x7E8u )
 
+/* TEMP DEBUG TRACE - remove once the CAN-flash hang is found. Read this one value after a hang
+   (e.g. Trace32 Var.View app_can_trace_g, or Data.dump &app_can_trace_g) to see how far the CAN
+   RX chain got: 1 = ISR wrapper entered, 2 = CANTP_rx_frame_received returned (ISR side done),
+   3 = CANTP handed a reassembled frame to PDUR, 4 = PDUR_rx_indication returned, 5 = UDS sent a
+   response. If it stops at 1, the hang is inside CANTP_rx_frame_received itself (still in ISR
+   context). If it stops at 2, the hang is in CANTP's own tick-driven reassembly (main loop, not
+   the ISR) before PDUR ever sees it - despite the ISR context evidence, since that would mean the
+   ISR itself returned fine. */
+volatile u32_t app_can_trace_g = 0u;
+
 /* Not STATIC - passed to HAL_CAN_set_rx_callback() from main.c, the same way MODE_MGR_tick
    (MODE_MGR.h) is referenced by name from systick_cfg_s below, just in the opposite direction. */
 void app_can_rx_wrapper( u32_t id, u8_t id_type, u8_t* data_p, u8_t dlc )
 {
+    app_can_trace_g = 1u;
     CANTP_rx_frame_received( &app_cantp_instance_s, id, (CANTP_id_type_et)id_type, data_p, (u16_t)dlc );
+    app_can_trace_g = 2u;
 }
 
 STATIC void app_cantp_send_wrapper( CANTP_can_msg_format_st* msg_p )
@@ -391,11 +403,14 @@ STATIC void app_cantp_tx_request_wrapper( u32_t id, u8_t id_type, u8_t frame_typ
    isn't valid without this cast. */
 STATIC void app_cantp_rx_indication_wrapper( u32_t id, CANTP_id_type_et id_type, u8_t* data_p, u16_t len )
 {
+    app_can_trace_g = 3u;
     PDUR_rx_indication( id, (u8_t)id_type, data_p, len );
+    app_can_trace_g = 4u;
 }
 
 STATIC void app_uds_tx( u8_t* data_p, u16_t len )
 {
+    app_can_trace_g = 5u;
     PDUR_tx( APP_UDS_RESPONSE_ID, 0u, data_p, len );
 }
 

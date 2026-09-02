@@ -25,12 +25,13 @@
 *               NVM_GEN2_read_block() reads straight out of flash without going through FBL's RAM
 *               mirror, so a reader always sees the last value FBL actually committed.
 *
-*   \note       All three IDs stay inside NVM_GEN2_BLOCK_ID_OWNER_A_FIRST..OWNER_A_LAST (see that
+*   \note       All four IDs stay inside NVM_GEN2_BLOCK_ID_OWNER_A_FIRST..OWNER_A_LAST (see that
 *               constant's own comment in NVM_GEN2.h) - it's the RANGE, not the exact ID, that
 *               keeps FBL's and APP's blocks apart, so nothing here needs to avoid APP's IDs by
-*               hand. This project maps FBL onto owner A and APP onto owner B (see PERSIST_BLK.h's
-*               own use of NVM_GEN2_BLOCK_ID_OWNER_B_FIRST) - NVM_GEN2 itself has no opinion on
-*               which image is which, that mapping is entirely this pair of headers.
+*               hand. This project maps FBL onto owner A and APP onto owner B (see
+*               APP_NVM_BLOCKS.h's own use of NVM_GEN2_BLOCK_ID_OWNER_B_FIRST) - NVM_GEN2 itself
+*               has no opinion on which image is which, that mapping is entirely this pair of
+*               headers.
 */
 
 /***************************************************************************************************
@@ -50,6 +51,14 @@
 #define FBL_FINGERPRINT_BLOCK_ID             ( NVM_GEN2_BLOCK_ID_OWNER_A_FIRST )
 #define FBL_BOOT_COUNT_BLOCK_ID              ( NVM_GEN2_BLOCK_ID_OWNER_A_FIRST + 1u )
 #define FBL_DOWNLOAD_ATTEMPT_COUNT_BLOCK_ID  ( NVM_GEN2_BLOCK_ID_OWNER_A_FIRST + 2u )
+#define FBL_DATASET_DOWNLOAD_COUNT_BLOCK_ID  ( NVM_GEN2_BLOCK_ID_OWNER_A_FIRST + 3u )
+
+/* Matches this project's current dataset table size (see fbl_dataset_table_s in FBL/Src/INT_STUBS/
+   INTEGRATION_STUBS.c and bm_dataset_table_s in BM/Src/bm_main.c) - NVM_GEN2 blocks are a fixed
+   compile-time shape, so this can't track the table size dynamically the way FBL.c/BM.c's own
+   dataset_table_size does. Bump this (and both table's entries) together if a dataset is ever
+   added or removed. */
+#define FBL_DATASET_DOWNLOAD_COUNT_MAX       ( 2u )
 
 /***************************************************************************************************
 **                              Data Types and Enums                                              **
@@ -138,22 +147,34 @@ typedef struct
     u32_t count;
 } FBL_counter_blk_st;
 
+/* Per-dataset accepted-download-attempt counts - same "attempts, not completions" semantics as
+   FBL_counter_blk_st/FBL_DOWNLOAD_ATTEMPT_COUNT_BLOCK_ID above (see that block's comment for why
+   there is no separate "failed" counter), just one count per configured dataset instead of one
+   combined total - see FBL_dataset_download_notify_func_t in FBL.h. */
+typedef struct
+{
+    u32_t count[FBL_DATASET_DOWNLOAD_COUNT_MAX]; /* count[i] = accepted RequestDownload attempts
+                                                     into dataset_table_p[i] */
+} FBL_dataset_download_count_blk_st;
+
 /***************************************************************************************************
 **                              Exported Globals                                                  **
 ***************************************************************************************************/
-/* RAM mirrors and NVM_GEN2_block_cfg_st configs for the three blocks above - defined in
+/* RAM mirrors and NVM_GEN2_block_cfg_st configs for the blocks above - defined in
    FBL_NVM_BLOCKS.c, not INTEGRATION_STUBS.c. Everything a config needs (default_data, version,
    event_fn) is a property of the BLOCK, not the board - nothing here touches hardware. The only
    thing that stays in FBL/Src/INT_STUBS/INTEGRATION_STUBS.c is the NVM_GEN2_hw_interface_st (the
    actual FLS_STM32F1_* wiring) and the NVM_GEN2_register_block() calls themselves, since
    registration order/timing is board_init's call. */
-extern FBL_fingerprint_blk_st fbl_fingerprint_g;
-extern FBL_counter_blk_st     fbl_boot_count_g;
-extern FBL_counter_blk_st     fbl_download_attempt_count_g;
+extern FBL_fingerprint_blk_st           fbl_fingerprint_g;
+extern FBL_counter_blk_st               fbl_boot_count_g;
+extern FBL_counter_blk_st               fbl_download_attempt_count_g;
+extern FBL_dataset_download_count_blk_st fbl_dataset_download_count_g;
 
 extern const NVM_GEN2_block_cfg_st fbl_nvm_gen2_fingerprint_block_s;
 extern const NVM_GEN2_block_cfg_st fbl_nvm_gen2_boot_count_block_s;
 extern const NVM_GEN2_block_cfg_st fbl_nvm_gen2_download_attempt_count_block_s;
+extern const NVM_GEN2_block_cfg_st fbl_nvm_gen2_dataset_download_count_block_s;
 
 #endif /* FBL_NVM_BLOCKS_H */
 

@@ -21,7 +21,7 @@
 #include "RF_MGR.h"
 #include "NRF24.h"
 #include "NVM_GEN2.h"
-#include "PERSIST_BLK.h"
+#include "APP_NVM_BLOCKS.h"
 #include "BUZZER.h"
 #include "CTRL_AXIS.h"
 #include "nvic_driver.h"
@@ -43,11 +43,14 @@ void app_main( void )
 
     CLK_STM32F1_init( &hse8_72mhz_s );
     NVM_GEN2_init( &nvm_gen2_hw_interface_s );
-    NVM_GEN2_register_block( PERSIST_BLK_ID_GENERIC, &nvm_gen2_persist_block_s );
-    NVM_GEN2_register_block( PERSIST_BLK_ID_KEY_1, &nvm_gen2_key_1_block_s );
-    NVM_GEN2_register_block( PERSIST_BLK_ID_KEY_2, &nvm_gen2_key_2_block_s );
-    NVM_GEN2_register_block( PERSIST_BLK_ID_CHASSIS_NUM, &nvm_gen2_chassis_num_block_s );
-    (void)PERSIST_read_fbl_fingerprint( &PERSIST_fbl_fingerprint_g );
+    NVM_GEN2_register_block( APP_GENERIC_BLOCK_ID, &app_nvm_gen2_generic_block_s );
+    NVM_GEN2_register_block( APP_KEY_1_BLOCK_ID, &app_nvm_gen2_key_1_block_s );
+    NVM_GEN2_register_block( APP_KEY_2_BLOCK_ID, &app_nvm_gen2_key_2_block_s );
+    NVM_GEN2_register_block( APP_CHASSIS_NUM_BLOCK_ID, &app_nvm_gen2_chassis_num_block_s );
+    (void)APP_read_fbl_fingerprint( &app_fbl_fingerprint_g );
+    app_fbl_boot_count_result_g             = APP_read_fbl_boot_count( &app_fbl_boot_count_g );
+    app_fbl_download_attempt_count_result_g = APP_read_fbl_download_attempt_count( &app_fbl_download_attempt_count_g );
+    app_fbl_dataset_download_count_result_g = APP_read_fbl_dataset_download_count( &app_fbl_dataset_download_count_g );
 
     DBG_MGR_init( &dbg_mgr_cfg_s, SystemCoreClock );
     DWT_init( SystemCoreClock );
@@ -80,7 +83,7 @@ void app_main( void )
     RF_MGR_init( &rf_mgr_cfg_s );
     ESP01_init( &esp01_cfg_s );
     HAL_USART2_set_rx_callback( ESP01_uart_byte_rx );
-    WIFI_init( &wifi_cfg_s );
+    //WIFI_init( &wifi_cfg_s );
     TB_CBK_init( &tb_cfg_s );
     TB_init( &tb_cfg_s );
     TJA1051_init( &tja1051_func_s, &tja1051_cfg_s );

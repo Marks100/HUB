@@ -21,9 +21,19 @@
 **                                            left)
 **     .app_header : 0x08002800 - 0x080028FF  256 B
 **     code start  : 0x08002900               (FBL_CODE_START)
-**   APP  : 0x08008000 - 0x0801F7FF   94 KB  (shrunk from 99 KB across two FBL/NVM growths above)
+**   APP  : 0x08008000 - 0x0801EFFF   92 KB  (shrunk from 94 KB to make room for DATASET0/1 below)
 **     .app_header : 0x08008000 - 0x080080FF  256 B
 **     code start  : 0x08008100               (APP_CODE_START)
+**   DATASET0 : 0x0801F000 - 0x0801F3FF   1 KB  (independently field-downloadable via FBL - see
+**                                               FBL_download_request(). Same header/CRC/signature
+**                                               layout as APP, validated by BM the same 3-stage
+**                                               way but informationally only - see BM_run()'s
+**                                               dataset step. Carved out of APP's own budget above.)
+**     .app_header : 0x0801F000 - 0x0801F0FF  256 B
+**     payload     : 0x0801F100 - 0x0801F3FF  768 B
+**   DATASET1 : 0x0801F400 - 0x0801F7FF   1 KB  (same as DATASET0, a second independent slot)
+**     .app_header : 0x0801F400 - 0x0801F4FF  256 B
+**     payload     : 0x0801F500 - 0x0801F7FF  768 B
 **   NVM  : 0x0801F800 - 0x0801FFFF   2 KB  (reserved, not a linker section here; fixed by
 **                                            NVM_BASE_ADDRESS/NVM_TOTAL_SIZE in
 **                                            Common_Src/PROJ_CONFIG/PROJ_config.h - keep this
@@ -59,7 +69,8 @@ _Min_Stack_Size = 0x400;   /* 1 KB */
    __app_code_end__ in particular MUST exactly equal APP/Makefile's APP_CODE_END - that's the
    range app_crc_injector/app_signer actually sign over, so a mismatch here makes every
    legitimately-signed APP image fail validation. Likewise __fbl_code_end__ must exactly equal
-   FBL/Makefile's FBL_CODE_END.
+   FBL/Makefile's FBL_CODE_END. Same contract for __dataset0_code_end__/__dataset1_code_end__
+   against APP/Makefile's DATASET0_FLASH_END/DATASET1_FLASH_END.
 
    Convention (used identically everywhere in the boot chain - BM.h, FBL.h, the Makefiles):
    *_header_start__ is the first byte of a region; *_code_start__ is the first byte of code,
@@ -72,7 +83,13 @@ __fbl_code_start__    = 0x08002900;
 __fbl_code_end__      = 0x08007FFF;
 __app_header_start__  = 0x08008000;
 __app_code_start__    = 0x08008100;
-__app_code_end__      = 0x0801F7FF;
+__app_code_end__      = 0x0801EFFF;
+__dataset0_header_start__ = 0x0801F000;
+__dataset0_code_start__   = 0x0801F100;
+__dataset0_code_end__     = 0x0801F3FF;
+__dataset1_header_start__ = 0x0801F400;
+__dataset1_code_start__   = 0x0801F500;
+__dataset1_code_end__     = 0x0801F7FF;
 
 MEMORY
 {

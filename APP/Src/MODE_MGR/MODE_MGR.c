@@ -327,7 +327,7 @@ void mode_mgr_action_schedule_normal( void )
 	if( mode_mgr_check_time_interval( 10u ) == TRUE )
 	{
 		ESP01_tick();
-        WIFI_tick();
+        //WIFI_tick();
         TB_tick();
 
     	/* Drives the panel's encoder, buttons and OLED refresh in one call. Its tick_rate_ms is

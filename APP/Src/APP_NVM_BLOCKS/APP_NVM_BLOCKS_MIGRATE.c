@@ -1,18 +1,18 @@
 /*! \file
 *               Author: mstewart
-*   \brief      Version-migration chains for APP's PERSIST_BLK NVM_GEN2 blocks - see
-*               PERSIST_BLK_MIGRATE.h for what belongs here and why
+*   \brief      Version-migration chains for APP's APP_NVM_BLOCKS NVM_GEN2 blocks - see
+*               APP_NVM_BLOCKS_MIGRATE.h for what belongs here and why
 */
 /***************************************************************************************************
 **                              Includes                                                          **
 ***************************************************************************************************/
-#include "PERSIST_BLK_MIGRATE.h"
+#include "APP_NVM_BLOCKS_MIGRATE.h"
 
 /***************************************************************************************************
 **                              Private Function Prototypes                                       **
 ***************************************************************************************************/
-STATIC void persist_generic_data_migrate_v1_to_v2( const PERSIST_generic_data_blk_v1_st* old_p,
-                                                     PERSIST_generic_data_blk_st* new_p );
+STATIC void app_generic_data_migrate_v1_to_v2( const APP_generic_data_blk_v1_st* old_p,
+                                                APP_generic_data_blk_st* new_p );
 
 /***************************************************************************************************
 **                              Private Functions                                                 **
@@ -34,8 +34,8 @@ STATIC void persist_generic_data_migrate_v1_to_v2( const PERSIST_generic_data_bl
 *                  recover it from - it starts at 0, the same value a virgin block would get.
 *
 ***************************************************************************************************/
-STATIC void persist_generic_data_migrate_v1_to_v2( const PERSIST_generic_data_blk_v1_st* old_p,
-                                                     PERSIST_generic_data_blk_st* new_p )
+STATIC void app_generic_data_migrate_v1_to_v2( const APP_generic_data_blk_v1_st* old_p,
+                                                APP_generic_data_blk_st* new_p )
 {
     new_p->screen_brightness  = old_p->screen_brightness;
     new_p->reset_request      = old_p->reset_request;
@@ -60,7 +60,7 @@ STATIC void persist_generic_data_migrate_v1_to_v2( const PERSIST_generic_data_bl
 *   \param[in]     old_version     Version stored in the existing record
 *   \param[in]     old_data_p      Existing record's payload, in flash
 *   \param[in]     old_data_len    Existing record's payload length in bytes
-*   \param[out]    current_data_p  Same buffer as PERSIST_generic_data_blk_g - write the migrated
+*   \param[out]    current_data_p  Same buffer as app_generic_data_blk_g - write the migrated
 *                                  value here
 *
 *   \return        PASS if old_version was recognised and migrated, FAIL otherwise (falls back to
@@ -73,15 +73,15 @@ STATIC void persist_generic_data_migrate_v1_to_v2( const PERSIST_generic_data_bl
 *                  a second "if", exactly as that chain does.
 *
 ***************************************************************************************************/
-pass_fail_et persist_generic_data_migrate( u8_t old_version, const u8_t* old_data_p,
-                                            u16_t old_data_len, void* current_data_p )
+pass_fail_et app_generic_data_migrate( u8_t old_version, const u8_t* old_data_p,
+                                        u16_t old_data_len, void* current_data_p )
 {
     pass_fail_et result = FAIL;
 
-    if( ( old_version == 1u ) && ( old_data_len == sizeof( PERSIST_generic_data_blk_v1_st ) ) )
+    if( ( old_version == 1u ) && ( old_data_len == sizeof( APP_generic_data_blk_v1_st ) ) )
     {
-        persist_generic_data_migrate_v1_to_v2( (const PERSIST_generic_data_blk_v1_st*)old_data_p,
-                                                (PERSIST_generic_data_blk_st*)current_data_p );
+        app_generic_data_migrate_v1_to_v2( (const APP_generic_data_blk_v1_st*)old_data_p,
+                                            (APP_generic_data_blk_st*)current_data_p );
         result = PASS;
     }
 
