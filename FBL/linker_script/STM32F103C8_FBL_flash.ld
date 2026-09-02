@@ -3,21 +3,23 @@
 **
 ** Flash layout (128 KB total - confirmed via live F_SIZE register read at 0x1FFFF7E0; this part
 ** is a "C8" (64 KB nominal) that's physically 128 KB silicon, a known STM32F103 binning quirk):
-**   BM   : 0x08000000 - 0x08002BFF   11 KB
-**   FBL  : 0x08002C00 - 0x08007FFF   21 KB  <- this image (grown twice from 17 KB, both times to
-**                                             fit the NVM driver - FBL persists a
+**   BM   : 0x08000000 - 0x080027FF   10 KB
+**   FBL  : 0x08002800 - 0x08007FFF   22 KB  <- this image (grown three times from 17 KB - the
+**                                             first two to fit the NVM driver - FBL persists a
 **                                             WriteDataByIdentifier fingerprint, see
 **                                             fbl_nvm_gen2_hw_interface_s in this project's own
 **                                             INT_STUBS/INTEGRATION_STUBS.c. 17->19 KB was NVM.c's
 **                                             fixed page; 19->21 KB was NVM_GEN2, which had filled
-**                                             the -Og debug build to 100%. Both times taken from
-**                                             APP's flash budget, not BM's ~7 KB free, which is
-**                                             earmarked for a future ECDSA signature upgrade -
-**                                             see BM's own linker script.)
-**     .app_header : 0x08002C00 - 0x08002CFF  256 B  (presence pattern + CRC, see HEADER.h -
+**                                             the -Og debug build to 100%. Both taken from APP's
+**                                             flash budget, not BM's. The third growth, 21->22 KB,
+**                                             came out of BM's own free space instead (see
+**                                             BM's own linker script) once a UDS 0x22
+**                                             ReadDataByIdentifier boot-version DID left this
+**                                             build with none of its own margin left.)
+**     .app_header : 0x08002800 - 0x080028FF  256 B  (presence pattern + CRC, see HEADER.h -
 **                                                     BM validates this before jumping here,
 **                                                     same tooling/layout as APP's header)
-**     .isr_vector : 0x08002D00 ...            code start
+**     .isr_vector : 0x08002900 ...            code start
 **   APP  : 0x08008000 - 0x0801F7FF   94 KB
 **   NVM  : 0x0801F800 - 0x0801FFFF    2 KB  (reserved, not a linker section here; fixed by
 **                                             NVM_BASE_ADDRESS/NVM_TOTAL_SIZE in
@@ -59,7 +61,7 @@ __app_code_end__      = 0x0801F7FF;
 
 MEMORY
 {
-    FLASH          (rx)  : ORIGIN = 0x08002C00, LENGTH = 21K
+    FLASH          (rx)  : ORIGIN = 0x08002800, LENGTH = 22K
     m_data_shared  (xrw) : ORIGIN = 0x20000000, LENGTH = 0x20
     RAM            (xrw) : ORIGIN = 0x20000020, LENGTH = 0x4FE0
 }
@@ -73,7 +75,7 @@ SECTIONS
     {
         . = ALIGN(4);
         KEEP(*(.app_header))
-        . = ALIGN(0x100);   /* pad to 256-byte boundary -> next addr = 0x08002D00 */
+        . = ALIGN(0x100);   /* pad to 256-byte boundary -> next addr = 0x08002900 */
     } >FLASH
 
     .isr_vector :

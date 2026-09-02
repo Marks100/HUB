@@ -7,13 +7,17 @@
 *   see xCOMMON_MODULES/Src/UDS/UDS.c). 0x10/0x11/0x3E are handled internally by UDS.c itself and
 *   need no entry here.
 *
-*   Dropped vs. the source project: 0x22 ReadDID (its handlers depend on a UDS_DID_common/UID
-*   DID-reader module that doesn't exist anywhere in this project - a missing-dependency cut, not
-*   just a size cut), 0x28/0x85 stubs, 0x23/0x3D RMBA/WMBA.
+*   Dropped vs. the source project: the source project's own 0x22 ReadDID handlers, which depended
+*   on a UDS_DID_common/UID DID-reader module that doesn't exist anywhere in this project - a
+*   missing-dependency cut, not just a size cut. 0x22 itself is now back (see
+*   DID_BOOT_SOFTWARE_IDENTIFICATION below), wired to FBL's own single-DID handler
+*   (FBL_uds_handle_read_boot_sw_id() in FBL.c) instead of a ported generic module. Also dropped:
+*   0x28/0x85 stubs, 0x23/0x3D RMBA/WMBA.
 *
 *   Kept: 0x27 SecurityAccess, 0x31 RoutineControl (EraseMemory + CheckMemory + StayInBoot +
 *   CheckProgrammingDependencies + CheckProgrammingPreconditions), 0x34/0x36/0x37 the actual
-*   download sequence, 0x2E WriteDataByIdentifier (fingerprint only - see
+*   download sequence, 0x22 ReadDataByIdentifier (bootSoftwareIdentification only - see
+*   DID_BOOT_SOFTWARE_IDENTIFICATION below), 0x2E WriteDataByIdentifier (fingerprint only - see
 *   DID_APPLICATION_SOFTWARE_FINGERPRINT below). 0x2E was previously cut for NVM persistence size,
 *   until FBL gained an NVM driver - it now stores the fingerprint as an NVM_GEN2 block in the
 *   partitions it shares with APP, see fbl_nvm_gen2_hw_interface_s's comment in
@@ -55,6 +59,11 @@
    standard applicationSoftwareFingerprint entry (Table C.1) rather than inventing a
    manufacturer-specific one, since this project has no OEM DID range of its own. */
 #define DID_APPLICATION_SOFTWARE_FINGERPRINT  ( 0xF184u )
+
+/* 0x22 ReadDataByIdentifier DIDs - matches ISO_14229_DID_REFERENCE.md's standard
+   bootSoftwareIdentification entry (Table C.1), same "use the standard one" reasoning as
+   DID_APPLICATION_SOFTWARE_FINGERPRINT above. */
+#define DID_BOOT_SOFTWARE_IDENTIFICATION      ( 0xF180u )
 
 /***************************************************************************************************
 **                              Exported Globals                                                  **

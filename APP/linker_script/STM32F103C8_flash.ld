@@ -3,15 +3,16 @@
 **
 ** Flash layout (128 KB total - confirmed via live F_SIZE register read at 0x1FFFF7E0; this part
 ** is a "C8" (64 KB nominal) that's physically 128 KB silicon, a known STM32F103 binning quirk):
-**   BM   : 0x08000000 - 0x08002BFF   11 KB
-**   FBL  : 0x08002C00 - 0x08007FFF   21 KB  (grown twice from 17 KB to fit the NVM driver - FBL
-**                                            persists a WriteDataByIdentifier fingerprint. See
-**                                            that image's own linker script for the history. If
-**                                            FBL needs more still, this image has slack to fund it.)
+**   BM   : 0x08000000 - 0x080027FF   10 KB
+**   FBL  : 0x08002800 - 0x08007FFF   22 KB  (grown three times from 17 KB - twice to fit the NVM
+**                                            driver, once (21->22 KB) to fit a UDS boot-version
+**                                            DID, that last KB coming out of BM's free space
+**                                            rather than APP's. See that image's own linker script
+**                                            for the full history. If FBL needs more still, this
+**                                            image has slack to fund it.)
 **   APP  : 0x08008000 - 0x0801F7FF   94 KB  <- this image (shrunk from 99 KB across two FBL/NVM
 **                                             growths; this project had ~54 KB of flash slack, so
-**                                             the room came from here rather than BM's earmarked
-**                                             headroom)
+**                                             the room came from here rather than BM's free space)
 **   NVM  : 0x0801F800 - 0x0801FFFF    2 KB  (reserved, not a linker section here; fixed by
 **                                             NVM_BASE_ADDRESS/NVM_TOTAL_SIZE in
 **                                             Common_Src/PROJ_CONFIG/PROJ_config.h - keep this

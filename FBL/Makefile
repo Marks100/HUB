@@ -22,17 +22,18 @@ FBL_HEX_WITH_CRC_FILE := $(OUTPUT_NAME)_with_CRC.hex
 FBL_HEX_SIGNED_FILE   := $(OUTPUT_NAME)_signed.hex
 FBL_MEM_OUTPUT_FILE   := $(BUILD_OUT_DIR)/memory_analysis.txt
 FBL_MEM_CSV_FILE      := $(BUILD_OUT_DIR)/memory_analysis.csv
+AUTOVERSION_FILE      := Src/autoversion.h
 BUILD_ENV_BIN         := ../BuildEnv/xBuildEnv/bin
 
 # FBL carries the same header/CRC/signature layout as APP (see xCOMMON_MODULES/Src/HEADER/
-# HEADER.h) at the start of its own 21K region - BM validates it the same way before jumping
+# HEADER.h) at the start of its own 22K region - BM validates it the same way before jumping
 # here (see BM.c's BM_jump_to_fbl()). Must match FBL/linker_script/STM32F103C8_FBL_flash.ld and
-# APP/Makefile's FBL_FLASH_START (0x08002C00). FBL_CODE_END in particular must exactly match
+# APP/Makefile's FBL_FLASH_START (0x08002800). FBL_CODE_END in particular must exactly match
 # BM's __fbl_code_end__ (BM/linker_script/STM32F103C8_BM_flash.ld) - that's the range
 # app_crc_injector/app_signer actually sign over, so a mismatch makes a legitimately-signed FBL
 # image fail BM's validation.
-FBL_HEADER_ADDR := 0x08002C00
-FBL_CODE_START  := 0x08002D00
+FBL_HEADER_ADDR := 0x08002800
+FBL_CODE_START  := 0x08002900
 FBL_CODE_END    := 0x08007FFF
 FBL_CRC_TYPE    := stm32-hw-crc32
 
@@ -72,6 +73,7 @@ FBL_C_SRCS := \
     $(COMMON_MODULES_DIR)/NVM_GEN2/NVM_GEN2.c \
     $(COMMON_MODULES_DIR)/SYSTICK/SYSTICK.c \
     $(COMMON_MODULES_DIR)/TIME_MGR/TIME_MGR.c \
+    $(COMMON_MODULES_DIR)/VER/VER.c \
     $(COMMON_MODULES_DIR)/STDC/STDC.c \
     $(COMMON_MODULES_DIR)/SELMATH/SELMATH.c \
     $(COMMON_MODULES_DIR)/stdio/printf.c \
@@ -122,6 +124,7 @@ INCLUDES  := \
     -I $(COMMON_MODULES_DIR)/NVM_GEN2 \
     -I $(COMMON_MODULES_DIR)/SYSTICK \
     -I $(COMMON_MODULES_DIR)/TIME_MGR \
+    -I $(COMMON_MODULES_DIR)/VER \
     -I $(COMMON_MODULES_DIR)/STDC \
     -I $(COMMON_MODULES_DIR)/SELMATH \
     -I $(COMMON_MODULES_DIR)/stdio \
@@ -153,7 +156,7 @@ else
 endif
 MCAL_OPTIMISATION := -Os
 
-# FBL's vector table sits at FBL_CODE_START (0x08002D00), not FLASH_BASE (0x08000000).
+# FBL's vector table sits at FBL_CODE_START (0x08002900), not FLASH_BASE (0x08000000).
 CFLAGS += -DVECT_TAB_OFFSET=$(FBL_CODE_START)
 
 LDFLAGS := \
@@ -168,11 +171,17 @@ LDFLAGS := \
 ####################################################################################################
 # Targets
 ####################################################################################################
-.PHONY: fbl_build fbl_clean fbl_rebuild basic_memory_stats full_memory_stats memory_stats
+.PHONY: fbl_build fbl_clean fbl_rebuild basic_memory_stats full_memory_stats memory_stats autoversion
 
-fbl_build: $(FBL_ELF_FILE) basic_memory_stats
+fbl_build: autoversion $(FBL_ELF_FILE) basic_memory_stats
 
 fbl_rebuild: fbl_clean fbl_build
+
+# Generates Src/autoversion.h from project.yml (major.minor.patch + current git SHA) - same
+# sVersion pattern as APP/Makefile's autoversion target. Must run before any source that includes
+# VER.h (see xCOMMON_MODULES/Src/VER/VER.h) is compiled.
+autoversion:
+	@sVersion -a Src --yml project.yml && echo "--> Generating autoversion header file..."
 
 $(OBJ_DIR):
 	@mkdir -p $(OBJ_DIR)

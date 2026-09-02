@@ -67,6 +67,13 @@ STATIC UDS_subfunction_table_st write_data_by_identifier_subfuncs_s[] =
     { DID_APPLICATION_SOFTWARE_FINGERPRINT, 0xFFFFu, FBL_uds_handle_write_fingerprint, UDS_SES_PROGRAMMING, 1u },
 };
 
+/* UDS_SES_ANY/no security - an identification read, same class of DID as
+   activeDiagnosticSession (0xF186), readable in any session without unlocking anything first. */
+STATIC UDS_subfunction_table_st read_data_by_identifier_subfuncs_s[] =
+{
+    { DID_BOOT_SOFTWARE_IDENTIFICATION, 0xFFFFu, FBL_uds_handle_read_boot_sw_id, UDS_SES_ANY, 0u },
+};
+
 /***************************************************************************************************
 **                              Service Table                                                     **
 ***************************************************************************************************/
@@ -79,6 +86,7 @@ STATIC UDS_service_table_st uds_service_table_s[] =
     { UDS_SID_TRANSFER_DATA,     transfer_data_subfuncs_s,          1u },
     { UDS_SID_REQUEST_TRANSFER_EXIT, request_transfer_exit_subfuncs_s, 1u },
     { UDS_SID_WRITE_DATA_BY_IDENTIFIER, write_data_by_identifier_subfuncs_s, 1u },
+    { UDS_SID_READ_DATA_BY_IDENTIFIER, read_data_by_identifier_subfuncs_s, 1u },
 };
 
 /***************************************************************************************************

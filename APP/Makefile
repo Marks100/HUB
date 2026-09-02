@@ -54,24 +54,25 @@ RELEASE_PACKAGE_NAME         := $(RELEASE_PACKAGE_BASE_DIR)/$(PROJECT_TYPE)_$(VE
 # ID ranges (NVM_GEN2_BLOCK_ID_FBL_* / _APP_*), and compaction copies any record it has no config
 # for across verbatim, so neither image can overwrite the other's data.
 # See xCOMMON_MODULES/Src/NVM_GEN2/README.md.
-# BM=11KB  FBL=21KB  APP=94KB (+ 2KB reserved for NVM) — adjust sizes and update linker scripts
-# accordingly, and keep APP_FLASH_END below the reserved NVM pages. BM sized at 12KB (up from the
-# minimum-viable 8KB) for future secure boot headroom - e.g. switching signature_verify over to
-# ECDSA P-256 (xCOMMON_MODULES/Src/CRYPTO/micro-ecc) adds ~3.5KB over the current HMAC-SHA256 path -
-# then gave back 1KB of that headroom to FBL, which had run out of its own margin entirely, since
-# BM still has ~7KB free either way (see BM/linker_script/STM32F103C8_BM_flash.ld). FBL later grew
-# a further 2KB (17KB -> 19KB) to fit the NVM driver for its own WriteDataByIdentifier fingerprint
+# BM=10KB  FBL=22KB  APP=94KB (+ 2KB reserved for NVM) — adjust sizes and update linker scripts
+# accordingly, and keep APP_FLASH_END below the reserved NVM pages. BM was sized at 12KB (up from
+# 8KB), then gave back 1KB to FBL, which had run out of its own margin entirely, since BM still
+# has ~7KB free either way (see BM/linker_script/STM32F103C8_BM_flash.ld). FBL later grew a
+# further 2KB (17KB -> 19KB) to fit the NVM driver for its own WriteDataByIdentifier fingerprint
 # block; that 2KB plus the extra 1KB of reserved NVM space came out of APP's budget instead
-# (99KB -> 96KB), since APP had ~54KB of slack and BM's headroom above is earmarked for the ECDSA
-# upgrade. FBL's 19KB then went effectively full once NVM_GEN2 landed (~2.3KB, -Og debug build at
-# 100%), so FBL grew a further 2KB (19KB -> 21KB) - again out of APP's budget (96KB -> 94KB), APP
-# being the side with slack to spare.
+# (99KB -> 96KB), since APP had ~54KB of slack. FBL's 19KB then went effectively full once
+# NVM_GEN2 landed (~2.3KB, -Og debug build at 100%), so FBL grew a further 2KB (19KB -> 21KB) -
+# again out of APP's budget (96KB -> 94KB), APP being the side with slack to spare. FBL then
+# gained a UDS 0x22 ReadDataByIdentifier boot-version DID (VER module + sVersion-generated
+# autoversion.h), which left its -Og debug build at 96.9% with no further margin of its own; this
+# time the extra 1KB (21KB -> 22KB) came out of BM's own free space instead (11KB -> 10KB), since
+# BM still has ~6KB free either way.
 BM_FLASH_START               := 0x08000000
-BM_FLASH_SIZE                := 0x2C00
+BM_FLASH_SIZE                := 0x2800
 BM_FLASH_END                 := $(shell printf '0x%08X' $$(( $(BM_FLASH_START) + $(BM_FLASH_SIZE) - 1 )))
 
 FBL_FLASH_START               := $(shell printf '0x%08X' $$(( $(BM_FLASH_START) + $(BM_FLASH_SIZE) )))
-FBL_FLASH_SIZE                := 0x5400
+FBL_FLASH_SIZE                := 0x5800
 FBL_FLASH_END                 := $(shell printf '0x%08X' $$(( $(BM_FLASH_START) + $(BM_FLASH_SIZE) + $(FBL_FLASH_SIZE) - 1 )))
 
 APP_FLASH_START               := $(shell printf '0x%08X' $$(( $(BM_FLASH_START) + $(BM_FLASH_SIZE) + $(FBL_FLASH_SIZE) )))

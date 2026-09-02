@@ -3,22 +3,24 @@
 **
 ** Flash layout (128 KB total - confirmed via live F_SIZE register read at 0x1FFFF7E0; this part
 ** is a "C8" (64 KB nominal) that's physically 128 KB silicon, a known STM32F103 binning quirk):
-**   BM   : 0x08000000 - 0x08002BFF   11 KB  <- this image (grown from 8 KB for future secure
-**                                             boot headroom - e.g. ECDSA P-256 verify via
-**                                             xCOMMON_MODULES/Src/CRYPTO/micro-ecc - then given
-**                                             back 1 KB of that headroom to FBL, which had none
-**                                             left, since BM still had ~8 KB free either way)
-**   FBL  : 0x08002C00 - 0x08007FFF   21 KB  (grown twice from 17 KB, both times to fit the NVM
-**                                            driver - FBL persists a WriteDataByIdentifier
+**   BM   : 0x08000000 - 0x080027FF   10 KB  <- this image (grown from 8 KB to 12 KB, then given
+**                                             back 1 KB twice: 12->11 KB when FBL first ran out
+**                                             of margin, and 11->10 KB when FBL's -Og debug build
+**                                             hit 96.9% after gaining a UDS 0x22
+**                                             ReadDataByIdentifier boot-version DID. BM still has
+**                                             ~6 KB free)
+**   FBL  : 0x08002800 - 0x08007FFF   22 KB  (grown three times from 17 KB - the first two to fit
+**                                            the NVM driver - FBL persists a WriteDataByIdentifier
 **                                            fingerprint (see fbl_nvm_gen2_hw_interface_s in
 **                                            FBL/Src/INT_STUBS/INTEGRATION_STUBS.c). 17->19 KB
 **                                            was NVM.c's fixed page; 19->21 KB was NVM_GEN2, which
-**                                            had filled the -Og debug build to 100%. Both times
-**                                            taken from APP's flash budget, not BM's, since APP
-**                                            has slack and BM's ~7 KB is earmarked for the ECDSA
-**                                            upgrade above)
-**     .app_header : 0x08002C00 - 0x08002CFF  256 B
-**     code start  : 0x08002D00               (FBL_CODE_START)
+**                                            had filled the -Og debug build to 100%. Both of those
+**                                            came out of APP's flash budget, not BM's. The third
+**                                            growth, 21->22 KB, came out of BM's own free space
+**                                            instead, once FBL's build had none of its own margin
+**                                            left)
+**     .app_header : 0x08002800 - 0x080028FF  256 B
+**     code start  : 0x08002900               (FBL_CODE_START)
 **   APP  : 0x08008000 - 0x0801F7FF   94 KB  (shrunk from 99 KB across two FBL/NVM growths above)
 **     .app_header : 0x08008000 - 0x080080FF  256 B
 **     code start  : 0x08008100               (APP_CODE_START)
@@ -65,8 +67,8 @@ _Min_Stack_Size = 0x400;   /* 1 KB */
    one-past-the-end - see BM.c's bm_code_length()/FBL.c's FBL_calc_region_length(), both of which
    add +1 to get a byte count from these. FBL's own linker script defines __app_header_start__/
    __app_code_end__ with the same names and the same values, for the same reason. */
-__fbl_header_start__  = 0x08002C00;
-__fbl_code_start__    = 0x08002D00;
+__fbl_header_start__  = 0x08002800;
+__fbl_code_start__    = 0x08002900;
 __fbl_code_end__      = 0x08007FFF;
 __app_header_start__  = 0x08008000;
 __app_code_start__    = 0x08008100;
@@ -74,7 +76,7 @@ __app_code_end__      = 0x0801F7FF;
 
 MEMORY
 {
-    FLASH          (rx)  : ORIGIN = 0x08000000, LENGTH = 11K
+    FLASH          (rx)  : ORIGIN = 0x08000000, LENGTH = 10K
     m_data_shared  (xrw) : ORIGIN = 0x20000000, LENGTH = 0x20
     RAM            (xrw) : ORIGIN = 0x20000020, LENGTH = 0x4FE0
 }
