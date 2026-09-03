@@ -17,17 +17,22 @@
 **                                             from here)
 **   DATASET0 : 0x0801F000 - 0x0801F3FF   1 KB  (independently field-downloadable via FBL - see
 **                                               FBL_download_request() in xCOMMON_MODULES/Src/
-**                                               FBL/FBL.c. Same header/CRC/signature layout as
-**                                               this image, validated by BM the same 3-stage way
-**                                               but informationally only - see BM_run()'s dataset
-**                                               step in BM.c. Read SHARED_RAM_get_dataset0_valid()
-**                                               after boot before trusting its contents.)
-**     .app_header : 0x0801F000 - 0x0801F0FF  256 B
-**     payload     : 0x0801F100 - 0x0801F3FF  768 B
+**                                               FBL/FBL.c. Same header/CRC/signature FIELDS as
+**                                               this image but a smaller 96 B header (76 B of
+**                                               actual content + 20 B reserved for future fields)
+**                                               - no vector table lives here, so none of APP's
+**                                               own 256-byte VTOR-alignment requirement applies
+**                                               (see BM's linker script and HEADER.h) - validated
+**                                               by BM the same 3-stage way but informationally
+**                                               only - see BM_run()'s dataset step in BM.c. Read
+**                                               SHARED_RAM_get_dataset0_valid() after boot before
+**                                               trusting its contents.)
+**     .app_header : 0x0801F000 - 0x0801F05F  96 B
+**     payload     : 0x0801F060 - 0x0801F3FF  928 B
 **   DATASET1 : 0x0801F400 - 0x0801F7FF   1 KB  (same as DATASET0, a second independent slot -
 **                                               see SHARED_RAM_get_dataset1_valid())
-**     .app_header : 0x0801F400 - 0x0801F4FF  256 B
-**     payload     : 0x0801F500 - 0x0801F7FF  768 B
+**     .app_header : 0x0801F400 - 0x0801F45F  96 B
+**     payload     : 0x0801F460 - 0x0801F7FF  928 B
 **   NVM  : 0x0801F800 - 0x0801FFFF    2 KB  (reserved, not a linker section here; fixed by
 **                                             NVM_BASE_ADDRESS/NVM_TOTAL_SIZE in
 **                                             Common_Src/PROJ_CONFIG/PROJ_config.h - keep this
@@ -67,7 +72,9 @@ MEMORY
 
 SECTIONS
 {
-    /* APP header: presence pattern + CRC, padded to 256 bytes.
+    /* APP header: presence pattern + CRC, padded to 256 bytes - required, not cosmetic: the
+       vector table immediately below needs a 256-byte-aligned VTOR (59 exception-table entries
+       on this part round up to that), see HEADER.h.
        The CRC field at offset +4 is patched by app_crc_injector. */
     .app_header :
     {

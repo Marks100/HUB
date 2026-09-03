@@ -84,11 +84,14 @@ APP_FLASH_SIZE                := 0x17000
 APP_FLASH_END                 := $(shell printf '0x%08X' $$(( $(BM_FLASH_START) + $(BM_FLASH_SIZE) + $(FBL_FLASH_SIZE) + $(APP_FLASH_SIZE) - 1 )))
 
 # DATASET0/1 - two independent 1KB slots immediately after APP, before the reserved NVM pages.
-# Each is header(256B)+payload(768B), same APP_header_st layout/tooling as APP/FBL/BM's own
-# headers (see xCOMMON_MODULES/Src/HEADER/HEADER.h) - not a separate build here, just the address
-# range FBL writes into and BM validates; must match BM's/FBL's own linker script constants
-# (__dataset0_header_start__/__dataset0_code_end__ etc.) exactly, same contract as
-# __fbl_code_end__/FBL_CODE_END above.
+# Each is header(96B)+payload(928B) - same APP_header_st fields/tooling as APP/FBL/BM's own
+# headers (see xCOMMON_MODULES/Src/HEADER/HEADER.h) but a smaller header, since a dataset owns no
+# vector table and so none of APP/FBL's 256-byte VTOR-alignment requirement applies to it (see
+# BM/linker_script/STM32F103C8_BM_flash.ld's __dataset0_code_start__ comment - 76B is every byte
+# app_crc_injector/app_signer actually read or write, +20B reserved for future fields) - not a
+# separate build here, just the address range FBL writes into and BM validates; must match BM's/
+# FBL's own linker script constants (__dataset0_header_start__/__dataset0_code_end__ etc.)
+# exactly, same contract as __fbl_code_end__/FBL_CODE_END above.
 DATASET0_FLASH_START          := $(shell printf '0x%08X' $$(( $(BM_FLASH_START) + $(BM_FLASH_SIZE) + $(FBL_FLASH_SIZE) + $(APP_FLASH_SIZE) )))
 DATASET0_FLASH_SIZE           := 0x400
 DATASET0_FLASH_END            := $(shell printf '0x%08X' $$(( $(DATASET0_FLASH_START) + $(DATASET0_FLASH_SIZE) - 1 )))

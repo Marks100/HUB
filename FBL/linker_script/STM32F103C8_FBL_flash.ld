@@ -79,9 +79,10 @@ MEMORY
 
 SECTIONS
 {
-    /* FBL header: presence pattern + CRC, padded to 256 bytes - same layout/tooling as APP's,
-       see xCOMMON_MODULES/Src/HEADER/HEADER.h. The CRC field is patched by app_crc_injector,
-       BM validates it before jumping here (see BM.c's BM_jump_to_fbl()). */
+    /* FBL header: presence pattern + CRC, padded to 256 bytes - required, not cosmetic: see
+       APP's own linker script comment / HEADER.h for why (VTOR alignment for this part's 59-
+       entry vector table). The CRC field is patched by app_crc_injector, BM validates it before
+       jumping here (see BM.c's BM_jump_to_fbl()). */
     .app_header :
     {
         . = ALIGN(4);

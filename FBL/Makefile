@@ -197,7 +197,7 @@ $(MCAL_OBJ_DIR)/%.o: %.c | $(MCAL_OBJ_DIR)
 	@echo "--> Compiling $(notdir $@)..."
 	@$(CC) $(CFLAGS) $(MCAL_OPTIMISATION) $(INCLUDES) -c $< -o $@
 
-$(FBL_ELF_FILE): $(FBL_C_OBJS) $(MCAL_C_OBJS)
+$(FBL_ELF_FILE): $(FBL_C_OBJS) $(MCAL_C_OBJS) $(FBL_LINKER_SCRIPT)
 	@mkdir -p $(BUILD_OUT_DIR)
 	@echo "--> Linking FBL..."
 	@$(LD) $(LDFLAGS) $(FBL_C_OBJS) $(MCAL_C_OBJS)

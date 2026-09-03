@@ -48,9 +48,9 @@ void app_main( void )
     NVM_GEN2_register_block( APP_KEY_2_BLOCK_ID, &app_nvm_gen2_key_2_block_s );
     NVM_GEN2_register_block( APP_CHASSIS_NUM_BLOCK_ID, &app_nvm_gen2_chassis_num_block_s );
     (void)APP_read_fbl_fingerprint( &app_fbl_fingerprint_g );
-    app_fbl_boot_count_result_g             = APP_read_fbl_boot_count( &app_fbl_boot_count_g );
-    app_fbl_download_attempt_count_result_g = APP_read_fbl_download_attempt_count( &app_fbl_download_attempt_count_g );
-    app_fbl_dataset_download_count_result_g = APP_read_fbl_dataset_download_count( &app_fbl_dataset_download_count_g );
+    (void)APP_read_fbl_boot_count( &app_fbl_boot_count_g );
+    (void)APP_read_fbl_download_attempt_count( &app_fbl_download_attempt_count_g );
+    (void)APP_read_fbl_dataset_download_count( &app_fbl_dataset_download_count_g );
 
     DBG_MGR_init( &dbg_mgr_cfg_s, SystemCoreClock );
     DWT_init( SystemCoreClock );

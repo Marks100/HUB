@@ -24,31 +24,20 @@ const APP_generic_data_blk_st APP_GENERIC_DEFAULT_DATA_BLK_s =
 };
 
 APP_generic_data_blk_st app_generic_data_blk_g;
-
-/* No default consts here - see the extern block in APP_NVM_BLOCKS.h for why. */
-APP_key_blk_st         app_key_1_blk_g;
-APP_key_blk_st         app_key_2_blk_g;
-APP_chassis_num_blk_st app_chassis_num_blk_g;
+APP_key_blk_st          app_key_1_blk_g;
+APP_key_blk_st          app_key_2_blk_g;
+APP_chassis_num_blk_st  app_chassis_num_blk_g;
 
 /* Populated once at start-up by app_main()'s APP_read_fbl_fingerprint() call - this is NOT a
    live mirror the way app_generic_data_blk_g is: FBL owns this block, APP never registers it,
    so there is nothing to keep in sync after boot. It exists so the fingerprint has somewhere to
    sit in RAM for a debugger to watch, rather than requiring a manual flash dump every time.
-   app_fbl_fingerprint_result_g distinguishes "never flashed" (FAIL, block stays zeroed) from
-   a genuine all-zero fingerprint, which app_fbl_fingerprint_g alone cannot. Anything that
-   needs a live/current read should call APP_read_fbl_fingerprint() directly instead of
-   relying on this snapshot. */
-FBL_fingerprint_blk_st  app_fbl_fingerprint_g;
-pass_fail_et            app_fbl_fingerprint_result_g = FAIL;
-
-FBL_counter_blk_st app_fbl_boot_count_g;
-pass_fail_et       app_fbl_boot_count_result_g = FAIL;
-
-FBL_counter_blk_st app_fbl_download_attempt_count_g;
-pass_fail_et       app_fbl_download_attempt_count_result_g = FAIL;
-
+   Anything that needs a live/current read should call APP_read_fbl_fingerprint() directly
+   instead of relying on this snapshot. */
+FBL_fingerprint_blk_st            app_fbl_fingerprint_g;
+FBL_counter_blk_st                app_fbl_boot_count_g;
+FBL_counter_blk_st                app_fbl_download_attempt_count_g;
 FBL_dataset_download_count_blk_st app_fbl_dataset_download_count_g;
-pass_fail_et                      app_fbl_dataset_download_count_result_g = FAIL;
 
 /*!
 ****************************************************************************************************
@@ -177,13 +166,6 @@ const NVM_GEN2_block_cfg_st app_nvm_gen2_generic_block_s =
     .migrate_fn   = app_generic_data_migrate
 };
 
-/* default_data = NULL_P on these three: their reset value is all-zero, so NVM_GEN2 zero-fills
-   the RAM mirror itself rather than this needing a const zero-filled array to point at - see
-   NVM_GEN2_block_cfg_st.default_data's comment in NVM_GEN2.h. migrate_fn is NULL_P on all three
-   blocks below - none has ever been anything but version 1, so there is no prior layout to
-   migrate from yet. See app_generic_data_migrate() above (or FBL_NVM_BLOCKS_MIGRATE.c's
-   fbl_fingerprint_migrate()) for a block that has one, and APP_NVM_BLOCKS_MIGRATE.h for the
-   pattern to follow when one of these three first needs it. */
 const NVM_GEN2_block_cfg_st app_nvm_gen2_key_1_block_s =
 {
     .default_data = NULL_P,

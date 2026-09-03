@@ -162,7 +162,7 @@ $(MCAL_OBJ_DIR)/%.o: %.c | $(MCAL_OBJ_DIR)
 	@echo "--> Compiling $(notdir $@)..."
 	@$(CC) $(CFLAGS) $(MCAL_OPTIMISATION) $(INCLUDES) -c $< -o $@
 
-$(BM_ELF_FILE): $(BM_C_OBJS) $(MCAL_C_OBJS)
+$(BM_ELF_FILE): $(BM_C_OBJS) $(MCAL_C_OBJS) $(BM_LINKER_SCRIPT)
 	@mkdir -p $(BUILD_OUT_DIR)
 	@echo "--> Linking BM..."
 	@$(LD) $(LDFLAGS) $(BM_C_OBJS) $(MCAL_C_OBJS)
