@@ -8,6 +8,7 @@
 #include "HAL_UART.h"
 #include "DWT.h"
 #include "UID.h"
+#include "RNG.h"
 #include "WDG.h"
 #include "DBG_MGR.h"
 #include "BTN_MGR.h"
@@ -65,6 +66,15 @@ void app_main( void )
     HAL_I2C1_init();
     CHKSUM_init_hw_crc( &hw_crc_cfg_s );
     UID_init();
+
+    /* Hardware-unique + boot-timing seed (UID_get_unique_id_32() XOR the free-running DWT cycle
+       count at this point in boot, already ticking since DWT_init() above) - RNG_README.md's own
+       "Best Practice" pattern, so uds_handle_security_request_seed() (UDS_config.c) produces a
+       different SecurityAccess seed per device and per boot, not the same fixed value every time.
+       Still not a CSPRNG (see RNG.h's own caveat) - fine here since SecurityAccess itself is still
+       a placeholder that accepts any key (see UDS_config.c's file header note). */
+    RNG_init( UID_get_unique_id_32() ^ DWT_get_count() );
+
     VER_init();
     BTN_MGR_init( &btm_mgr_instance_s, btm_mgr_control_s,
                   btm_mgr_func_table_s, BTM_MGR_FUNC_TABLE_SIZE( btm_mgr_func_table_s ),
@@ -90,18 +100,27 @@ void app_main( void )
     PDUR_init( pdur_routing_table_s, pdur_num_routes_s );
     MSG_SCHED_init( &msg_sched_cfg_s );
 
-    /* UDS diagnostics over CAN - session control (0x10) and ECU reset (0x11) are handled entirely
-       inside UDS.c; app_uds_session_notify (INTEGRATION_STUBS.c) is what actually requests FBL
-       entry, by setting the shared-RAM flag before the reset UDS schedules on DEFAULT->PROGRAMMING.
-       Both tables come from APP/Src/UDS_CFG/UDS_config.c: the service table currently carries only
-       SecurityAccess (0x27), and the session table is what restricts entry into PROGRAMMING to
-       EXTENDED-plus-unlocked. */
+    /* UDS diagnostics over CAN - ECU reset (0x11) is handled entirely inside UDS.c.
+       UDS_get_service_table() (APP/Src/UDS_CFG/UDS_config.c) supplies every SID this project
+       answers, including the SessionControl (0x10) row that restricts entry into PROGRAMMING to
+       EXTENDED-plus-unlocked and the SecurityAccess (0x27) row with APP's own seed/key handlers -
+       see UDS_service_table_st in UDS.h for why UDS.c still dispatches those two specially despite
+       them being ordinary rows. The PROGRAMMING row's own on_transition callback
+       (uds_handle_programming_session_notify(), same UDS_config.c) is what actually requests FBL
+       entry, by setting the shared-RAM flag before the reset that transition schedules. */
     app_cantp_instance_init();
     CANTP_init( &app_cantp_instance_s );
-    UDS_init( &app_uds_func_table_s,
-              UDS_get_service_table(), UDS_get_service_table_size(),
-              UDS_get_session_table(), UDS_get_session_table_size(),
-              pdur_buffer_s, PDUR_BUFFER_SIZE );
+
+    const UDS_init_cfg_st app_uds_init_cfg_s =
+    {
+        .tp_send_func_p          = app_uds_tx,
+        .message_received_notify = NULL_P,
+        .service_table_p         = UDS_get_service_table(),
+        .service_table_size      = UDS_get_service_table_size(),
+        .buffer_p                = pdur_buffer_s,
+        .buffer_size             = PDUR_BUFFER_SIZE
+    };
+    UDS_init( &app_uds_init_cfg_s );
 
     MODE_MGR_init();
 

@@ -32,7 +32,6 @@
 #include "HAL_I2C.h"
 #include "SH1106.h"
 #include "printf.h"
-#include "MCU_JUMP.h"
 #include "stm32f10x_gpio.h"
 #include "stm32f10x_rcc.h"
 
@@ -109,25 +108,11 @@ STATIC const NVM_GEN2_hw_interface_st fbl_nvm_gen2_hw_interface_s =
    concern. APP reads the fingerprint via NVM_GEN2_read_block( FBL_FINGERPRINT_BLOCK_ID, ... ) and
    needs the ID and struct shape (also in FBL_NVM_BLOCKS.h) to decode it. */
 
-/* fbl_config_st's fingerprint_write_func_p. Blocks via NVM_GEN2_flush_block() rather than
-   leaving the request for the next periodic tick - the whole point of writing now is durability
-   before the tester proceeds to erase/download/reset, not background persistence. Blocks for one
-   small write, or for a full compaction if the log happens to be full. */
-STATIC void fbl_fingerprint_write( const u8_t* data_p, u8_t len )
-{
-    fbl_fingerprint_g.len = len;
-    STDC_memcpy( fbl_fingerprint_g.data, data_p, len );
-    fbl_fingerprint_g.flash_count++;
-    fbl_fingerprint_g.last_flash_timestamp_ms         = TIME_get_cumulative_run_time_ms_u32();
-    fbl_fingerprint_g.boot_count_at_flash             = fbl_boot_count_g.count;
-    fbl_fingerprint_g.download_attempt_count_at_flash = fbl_download_attempt_count_g.count;
-    NVM_GEN2_flush_block( FBL_FINGERPRINT_BLOCK_ID );
-}
-
 /* fbl_config_st's download_attempt_notify_func_p - called once per accepted 0x34 RequestDownload,
    see FBL_download_attempt_notify_func_t's comment in FBL.h. Flushes immediately for the same
-   reason fbl_fingerprint_write() does: FBL never ticks NVM_GEN2 in the background, so a request
-   left merely pending here would never actually reach flash this boot. */
+   reason fbl_uds_handle_write_fingerprint() (FBL/Src/UDS_CFG/UDS_config.c) does: FBL never ticks
+   NVM_GEN2 in the background, so a request left merely pending here would never actually reach
+   flash this boot. */
 STATIC void fbl_download_attempt_notify( void )
 {
     fbl_download_attempt_count_g.count++;
@@ -160,10 +145,10 @@ STATIC void fbl_board_init( void )
     /* Registration leaves a write pending if no record exists yet for a given block, and FBL
        deliberately never runs NVM_GEN2_tick() periodically to service it - the only thing that
        would achieve is burning a record on empty data at every virgin boot. Everything here that
-       needs to reach flash does so via an explicit flush (fbl_fingerprint_write(),
-       fbl_download_attempt_notify(), and the boot-count increment below) - an interrupted
-       compaction is discarded at mount, never resumed, so there is no other NVM work for FBL to
-       do in the background. */
+       needs to reach flash does so via an explicit flush (fbl_uds_handle_write_fingerprint() in
+       FBL/Src/UDS_CFG/UDS_config.c, fbl_download_attempt_notify(), and the boot-count increment
+       below) - an interrupted compaction is discarded at mount, never resumed, so there is no
+       other NVM work for FBL to do in the background. */
     NVM_GEN2_register_block( FBL_FINGERPRINT_BLOCK_ID, &fbl_nvm_gen2_fingerprint_block_s );
     NVM_GEN2_register_block( FBL_BOOT_COUNT_BLOCK_ID, &fbl_nvm_gen2_boot_count_block_s );
     NVM_GEN2_register_block( FBL_DOWNLOAD_ATTEMPT_COUNT_BLOCK_ID, &fbl_nvm_gen2_download_attempt_count_block_s );
@@ -333,21 +318,15 @@ STATIC void fbl_pdur_tx_uds( u8_t* data_p, u16_t len )
 /***************************************************************************************************
 **                              UDS                                                               **
 ***************************************************************************************************/
-const UDS_func_p_st fbl_uds_func_table_s =
-{
-    .tp_send_func_p           = fbl_pdur_tx_uds,
-    .perform_soft_reset       = MCU_JUMP_software_reset,
-    .perform_hard_reset       = MCU_JUMP_software_reset,
-    .s3_timeout_notify        = NULL_P,   /* FBL manages its own 30s boot delay instead */
-    .session_change_notify    = NULL_P,
-    /* fbl_run_auto_boot_timer() (FBL.c) already pauses the countdown itself for the duration of an
-       erase or download, so this is only for the genuinely-idle case: a tester that has an active
-       session but takes its time between separate commands. Wiring both notifies to the reset
-       keeps the countdown fresh on ANY diagnostic traffic in that window, not just an explicit
-       TesterPresent ping. */
-    .message_received_notify  = FBL_reset_auto_boot_timer,
-    .tester_present_notify    = FBL_reset_auto_boot_timer,
-};
+/* .perform_soft_reset/.perform_hard_reset and .tester_present_notify used to live in a
+   UDS_func_p_st here - both moved into UDS_config.c service table rows (ecu_reset_cfg_s /
+   tester_present_cfg_s, SID 0x11 / 0x3E - see UDS_ecu_reset_cfg_st/UDS_tester_present_cfg_st in
+   UDS.h). FBL manages its own 30s boot delay rather than using UDS.c's S3 timeout (there is no
+   s3_timeout_notify hook any more). tp_send_func_p/message_received_notify (fbl_pdur_tx_uds /
+   FBL_reset_auto_boot_timer - the latter covers the "any SID" half of keeping FBL's boot-delay
+   timer fresh; TesterPresent's own half is tester_present_cfg_s above) are now assigned directly
+   in fbl_uds_init_cfg_s below instead of a separate wrapper object - see UDS_init_cfg_st's comment
+   in UDS.h for why that wrapper went away. */
 
 /* fbl_config_st's comms_init - one slot for the whole stack instead of four, since CAN-TP needs a
    working CAN driver, PDUR needs CAN-TP, and UDS needs PDUR: a strict dependency chain, not four
@@ -376,8 +355,9 @@ STATIC void fbl_comms_init( void )
         .CANTP_message_rx_func_p = fbl_cantp_rx_indication,
         .tx_func_p               = fbl_cantp_send,
         .tp_buffer               = pdur_buffer_s,
-        .tp_ids                  = { FBL_UDS_REQUEST_ID, FBL_CAN_RX_ID },
-        .st_min                  = 0x03,
+        .tp_ids                  = { { FBL_UDS_REQUEST_ID, FBL_UDS_RESPONSE_ID },
+                                     { FBL_CAN_RX_ID,       FBL_CAN_TX_ID       } },
+        .st_min                  = 0x01,
         .rx_block_size           = 10u,     /* 0 = unlimited (ISO 15765-2) - CANTP_init() no longer
                                               rewrites this to a default, so it genuinely means one
                                               Flow Control per TransferData PDU instead of one every
@@ -385,8 +365,6 @@ STATIC void fbl_comms_init( void )
         .N_Cr                    = CANTP_DEFAULT_N_CR,
         .N_Bs                    = CANTP_DEFAULT_N_BS,
         .N_Ar                    = CANTP_DEFAULT_N_AR,
-        .uds_req_id              = FBL_UDS_REQUEST_ID,
-        .uds_resp_id             = FBL_UDS_RESPONSE_ID,
     };
 
     CANTP_init( &fbl_cantp_instance_s );
@@ -394,59 +372,29 @@ STATIC void fbl_comms_init( void )
     /* PDU Router */
     PDUR_init( fbl_pdur_routing_table_s, (u16_t)( sizeof( fbl_pdur_routing_table_s ) / sizeof( PDUR_rx_route_st ) ) );
 
-    /* UDS */
-    UDS_init( &fbl_uds_func_table_s,
-              UDS_get_service_table(), UDS_get_service_table_size(),
-              UDS_get_session_table(), UDS_get_session_table_size(),
-              pdur_buffer_s, PDUR_BUFFER_SIZE );
-
-    /* FBL is always in PROGRAMMING session - being in FBL space at all means we're programming */
-    UDS_set_session( UDS_SES_PROGRAMMING );
-
-    /* APP already required security to be unlocked (in EXTENDED session) before it would honour
-       the request that got us here - see uds_handle_session_control(). Trust that and start
-       unlocked so the tester need not authenticate twice before RequestDownload/TransferData
-       work. This only covers the generic required_sec_level check in the service tables (e.g.
-       ROUTINE_ID_ERASE_MEMORY) - FBL_download_request()'s own separate security check is granted
-       in FBL_init() itself, see its comment (this runs too early: FBL_init() clears and
-       re-initialises fbl_context_s right after fbl_comms_init() returns, which would wipe anything
-       set here). */
-    UDS_set_security_level( 1u );
+    /* UDS - UDS_get_service_table() supplies every SID FBL answers, including the SessionControl
+       (0x10) and SecurityAccess (0x27) rows UDS.c still dispatches specially (see
+       UDS_service_table_st's comment in UDS.h) */
+    /* FBL is always in PROGRAMMING session - being in FBL space at all means we're programming.
+       Likewise starts unlocked (.initial_security_level): APP already required security to be
+       unlocked (in EXTENDED session) before it would honour the request that got us here - see
+       uds_handle_session_control(). Trust that so the tester need not authenticate twice before
+       RequestDownload/TransferData work - this is the ONLY "starts unlocked" flag FBL has; there
+       is no separate FBL-side unlock to keep in sync with it (see FBL_download_request()'s
+       comment, FBL.c). */
+    const UDS_init_cfg_st fbl_uds_init_cfg_s =
+    {
+        .tp_send_func_p          = fbl_pdur_tx_uds,
+        .message_received_notify = FBL_reset_auto_boot_timer,
+        .service_table_p         = UDS_get_service_table(),
+        .service_table_size      = UDS_get_service_table_size(),
+        .buffer_p                = pdur_buffer_s,
+        .buffer_size             = PDUR_BUFFER_SIZE,
+        .initial_session         = UDS_SES_PROGRAMMING,
+        .initial_security_level  = 1u
+    };
+    UDS_init( &fbl_uds_init_cfg_s );
 }
-
-/* Placeholder seed/key algorithm - not real challenge/response security, just enough to exercise
-   the UDS exchange end to end. STM32F103 (medium-density) has no hardware RNG peripheral, so the
-   seed is tick-based rather than truly random; TIME_get_cumulative_run_time_ms() is the same
-   public time source already wired as time_get_tick_func_p, not FBL's own private tick counter.
-   The XOR mask matches Tool_cfg/CANFLASH/seedkeydll/seedkey.cpp's SECURITY_KEY_XOR_MASK exactly -
-   change both together if this is ever replaced with a real customer/OEM algorithm. */
-#define FBL_SECURITY_SEED_MULTIPLIER (0x12345678u)
-#define FBL_SECURITY_KEY_XOR_MASK    (0xA5A5A5A5u)
-
-STATIC u32_t fbl_security_generate_seed( void )
-{
-    return( (u32_t)TIME_get_cumulative_run_time_ms() * FBL_SECURITY_SEED_MULTIPLIER );
-}
-
-STATIC u32_t fbl_security_calculate_key_placeholder( u32_t seed )
-{
-    return( seed ^ FBL_SECURITY_KEY_XOR_MASK );
-}
-
-/* One row per documented level (FBL_security_level_key_st - see FBL.h). All four point at the same
-   placeholder function today, but each is independently repointable: giving level 3 a real,
-   different algorithm later means changing this one row, not touching FBL_security_verify_key()
-   or any other level. A RequestSeed for a level with no row here (FBL's UDS_config.c accepts any
-   odd value) always fails SendKey - see fbl_security_find_level_key_entry() in FBL.c. */
-STATIC const FBL_security_level_key_st fbl_security_level_key_table_s[] =
-{
-    { 0x01u, fbl_security_calculate_key_placeholder },  /* Level 1 */
-    { 0x03u, fbl_security_calculate_key_placeholder },  /* Level 2 */
-    { 0x05u, fbl_security_calculate_key_placeholder },  /* Level 3 */
-    { 0x07u, fbl_security_calculate_key_placeholder },  /* Level 4 */
-    { 0x09u, fbl_security_calculate_key_placeholder },  /* Level 5 */
-    { 0x0Bu, fbl_security_calculate_key_placeholder },  /* Level 6 */
-};
 
 /***************************************************************************************************
 **                              Field Bootloader Configuration                                    **
@@ -483,14 +431,8 @@ const fbl_config_st fbl_config_s =
     .flash_write_data_func_p   = FLS_STM32F1_write_data,
     .crc_calculate_func_p      = CHKSUM_calc_hw_crc32,
     .display_update_func_p     = display_render,
-    .security_generate_seed_func_p    = fbl_security_generate_seed,  /* placeholder tick-based seed,
-                                                                          see its comment */
-    .security_level_key_table_p       = fbl_security_level_key_table_s,
-    .security_level_key_table_size    = (u8_t)( sizeof( fbl_security_level_key_table_s ) /
-                                                 sizeof( fbl_security_level_key_table_s[0] ) ),
 
     .reprog_request_clear_func_p    = SHARED_RAM_set_fbl_request,
-    .fingerprint_write_func_p       = fbl_fingerprint_write,
     .download_attempt_notify_func_p = fbl_download_attempt_notify,
     .dataset_download_notify_func_p = fbl_dataset_download_notify,
 

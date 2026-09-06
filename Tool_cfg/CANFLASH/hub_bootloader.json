@@ -35,7 +35,7 @@
     "routine_erase":               "0xFF00",
     "routine_erase_send_addr_size": true,
 
-    "_comment_fingerprint": "FBL now implements 0x2E WriteDataByIdentifier for the fingerprint DID (see FBL_uds_handle_write_fingerprint() in xCOMMON_MODULES/Src/FBL/FBL.c), persisted via FBL's own dedicated NVM page. did_fingerprint is set explicitly to 0xF184 (applicationSoftwareFingerprint, ISO 14229-1 Table C.1) since that's what FBL actually implements - this tool's own default (0xF15A) does not match and would NRC requestOutOfRange if left unset.",
+    "_comment_fingerprint": "FBL now implements 0x2E WriteDataByIdentifier for the fingerprint DID (see fbl_uds_handle_write_fingerprint() in FBL/Src/UDS_CFG/UDS_config.c), persisted via FBL's own dedicated NVM page. did_fingerprint is set explicitly to 0xF184 (applicationSoftwareFingerprint, ISO 14229-1 Table C.1) since that's what FBL actually implements - this tool's own default (0xF15A) does not match and would NRC requestOutOfRange if left unset.",
     "write_fingerprint":           true,
     "did_fingerprint":             "0xF184",
 

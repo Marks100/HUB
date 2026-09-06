@@ -8,9 +8,11 @@
 *   \note       Lives in Common_Src, not xCOMMON_MODULES: the fact that FBL persists a fingerprint/
 *               boot count/download-attempt count via NVM_GEN2 at all, and the exact layout of
 *               each, is a HUB-project decision, not something the generic FBL.c engine (in
-*               xCOMMON_MODULES/Src/FBL) requires of every project that reuses it - it only asks
-*               for a fingerprint_write_func_p/download_attempt_notify_func_p callback with a
-*               generic signature. Common_Src is this project's own shared-across-BM/FBL/APP tree
+*               xCOMMON_MODULES/Src/FBL) requires of every project that reuses it - fingerprint
+*               persistence lives entirely in the platform's own UDS_config.c (project-specific,
+*               like the rest of WriteDataByIdentifier), and FBL.c only asks for a
+*               download_attempt_notify_func_p callback with a generic signature for the other
+*               counter. Common_Src is this project's own shared-across-BM/FBL/APP tree
 *               (see rules.mk's COMMON_SRC_DIRS) - the right place for something project-specific
 *               that still needs to be visible to more than one image, as opposed to xCOMMON_MODULES
 *               (portable across projects) or FBL/Src alone (APP's build cannot see it there).
@@ -77,9 +79,9 @@ typedef struct
     u8_t  len;                             /* Bytes actually used in data[], 0..FBL_FINGERPRINT_MAX_LEN */
     u8_t  data[FBL_FINGERPRINT_MAX_LEN];
     u32_t flash_count;                     /* Incremented on every successful fingerprint write - see
-                                               fbl_fingerprint_write() in FBL/Src/INT_STUBS/
-                                               INTEGRATION_STUBS.c. Every write of this DID already
-                                               means a flash succeeded - see that function's comment. */
+                                               fbl_uds_handle_write_fingerprint() in FBL/Src/UDS_CFG/
+                                               UDS_config.c. Every write of this DID already means a
+                                               flash succeeded - see that function's comment. */
     u32_t last_flash_timestamp_ms;         /* TIME_get_cumulative_run_time_ms_u32() at the moment of
                                                the last successful write - milliseconds since THIS
                                                boot, NOT a wall-clock time (FBL has no RTC). Reset to

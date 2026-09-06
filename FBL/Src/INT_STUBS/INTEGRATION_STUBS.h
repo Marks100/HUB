@@ -12,7 +12,6 @@
    time_cfg_s is the one exception: TIME_init() is called directly from fbl_main() rather than
    through fbl_config_st (it has to run before FBL_init(), which is what actually consumes
    fbl_config_s), the same reason APP's main.c calls TIME_init(&time_cfg_s) itself. */
-extern const UDS_func_p_st  fbl_uds_func_table_s;
 extern const fbl_config_st  fbl_config_s;
 extern const TIME_cfg_st    time_cfg_s;
 

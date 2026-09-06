@@ -23,16 +23,15 @@
 *                  seed/key pair drives the exact same single lock/unlock state on whichever side is
 *                  currently active, there is no per-level algorithm difference to encode here.
 *
-*                  0xA5A5A5A5 is FBL_SECURITY_KEY_XOR_MASK (see xCOMMON_MODULES/Src/FBL/FBL.h) -
-*                  the formula FBL_security_verify_key() would check if a real
-*                  security_calculate_key_func_p were ever wired on this target (currently
-*                  NULL_P, so FBL accepts any key once a seed has been requested - see that
-*                  function's comment in FBL.c). APP's own SendKey handler accepts any key
-*                  unconditionally regardless of value (its seed is a fixed all-zero placeholder -
-*                  see APP/Src/UDS_CFG/UDS_config.c's file header). This DLL computes the one real
-*                  formula that exists anywhere in this codebase rather than returning a dummy
-*                  value, so it keeps working correctly if/when either side's placeholder is
-*                  ever replaced with a real check.
+*                  0xA5A5A5A5 is FBL_SECURITY_KEY_XOR_MASK (FBL/Src/UDS_CFG/UDS_config.c) - the
+*                  exact formula fbl_uds_handle_send_key() (same file) checks against, and FBL does
+*                  enforce it (wrong key registers a failed attempt / lockout via FBL_security_
+*                  report_key_result(), xCOMMON_MODULES/Src/FBL/FBL.c). APP's own SendKey handler
+*                  (APP/Src/UDS_CFG/UDS_config.c) computes and
+*                  records a real per-level check too (its own distinct secret per level, not this
+*                  shared mask) but does not yet enforce it - a mismatch is still granted, see that
+*                  file's header comment - so this DLL's formula only has to match FBL to produce a
+*                  working key against a real flash sequence today.
 *
 ****************************************************************************************************
 */

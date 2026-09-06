@@ -25,8 +25,6 @@
 #include "HEADER.h"
 #include "CANTP.h"
 #include "UDS.h"
-#include "SHARED_RAM.h"
-#include "MCU_JUMP.h"
 
 /* APP_header_st/app_header_s live in HEADER.c (xCOMMON_MODULES/Src/HEADER) - shared across every
    project (STM32, S32K144, ...) that uses app_crc_injector/app_signer, since the byte layout those
@@ -408,31 +406,13 @@ STATIC void app_cantp_rx_indication_wrapper( u32_t id, CANTP_id_type_et id_type,
     app_can_trace_g = 4u;
 }
 
-STATIC void app_uds_tx( u8_t* data_p, u16_t len )
+/* Not STATIC: this is UDS_init_cfg_st.tp_send_func_p, assigned directly in main.c's
+   app_uds_init_cfg_s (see INTEGRATION_STUBS.h's prototype) rather than through a UDS_func_p_st
+   wrapper object - see UDS_init_cfg_st's comment in UDS.h for why that wrapper went away. */
+void app_uds_tx( u8_t* data_p, u16_t len )
 {
     app_can_trace_g = 5u;
     PDUR_tx( APP_UDS_RESPONSE_ID, 0u, data_p, len );
-}
-
-/*!
-****************************************************************************************************
-*   \brief         UDS session change notification
-*   \details       Entering PROGRAMMING means a tester wants FBL entry - set the FBL request flag so
-*                  BM boots FBL after the soft reset that transition schedules (see UDS.c's
-*                  uds_apply_session_change()/uds_invoke_pending_action(); this callback runs before
-*                  the reset is scheduled, which is the whole reason it exists).
-*
-*                  Whether the transition is allowed at all is not decided here - UDS_CFG/
-*                  UDS_config.c's session table owns that, and only permits EXTENDED -> PROGRAMMING
-*                  with security unlocked. By the time this runs the request has already been
-*                  authorised, so it just records the intent.
-***************************************************************************************************/
-STATIC void app_uds_session_notify( UDS_session_et old_session, UDS_session_et new_session )
-{
-    if( ( new_session == UDS_SES_PROGRAMMING ) && ( old_session != UDS_SES_PROGRAMMING ) )
-    {
-        SHARED_RAM_set_fbl_request( TRUE );
-    }
 }
 
 /* Deliberately NOT a designated initializer: CANTP_instance_st embeds the RX/TX queues and TP
@@ -449,31 +429,27 @@ void app_cantp_instance_init( void )
     app_cantp_instance_s.CANTP_message_rx_func_p = app_cantp_rx_indication_wrapper;
     app_cantp_instance_s.tx_func_p               = app_cantp_send_wrapper;
     app_cantp_instance_s.tp_buffer               = pdur_buffer_s;
-    app_cantp_instance_s.tp_ids[0]               = APP_UDS_REQUEST_ID;
-    app_cantp_instance_s.tp_ids[1]               = APP_CAN_RX_ID;
+    app_cantp_instance_s.tp_ids[0].req_id        = APP_UDS_REQUEST_ID;
+    app_cantp_instance_s.tp_ids[0].resp_id       = APP_UDS_RESPONSE_ID;
+    app_cantp_instance_s.tp_ids[1].req_id        = APP_CAN_RX_ID;
+    app_cantp_instance_s.tp_ids[1].resp_id       = APP_CAN_TX_ID;
     app_cantp_instance_s.st_min                  = 10u;
     app_cantp_instance_s.rx_block_size           = 10u;
     app_cantp_instance_s.N_Cr                    = CANTP_DEFAULT_N_CR;
     app_cantp_instance_s.N_Bs                    = CANTP_DEFAULT_N_BS;
     app_cantp_instance_s.N_Ar                    = CANTP_DEFAULT_N_AR;
-    app_cantp_instance_s.uds_req_id              = APP_UDS_REQUEST_ID;
-    app_cantp_instance_s.uds_resp_id             = APP_UDS_RESPONSE_ID;
 }
 
-/* 0x10/0x11/0x3E (session control, ECU reset, tester present) are handled entirely inside UDS.c
-   regardless of the service table (see uds_process_rx_message()'s routing). The service table
-   itself (APP/Src/UDS_CFG/UDS_config.c) now carries SecurityAccess (0x27) - required, unlocked in
-   EXTENDED session, before UDS.c will honour a session-control request into PROGRAMMING. */
-const UDS_func_p_st app_uds_func_table_s =
-{
-    .tp_send_func_p          = app_uds_tx,
-    .perform_soft_reset      = MCU_JUMP_software_reset,
-    .perform_hard_reset      = MCU_JUMP_software_reset,
-    .s3_timeout_notify       = NULL_P,   /* Standard ISO 14229 behaviour - see UDS.h */
-    .session_change_notify   = app_uds_session_notify,
-    .message_received_notify = NULL_P,
-    .tester_present_notify   = NULL_P,
-};
+/* SessionControl (0x10), SecurityAccess (0x27), ECU Reset (0x11) and TesterPresent (0x3E) are all
+   rows in APP's service table now (APP/Src/UDS_CFG/UDS_config.c, see UDS_service_table_st's
+   comment in UDS.h for the shape each takes) - SecurityAccess unlocked in EXTENDED session is what
+   that table requires before UDS.c will honour a session-control request into PROGRAMMING, the
+   PROGRAMMING row's own on_transition callback (uds_handle_programming_session_notify(), same
+   file) is what used to be .session_change_notify here, and the old .perform_soft_reset/
+   .perform_hard_reset moved into APP's SID 0x11 row (ecu_reset_cfg_s, same file) - see
+   UDS_ecu_reset_cfg_st's comment in UDS.h. app_uds_tx (tp_send_func_p) and NULL_P
+   (message_received_notify) are now assigned directly in main.c's app_uds_init_cfg_s instead of a
+   UDS_func_p_st wrapper object - see UDS_init_cfg_st's comment in UDS.h. */
 
 const PDUR_rx_route_st pdur_routing_table_s[] =
 {

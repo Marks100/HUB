@@ -4,8 +4,10 @@
 *
 *   Trimmed to only the services needed to reflash APP, ported from AUTOCFG_HUB/FBL's UDS_config.c
 *   against this project's UDS.h API (service-table-of-subfunction-tables, not a flat SID list -
-*   see xCOMMON_MODULES/Src/UDS/UDS.c). 0x10/0x11/0x3E are handled internally by UDS.c itself and
-*   need no entry here.
+*   see xCOMMON_MODULES/Src/UDS/UDS.c). 0x10, 0x11, 0x27 and 0x3E are all rows in
+*   uds_service_table_s (UDS_config.c) like every other service, but UDS.c still dispatches them
+*   specially rather than through the generic subfunction search - see UDS_service_table_st's
+*   comment in UDS.h.
 *
 *   Dropped vs. the source project: the source project's own 0x22 ReadDID handlers, which depended
 *   on a UDS_DID_common/UID DID-reader module that doesn't exist anywhere in this project - a
@@ -14,14 +16,14 @@
 *   (FBL_uds_handle_read_boot_sw_id() in FBL.c) instead of a ported generic module. Also dropped:
 *   0x28/0x85 stubs, 0x23/0x3D RMBA/WMBA.
 *
-*   Kept: 0x27 SecurityAccess, 0x31 RoutineControl (EraseMemory + CheckMemory + StayInBoot +
-*   CheckProgrammingDependencies + CheckProgrammingPreconditions), 0x34/0x36/0x37 the actual
-*   download sequence, 0x22 ReadDataByIdentifier (bootSoftwareIdentification only - see
-*   DID_BOOT_SOFTWARE_IDENTIFICATION below), 0x2E WriteDataByIdentifier (fingerprint only - see
-*   DID_APPLICATION_SOFTWARE_FINGERPRINT below). 0x2E was previously cut for NVM persistence size,
-*   until FBL gained an NVM driver - it now stores the fingerprint as an NVM_GEN2 block in the
-*   partitions it shares with APP, see fbl_nvm_gen2_hw_interface_s's comment in
-*   FBL/Src/INT_STUBS/INTEGRATION_STUBS.c.
+*   Kept: 0x27 SecurityAccess (RequestSeed/SendKey - see above), 0x31 RoutineControl (EraseMemory +
+*   CheckMemory + StayInBoot + CheckProgrammingDependencies + CheckProgrammingPreconditions),
+*   0x34/0x36/0x37 the actual download sequence, 0x22 ReadDataByIdentifier
+*   (bootSoftwareIdentification only - see DID_BOOT_SOFTWARE_IDENTIFICATION below), 0x2E
+*   WriteDataByIdentifier (fingerprint only - see DID_APPLICATION_SOFTWARE_FINGERPRINT below). 0x2E
+*   was previously cut for NVM persistence size, until FBL gained an NVM driver - it now stores the
+*   fingerprint as an NVM_GEN2 block in the partitions it shares with APP, see
+*   fbl_nvm_gen2_hw_interface_s's comment in FBL/Src/INT_STUBS/INTEGRATION_STUBS.c.
 *
 *   CheckProgrammingPreconditions ($0203) is duplicated here AND in APP/Src/UDS_CFG/UDS_config.c,
 *   both "no real gate yet" - not redundant: CANFLASH's actual sequence (Tool_cfg/CANFLASH/
@@ -73,10 +75,8 @@
 /***************************************************************************************************
 **                              Function Prototypes                                               **
 ***************************************************************************************************/
-const UDS_service_table_st*      UDS_get_service_table( void );
-u8_t                             UDS_get_service_table_size( void );
-const UDS_session_transition_st* UDS_get_session_table( void );
-u8_t                             UDS_get_session_table_size( void );
+const UDS_service_table_st* UDS_get_service_table( void );
+u8_t                        UDS_get_service_table_size( void );
 
 #endif /* UDS_CONFIG_H */
 
