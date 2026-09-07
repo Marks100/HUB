@@ -51,7 +51,7 @@ extern       TB_config_st            tb_cfg_s;
 extern const TJA1051_func_st         tja1051_func_s;
 extern const TJA1051_config_st       tja1051_cfg_s;
 extern const RF_MGR_cfg_st           rf_mgr_cfg_s;
-extern const PDUR_rx_route_st        pdur_routing_table_s[];
+extern const PDUR_route_st           pdur_routing_table_s[];
 extern const u16_t                   pdur_num_routes_s;
 extern       CANTP_instance_st        app_cantp_instance_s;
 void app_cantp_instance_init( void );

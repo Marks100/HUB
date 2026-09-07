@@ -34,6 +34,7 @@
 #include "CPS.h"
 #include "VER.h"
 #include "UDS_config.h"
+#include "SHARED_RAM.h"
 
 extern u32_t __isr_vector_start;   /* Linker symbol - APP/linker_script/STM32F103C8_flash.ld */
 
@@ -43,6 +44,14 @@ void app_main( void )
     MCU_JUMP_set_vector_table( (u32_t)&__isr_vector_start );
 
     CLK_STM32F1_init( &hse8_72mhz_s );
+
+    /* Idempotent (guarded by shared_ram_g.magic, see SHARED_RAM_init()) - a no-op on the normal
+       BM->APP boot chain where BM already did this, but a real safety net if APP is ever entered
+       directly (debugger, factory reflash) without BM having run first. FBL already does the same
+       (fbl_board_init(), FBL/Src/INT_STUBS/INTEGRATION_STUBS.c) - APP was the one stage skipping
+       it, silently trusting shared_ram_g.magic was already valid before this point. */
+    SHARED_RAM_init();
+
     NVM_GEN2_init( &nvm_gen2_hw_interface_s );
     NVM_GEN2_register_block( APP_GENERIC_BLOCK_ID, &app_nvm_gen2_generic_block_s );
     NVM_GEN2_register_block( APP_KEY_1_BLOCK_ID, &app_nvm_gen2_key_1_block_s );

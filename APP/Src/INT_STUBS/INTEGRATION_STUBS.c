@@ -332,18 +332,22 @@ const RF_MGR_cfg_st rf_mgr_cfg_s =
 /***************************************************************************************************
 **                              CAN / PDUR / MSG_SCHED                                           **
 ***************************************************************************************************/
-STATIC void pdur_hal_can_tx( u32_t id, u8_t id_type, u8_t frame_type, u8_t* data_p, u16_t len )
+/* HAL_CAN has no async TX-complete notification of its own - unlike CANTP's TP sessions, a raw
+   frame send is a single fire-and-forget submission, so only the immediate accept/reject
+   (HAL_CAN_send_frame's own pass_fail_et) is meaningful here; there is no txConfirmation adapter to
+   wire up for these routes. */
+STATIC pass_fail_et pdur_hal_can_tx( u32_t id, PDUR_medium_et medium, u8_t* data_p, u16_t len )
 {
-    (void)frame_type;
-    HAL_CAN_send_frame( id, id_type, data_p, (u8_t)len );
+    return( HAL_CAN_send_frame( id, (u8_t)medium, data_p, (u8_t)len ) );
 }
 
 /* Base CAN ID for sensor telemetry frames — slot N uses ID (base + N) */
 #define CAN_SENSOR_BASE_ID  ( 0x100u )
 
-/* One TX-only PDUR route per sensor slot */
+/* One TX-only PDUR route per sensor slot - designated array-index initializer so this always lands
+   on the matching app_pdu_id_et slot (below) regardless of macro invocation order. */
 #define CAN_SENSOR_PDUR_ENTRY( n ) \
-    { 0u, 0xFFFFFFFFu, ( CAN_SENSOR_BASE_ID + (u32_t)(n) ), 0u, 0u, NULL_P, pdur_hal_can_tx }
+    [APP_PDU_SENSOR_BASE + (n)] = { .tx_id = ( CAN_SENSOR_BASE_ID + (u32_t)(n) ), .lower_layer_tx_func = pdur_hal_can_tx }
 
 /* Cyclic hub heartbeat/status frame - byte0 rolling counter (proves the frame is still live,
    not just present), byte1 current MODE_MGR mode, byte2 current RF_MGR link state. */
@@ -358,6 +362,20 @@ STATIC void pdur_hal_can_tx( u32_t id, u8_t id_type, u8_t frame_type, u8_t* data
 #define APP_UDS_RESPONSE_ID  ( 0x600u )
 #define APP_CAN_RX_ID        ( 0x7E0u )
 #define APP_CAN_TX_ID        ( 0x7E8u )
+
+/* APP's own logical PDU IDs - these, not the raw CAN IDs above, are what pdur_routing_table_s's
+   array position means and what app_uds_tx()/CAN_SENSOR_MSG_ENTRY dispatch on. Values double as
+   array indices (designated-index initializers pin each route to its enum value explicitly, so
+   reordering this enum without reordering the table - or vice versa - is a compile error from a
+   duplicate/out-of-range index, not a silent mismatch). */
+typedef enum
+{
+    APP_PDU_SENSOR_BASE    = 0u,                    /* sensor slots occupy +0 .. +11 (12 slots) */
+    APP_PDU_HEARTBEAT      = APP_PDU_SENSOR_BASE + 12u,
+    APP_PDU_UDS_FUNCTIONAL,   /* rx: APP_UDS_REQUEST_ID (0x700) / tx: APP_UDS_RESPONSE_ID (0x600) */
+    APP_PDU_UDS_PHYSICAL,     /* rx: APP_CAN_RX_ID (0x7E0) / tx: APP_CAN_TX_ID (0x7E8) */
+    APP_PDU_NUM_ROUTES
+} app_pdu_id_et;
 
 /* TEMP DEBUG TRACE - remove once the CAN-flash hang is found. Read this one value after a hang
    (e.g. Trace32 Var.View app_can_trace_g, or Data.dump &app_can_trace_g) to see how far the CAN
@@ -386,33 +404,57 @@ STATIC void app_cantp_send_wrapper( CANTP_can_msg_format_st* msg_p )
     }
 }
 
-/* PDUR's lower_layer_tx_func_t shape - routes UDS responses through CANTP so multi-frame
-   responses get segmented, matching FBL's fbl_cantp_tx_request_wrapper. channel is unused now
-   that a CANTP instance IS a physical channel (see CANTP_instance_st) - kept as a parameter only
-   because PDUR_lower_layer_tx_func_t's shape is shared with non-CANTP routes. */
-STATIC void app_cantp_tx_request_wrapper( u32_t id, u8_t id_type, u8_t frame_type, u8_t* data_p, u16_t len )
+/* CANTP_tx_request()'s message_sent_noti_p shape - fires once a queued transfer genuinely finishes
+   (PASS) or times out waiting for Flow Control (FAIL), asynchronously from CANTP_tick(), not from
+   the PDUR_tx() call that queued it. Only tells us the physical id back, so PDUR_lookup_tx_pdu_id()
+   resolves which route that was before forwarding to PDUR_tx_confirmation() - see PDUR_pdu_id_t's
+   comment in PDUR.h for why PDUR itself never sees a physical id directly. */
+STATIC void app_cantp_tx_confirmation( u32_t id, pass_fail_et status )
 {
-    (void)CANTP_tx_request( &app_cantp_instance_s, id, (CANTP_id_type_et)id_type, (CANTP_frame_type_et)frame_type, data_p, len, NULL_P );
+    PDUR_pdu_id_t pdu_id = PDUR_lookup_tx_pdu_id( id, PDUR_MEDIUM_CAN_STD );
+    PDUR_tx_confirmation( pdu_id, status );
 }
 
-/* Adapter: CANTP_message_rx_func_p carries CANTP_id_type_et (a CANTP-local enum), but PDUR_rx_indication
-   deliberately stays CANTP-agnostic and takes a plain u8_t id_type (PDUR routes CANTP, HAL_CAN, LINTP,
-   etc. uniformly) - the two aren't the same type, so a direct function-pointer assignment between them
-   isn't valid without this cast. */
+/* PDUR's lower_layer_tx_func_t shape - routes UDS responses through CANTP so multi-frame
+   responses get segmented, matching FBL's fbl_cantp_tx_request. Always requests TP (ISO-TP)
+   framing: both routes that use this function are UDS request/response pairs - see
+   PDUR_lower_layer_tx_func_t's comment in PDUR.h for why that's a per-route function choice
+   instead of a runtime parameter. Returns CANTP_tx_request()'s own accept/reject instead of
+   discarding it, and wires app_cantp_tx_confirmation as the completion notify CANTP already
+   supported but nothing previously registered. */
+STATIC pass_fail_et app_cantp_tx_request_wrapper( u32_t id, PDUR_medium_et medium, u8_t* data_p, u16_t len )
+{
+    return( CANTP_tx_request( &app_cantp_instance_s, id, (CANTP_id_type_et)medium, TP, data_p, len, app_cantp_tx_confirmation ) );
+}
+
+/* Adapter: CANTP_message_rx_func_p hands PDUR a physical CAN ID - PDUR_rx_indication() no longer
+   accepts one (see PDUR_pdu_id_t's comment in PDUR.h), so this resolves it to a logical route via
+   PDUR_lookup_rx_pdu_id() first. STANDARD_ID/EXTENDED_ID (0/1) line up numerically with
+   PDUR_MEDIUM_CAN_STD/_CAN_EXT (0/1), so the cast carries the right value without a translation
+   table. A frame CANTP hands up always matches one of pdur_routing_table_s's two UDS rx_ids (that's
+   the only reason CANTP called back at all), so the lookup can't genuinely miss here - but
+   PDUR_rx_indication() bounds-checks anyway, so a miss would just no-op rather than misbehave. */
 STATIC void app_cantp_rx_indication_wrapper( u32_t id, CANTP_id_type_et id_type, u8_t* data_p, u16_t len )
 {
+    PDUR_pdu_id_t pdu_id;
+
     app_can_trace_g = 3u;
-    PDUR_rx_indication( id, (u8_t)id_type, data_p, len );
+    pdu_id = PDUR_lookup_rx_pdu_id( id, (PDUR_medium_et)id_type );
+    (void)PDUR_rx_indication( pdu_id, data_p, len );
     app_can_trace_g = 4u;
 }
 
 /* Not STATIC: this is UDS_init_cfg_st.tp_send_func_p, assigned directly in main.c's
    app_uds_init_cfg_s (see INTEGRATION_STUBS.h's prototype) rather than through a UDS_func_p_st
-   wrapper object - see UDS_init_cfg_st's comment in UDS.h for why that wrapper went away. */
+   wrapper object - see UDS_init_cfg_st's comment in UDS.h for why that wrapper went away. Always the
+   functional route: UDS.c has a single tp_send_func_p for every response "regardless of SID" (see
+   its own doc comment) with no memory of which request route a message arrived on, so a request
+   answered via the physical route (APP_PDU_UDS_PHYSICAL) still replies on the functional response ID
+   today - a pre-existing UDS.c behaviour this refactor preserves exactly, not something to fix here. */
 void app_uds_tx( u8_t* data_p, u16_t len )
 {
     app_can_trace_g = 5u;
-    PDUR_tx( APP_UDS_RESPONSE_ID, 0u, data_p, len );
+    (void)PDUR_tx( APP_PDU_UDS_FUNCTIONAL, data_p, len );
 }
 
 /* Deliberately NOT a designated initializer: CANTP_instance_st embeds the RX/TX queues and TP
@@ -451,7 +493,7 @@ void app_cantp_instance_init( void )
    (message_received_notify) are now assigned directly in main.c's app_uds_init_cfg_s instead of a
    UDS_func_p_st wrapper object - see UDS_init_cfg_st's comment in UDS.h. */
 
-const PDUR_rx_route_st pdur_routing_table_s[] =
+const PDUR_route_st pdur_routing_table_s[] =
 {
     CAN_SENSOR_PDUR_ENTRY(  0u ),
     CAN_SENSOR_PDUR_ENTRY(  1u ),
@@ -466,13 +508,13 @@ const PDUR_rx_route_st pdur_routing_table_s[] =
     CAN_SENSOR_PDUR_ENTRY( 10u ),
     CAN_SENSOR_PDUR_ENTRY( 11u ),
     /* TX-only PDUR route for the cyclic heartbeat frame */
-    { 0u, 0xFFFFFFFFu, APP_HEARTBEAT_CAN_ID, 0u, 0u, NULL_P, pdur_hal_can_tx },
-    /* Functional (0x700->0x600) and physical (0x7E0->0x7E8) UDS request/response routes.
-       tx_frame_type must be TP (CANTP_frame_type_et) - CANTP_tx_request() only branches on
-       `frame_type == TP`, anything else (including the old `2u` here) falls through to its
-       NORMAL/raw path and skips ISO-TP PCI framing entirely. */
-    { APP_UDS_REQUEST_ID, 0xFFFFFFFFu, APP_UDS_RESPONSE_ID, 0u, TP, UDS_rx_indication, app_cantp_tx_request_wrapper },
-    { APP_CAN_RX_ID,      0xFFFFFFFFu, APP_CAN_TX_ID,       0u, TP, UDS_rx_indication, app_cantp_tx_request_wrapper },
+    [APP_PDU_HEARTBEAT] = { .tx_id = APP_HEARTBEAT_CAN_ID, .lower_layer_tx_func = pdur_hal_can_tx },
+    /* Functional (0x700->0x600) and physical (0x7E0->0x7E8) UDS request/response routes - TX goes
+       via app_cantp_tx_request_wrapper, which always requests TP (ISO-TP) framing. */
+    [APP_PDU_UDS_FUNCTIONAL] = { .rx_id = APP_UDS_REQUEST_ID, .tx_id = APP_UDS_RESPONSE_ID,
+      .upperLayerRxIndication = UDS_rx_indication, .lower_layer_tx_func = app_cantp_tx_request_wrapper },
+    [APP_PDU_UDS_PHYSICAL] = { .rx_id = APP_CAN_RX_ID, .tx_id = APP_CAN_TX_ID,
+      .upperLayerRxIndication = UDS_rx_indication, .lower_layer_tx_func = app_cantp_tx_request_wrapper },
 };
 
 const u16_t pdur_num_routes_s = (u16_t)( sizeof(pdur_routing_table_s) / sizeof(pdur_routing_table_s[0u]) );
@@ -493,9 +535,12 @@ STATIC void can_sensor_get_data( u8_t msg_idx, u8_t* buf_p, u8_t* len_p )
     *len_p    = 7u;
 }
 
-/* One on-event MSG_SCHED entry per sensor slot */
+/* One on-event MSG_SCHED entry per sensor slot. MSG_SCHED calls PDUR_tx() with this value directly
+   (MSG_SCHED.c), so it's a PDUR_pdu_id_t - APP_PDU_SENSOR_BASE + n - not the physical CAN_SENSOR_BASE_ID
+   + n value the route itself carries; the two happen to have the same shape here only because sensor
+   slot n's PDUR route lives at that same index (see CAN_SENSOR_PDUR_ENTRY above). */
 #define CAN_SENSOR_MSG_ENTRY( n ) \
-    { ( CAN_SENSOR_BASE_ID + (u32_t)(n) ), 0u, 0u, MSG_SCHED_TX_ON_EVENT, can_sensor_get_data }
+    { ( APP_PDU_SENSOR_BASE + (u32_t)(n) ), 0u, 0u, MSG_SCHED_TX_ON_EVENT, can_sensor_get_data }
 
 STATIC u8_t app_heartbeat_ctr_s = 0u;
 
@@ -523,7 +568,7 @@ STATIC const MSG_SCHED_msg_cfg_st can_msg_table_s[] =
     CAN_SENSOR_MSG_ENTRY(  9u ),
     CAN_SENSOR_MSG_ENTRY( 10u ),
     CAN_SENSOR_MSG_ENTRY( 11u ),
-    //{ APP_HEARTBEAT_CAN_ID, APP_HEARTBEAT_PERIOD_MS, 0u, MSG_SCHED_TX_CYCLIC, app_heartbeat_get_data },
+    //{ APP_PDU_HEARTBEAT, APP_HEARTBEAT_PERIOD_MS, 0u, MSG_SCHED_TX_CYCLIC, app_heartbeat_get_data },
 };
 
 const MSG_SCHED_cfg_st msg_sched_cfg_s =

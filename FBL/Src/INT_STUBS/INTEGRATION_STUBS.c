@@ -270,11 +270,17 @@ STATIC void fbl_cantp_send( CANTP_can_msg_format_st* msg_p )
     (void)HAL_CAN_send_frame( msg_p->Id, (u8_t)msg_p->id_type, msg_p->Data, msg_p->DLC );
 }
 
-/* CANTP_message_rx_func_p carries CANTP_id_type_et, but PDUR stays CANTP-agnostic and takes a plain
-   u8_t - different types, so a direct function-pointer assignment would not compile. */
+/* CANTP_message_rx_func_p hands PDUR a physical CAN ID - PDUR_rx_indication() no longer accepts one
+   (see PDUR_pdu_id_t's comment in PDUR.h), so this resolves it to a logical route via
+   PDUR_lookup_rx_pdu_id() first. STANDARD_ID/EXTENDED_ID (0/1) line up numerically with
+   PDUR_MEDIUM_CAN_STD/_CAN_EXT (0/1), so the cast carries the right value without a translation
+   table. A frame CANTP hands up always matches one of fbl_pdur_routing_table_s's two rx_ids (that's
+   the only reason CANTP called back at all), so the lookup can't genuinely miss here - but
+   PDUR_rx_indication() bounds-checks anyway, so a miss would just no-op rather than misbehave. */
 STATIC void fbl_cantp_rx_indication( u32_t id, CANTP_id_type_et id_type, u8_t* data_p, u16_t len )
 {
-    PDUR_rx_indication( id, (u8_t)id_type, data_p, len );
+    PDUR_pdu_id_t pdu_id = PDUR_lookup_rx_pdu_id( id, (PDUR_medium_et)id_type );
+    (void)PDUR_rx_indication( pdu_id, data_p, len );
 }
 
 /* The three below supply &fbl_cantp_instance_s, which the callback signatures have no room for. */
@@ -283,10 +289,29 @@ STATIC void fbl_can_rx( u32_t id, u8_t id_type, u8_t* data_p, u8_t dlc )
     CANTP_rx_frame_received( &fbl_cantp_instance_s, id, (CANTP_id_type_et)id_type, data_p, (u16_t)dlc );
 }
 
-/* PDUR's lower_layer_tx_func_t shape - supplies &fbl_cantp_instance_s, which it has no room for. */
-STATIC void fbl_cantp_tx_request( u32_t id, u8_t id_type, u8_t frame_type, u8_t* data_p, u16_t len )
+/* CANTP_tx_request()'s message_sent_noti_p shape - fires once a queued transfer genuinely finishes
+   (PASS) or times out waiting for Flow Control (FAIL), asynchronously from CANTP_tick(), not from
+   the PDUR_tx() call that queued it. Only tells us the physical id back, so PDUR_lookup_tx_pdu_id()
+   resolves which route that was before forwarding to PDUR_tx_confirmation() - see PDUR_pdu_id_t's
+   comment in PDUR.h for why PDUR itself never sees a physical id directly. */
+STATIC void fbl_cantp_tx_confirmation( u32_t id, pass_fail_et status )
 {
-    (void)CANTP_tx_request( &fbl_cantp_instance_s, id, (CANTP_id_type_et)id_type, (CANTP_frame_type_et)frame_type, data_p, len, NULL_P );
+    PDUR_pdu_id_t pdu_id = PDUR_lookup_tx_pdu_id( id, PDUR_MEDIUM_CAN_STD );
+    PDUR_tx_confirmation( pdu_id, status );
+}
+
+/* PDUR's lower_layer_tx_func_t shape - supplies &fbl_cantp_instance_s, which it has no room for.
+   Always requests TP (ISO-TP) framing: both routes that use this function are UDS request/response
+   pairs, which always need CANTP's segmentation state machine, never a raw/NORMAL frame. A route
+   that genuinely wanted NORMAL framing would get its own equally trivial wrapper, the same way
+   pdur_hal_can_tx below bypasses CANTP entirely - see PDUR_lower_layer_tx_func_t's comment in
+   PDUR.h for why that's a per-route function choice and not a runtime parameter. Returns
+   CANTP_tx_request()'s own accept/reject (e.g. FAIL if both TP session slots are already busy)
+   instead of discarding it, and wires fbl_cantp_tx_confirmation as the completion notify CANTP
+   already supported but nothing previously registered. */
+STATIC pass_fail_et fbl_cantp_tx_request( u32_t id, PDUR_medium_et medium, u8_t* data_p, u16_t len )
+{
+    return( CANTP_tx_request( &fbl_cantp_instance_s, id, (CANTP_id_type_et)medium, TP, data_p, len, fbl_cantp_tx_confirmation ) );
 }
 
 /* fbl_config_st's comms_tick_func_p - CAN-TP must pump its queue before UDS_tick() can see
@@ -298,21 +323,37 @@ STATIC void fbl_comms_tick( void )
     UDS_tick();
 }
 
-/* Bidirectional routes: functional (0x700->0x600) and physical (0x7E0->0x7E8). TX goes via CANTP so
-   multi-frame UDS responses get segmented - see PDUR_tx(), which calls this per-route. tx_frame_type
-   must be TP (CANTP_frame_type_et), not a bare frame-length category - CANTP_tx_request() only
-   branches on `frame_type == TP`, anything else (including the old `2u` here) falls through to its
-   NORMAL/raw path and skips ISO-TP PCI framing entirely. */
-STATIC const PDUR_rx_route_st fbl_pdur_routing_table_s[] =
+/* FBL's own logical PDU IDs - these, not FBL_UDS_REQUEST_ID/FBL_CAN_RX_ID etc., are what
+   fbl_pdur_routing_table_s's array position means and what fbl_pdur_tx_uds() dispatches on. Values
+   double as array indices (designated-index initializers below pin each route to its enum value
+   explicitly, so reordering this enum without reordering the table - or vice versa - is a compile
+   error from a duplicate/out-of-range index, not a silent mismatch). */
+typedef enum
 {
-    { FBL_UDS_REQUEST_ID, 0xFFFFFFFFu, FBL_UDS_RESPONSE_ID, 0u, TP, UDS_rx_indication, fbl_cantp_tx_request },
-    { FBL_CAN_RX_ID,      0xFFFFFFFFu, FBL_CAN_TX_ID,       0u, TP, UDS_rx_indication, fbl_cantp_tx_request },
+    FBL_PDU_UDS_FUNCTIONAL = 0u,  /* rx: FBL_UDS_REQUEST_ID (0x700) / tx: FBL_UDS_RESPONSE_ID (0x600) */
+    FBL_PDU_UDS_PHYSICAL,         /* rx: FBL_CAN_RX_ID (0x7E0) / tx: FBL_CAN_TX_ID (0x7E8) */
+    FBL_PDU_NUM_ROUTES
+} fbl_pdu_id_et;
+
+/* Bidirectional routes: functional (0x700->0x600) and physical (0x7E0->0x7E8). TX goes via CANTP
+   (fbl_cantp_tx_request, always TP-framed - see its own comment) so multi-frame UDS responses get
+   segmented. */
+STATIC const PDUR_route_st fbl_pdur_routing_table_s[] =
+{
+    [FBL_PDU_UDS_FUNCTIONAL] = { .rx_id = FBL_UDS_REQUEST_ID, .tx_id = FBL_UDS_RESPONSE_ID,
+      .upperLayerRxIndication = UDS_rx_indication, .lower_layer_tx_func = fbl_cantp_tx_request },
+    [FBL_PDU_UDS_PHYSICAL] = { .rx_id = FBL_CAN_RX_ID, .tx_id = FBL_CAN_TX_ID,
+      .upperLayerRxIndication = UDS_rx_indication, .lower_layer_tx_func = fbl_cantp_tx_request },
 };
 
-/* Supplies the response CAN ID, which UDS's tp_send_func_p signature has no room for. */
+/* Supplies the response route, which UDS's tp_send_func_p signature has no room for. Always the
+   functional route: UDS.c has a single tp_send_func_p for every response "regardless of SID" (see
+   its own doc comment) with no memory of which request route a message arrived on, so a request
+   answered via the physical route (FBL_PDU_UDS_PHYSICAL) still replies on the functional response ID
+   today - a pre-existing UDS.c behaviour this refactor preserves exactly, not something to fix here. */
 STATIC void fbl_pdur_tx_uds( u8_t* data_p, u16_t len )
 {
-    PDUR_tx( FBL_UDS_RESPONSE_ID, 0u, data_p, len );
+    (void)PDUR_tx( FBL_PDU_UDS_FUNCTIONAL, data_p, len );
 }
 
 /***************************************************************************************************
@@ -370,7 +411,7 @@ STATIC void fbl_comms_init( void )
     CANTP_init( &fbl_cantp_instance_s );
 
     /* PDU Router */
-    PDUR_init( fbl_pdur_routing_table_s, (u16_t)( sizeof( fbl_pdur_routing_table_s ) / sizeof( PDUR_rx_route_st ) ) );
+    PDUR_init( fbl_pdur_routing_table_s, (u16_t)( sizeof( fbl_pdur_routing_table_s ) / sizeof( PDUR_route_st ) ) );
 
     /* UDS - UDS_get_service_table() supplies every SID FBL answers, including the SessionControl
        (0x10) and SecurityAccess (0x27) rows UDS.c still dispatches specially (see

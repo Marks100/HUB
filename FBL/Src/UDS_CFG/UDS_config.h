@@ -51,10 +51,10 @@
 #define FBL_CAN_TX_ID        ( 0x7E8u )
 
 /* 0x31 RoutineControl routine identifiers */
-#define ROUTINE_ID_ERASE_MEMORY               ( 0xFF00u )
-#define ROUTINE_ID_CHECK_MEMORY               ( 0xFF02u )
-#define ROUTINE_ID_STAY_IN_BOOT               ( 0xF518u ) /* Matches Vector SLP3 spec's "Force Boot Mode" ID exactly */
-#define ROUTINE_ID_CHECK_PROGRAMMING_DEPENDENCIES ( 0xFF01u ) /* Matches Vector SLP3 spec's own example ID exactly */
+#define ROUTINE_ID_ERASE_MEMORY                    ( 0xFF00u )
+#define ROUTINE_ID_CHECK_MEMORY                    ( 0xFF02u )
+#define ROUTINE_ID_STAY_IN_BOOT                    ( 0xF518u ) /* Matches Vector SLP3 spec's "Force Boot Mode" ID exactly */
+#define ROUTINE_ID_CHECK_PROGRAMMING_DEPENDENCIES  ( 0xFF01u ) /* Matches Vector SLP3 spec's own example ID exactly */
 #define ROUTINE_ID_CHECK_PROGRAMMING_PRECONDITIONS ( 0x0203u ) /* Matches Vector SLP3 spec's own example ID exactly */
 
 /* 0x2E WriteDataByIdentifier DIDs - matches xCOMMON_MODULES/Src/UDS/ISO_14229_DID_REFERENCE.md's
