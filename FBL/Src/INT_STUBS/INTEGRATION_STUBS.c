@@ -346,14 +346,13 @@ STATIC const PDUR_route_st fbl_pdur_routing_table_s[] =
       .upperLayerRxIndication = UDS_rx_indication, .lower_layer_tx_func = fbl_cantp_tx_request },
 };
 
-/* Supplies the response route, which UDS's tp_send_func_p signature has no room for. Always the
-   functional route: UDS.c has a single tp_send_func_p for every response "regardless of SID" (see
-   its own doc comment) with no memory of which request route a message arrived on, so a request
-   answered via the physical route (FBL_PDU_UDS_PHYSICAL) still replies on the functional response ID
-   today - a pre-existing UDS.c behaviour this refactor preserves exactly, not something to fix here. */
-STATIC void fbl_pdur_tx_uds( u8_t* data_p, u16_t len )
+/* UDS's tp_send_func_p - route_id is whatever UDS_rx_indication() was called with for the request
+   this response answers (UDS.c just stores and returns it, see UDS_ctrl_st.req_route_id), so a
+   request received via FBL_PDU_UDS_PHYSICAL gets its reply sent via FBL_PDU_UDS_PHYSICAL too, not a
+   single fixed route as before this cast made the two typedefs' shared underlying type explicit. */
+STATIC void fbl_pdur_tx_uds( UDS_route_id_t route_id, u8_t* data_p, u16_t len )
 {
-    (void)PDUR_tx( FBL_PDU_UDS_FUNCTIONAL, data_p, len );
+    (void)PDUR_tx( (PDUR_pdu_id_t)route_id, data_p, len );
 }
 
 /***************************************************************************************************
@@ -411,7 +410,7 @@ STATIC void fbl_comms_init( void )
     CANTP_init( &fbl_cantp_instance_s );
 
     /* PDU Router */
-    PDUR_init( fbl_pdur_routing_table_s, (u16_t)( sizeof( fbl_pdur_routing_table_s ) / sizeof( PDUR_route_st ) ) );
+    (void)PDUR_init( fbl_pdur_routing_table_s, (u16_t)( sizeof( fbl_pdur_routing_table_s ) / sizeof( PDUR_route_st ) ) );
 
     /* UDS - UDS_get_service_table() supplies every SID FBL answers, including the SessionControl
        (0x10) and SecurityAccess (0x27) rows UDS.c still dispatches specially (see

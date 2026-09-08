@@ -106,7 +106,7 @@ void app_main( void )
     TB_CBK_init( &tb_cfg_s );
     TB_init( &tb_cfg_s );
     TJA1051_init( &tja1051_func_s, &tja1051_cfg_s );
-    PDUR_init( pdur_routing_table_s, pdur_num_routes_s );
+    (void)PDUR_init( pdur_routing_table_s, pdur_num_routes_s );
     MSG_SCHED_init( &msg_sched_cfg_s );
 
     /* UDS diagnostics over CAN - ECU reset (0x11) is handled entirely inside UDS.c.

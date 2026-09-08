@@ -12,3 +12,4 @@ Tool_cfg/SigningKeys/hmac_secret.txt
 BM/Src/secure_boot_hmac_secret.h
 FBL/Build/obj/
 FBL/Build/
+APP/test/support/library_timestamp.h

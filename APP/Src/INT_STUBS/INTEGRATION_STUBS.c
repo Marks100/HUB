@@ -344,10 +344,27 @@ STATIC pass_fail_et pdur_hal_can_tx( u32_t id, PDUR_medium_et medium, u8_t* data
 /* Base CAN ID for sensor telemetry frames — slot N uses ID (base + N) */
 #define CAN_SENSOR_BASE_ID  ( 0x100u )
 
+/* Single source of truth for which sensor slots exist. pdur_routing_table_s and can_msg_table_s
+   (below) are two separate arrays that both need one entry per slot in the same order - before this
+   macro they were two independently hand-written lists of CAN_SENSOR_PDUR_ENTRY(n)/
+   CAN_SENSOR_MSG_ENTRY(n) calls that had to be edited in lockstep by hand, with nothing catching a
+   slot added to one but not the other. Expanding both tables from this one list instead means
+   adding/removing a slot is a one-line change here, not a two-place edit that can silently drift.
+   Must still be kept equal to APP_NUM_SENSOR_SLOTS below (the enum needs a plain integer, which
+   can't be derived from this list without more preprocessor machinery than 12 fixed slots justify). */
+#define APP_SENSOR_SLOTS( ENTRY ) \
+    ENTRY(0u)  ENTRY(1u)  ENTRY(2u)  ENTRY(3u)  \
+    ENTRY(4u)  ENTRY(5u)  ENTRY(6u)  ENTRY(7u)  \
+    ENTRY(8u)  ENTRY(9u)  ENTRY(10u) ENTRY(11u)
+
+/* Must match the number of ENTRY(n) calls in APP_SENSOR_SLOTS above. */
+#define APP_NUM_SENSOR_SLOTS ( 12u )
+
 /* One TX-only PDUR route per sensor slot - designated array-index initializer so this always lands
-   on the matching app_pdu_id_et slot (below) regardless of macro invocation order. */
+   on the matching app_pdu_id_et slot (below) regardless of macro invocation order. Trailing comma
+   in the macro body (not between invocations) since APP_SENSOR_SLOTS expands these back-to-back. */
 #define CAN_SENSOR_PDUR_ENTRY( n ) \
-    [APP_PDU_SENSOR_BASE + (n)] = { .tx_id = ( CAN_SENSOR_BASE_ID + (u32_t)(n) ), .lower_layer_tx_func = pdur_hal_can_tx }
+    [APP_PDU_SENSOR_BASE + (n)] = { .tx_id = ( CAN_SENSOR_BASE_ID + (u32_t)(n) ), .lower_layer_tx_func = pdur_hal_can_tx },
 
 /* Cyclic hub heartbeat/status frame - byte0 rolling counter (proves the frame is still live,
    not just present), byte1 current MODE_MGR mode, byte2 current RF_MGR link state. */
@@ -370,8 +387,8 @@ STATIC pass_fail_et pdur_hal_can_tx( u32_t id, PDUR_medium_et medium, u8_t* data
    duplicate/out-of-range index, not a silent mismatch). */
 typedef enum
 {
-    APP_PDU_SENSOR_BASE    = 0u,                    /* sensor slots occupy +0 .. +11 (12 slots) */
-    APP_PDU_HEARTBEAT      = APP_PDU_SENSOR_BASE + 12u,
+    APP_PDU_SENSOR_BASE    = 0u,                    /* sensor slots occupy +0 .. +(APP_NUM_SENSOR_SLOTS-1) */
+    APP_PDU_HEARTBEAT      = APP_PDU_SENSOR_BASE + APP_NUM_SENSOR_SLOTS,
     APP_PDU_UDS_FUNCTIONAL,   /* rx: APP_UDS_REQUEST_ID (0x700) / tx: APP_UDS_RESPONSE_ID (0x600) */
     APP_PDU_UDS_PHYSICAL,     /* rx: APP_CAN_RX_ID (0x7E0) / tx: APP_CAN_TX_ID (0x7E8) */
     APP_PDU_NUM_ROUTES
@@ -446,15 +463,15 @@ STATIC void app_cantp_rx_indication_wrapper( u32_t id, CANTP_id_type_et id_type,
 
 /* Not STATIC: this is UDS_init_cfg_st.tp_send_func_p, assigned directly in main.c's
    app_uds_init_cfg_s (see INTEGRATION_STUBS.h's prototype) rather than through a UDS_func_p_st
-   wrapper object - see UDS_init_cfg_st's comment in UDS.h for why that wrapper went away. Always the
-   functional route: UDS.c has a single tp_send_func_p for every response "regardless of SID" (see
-   its own doc comment) with no memory of which request route a message arrived on, so a request
-   answered via the physical route (APP_PDU_UDS_PHYSICAL) still replies on the functional response ID
-   today - a pre-existing UDS.c behaviour this refactor preserves exactly, not something to fix here. */
-void app_uds_tx( u8_t* data_p, u16_t len )
+   wrapper object - see UDS_init_cfg_st's comment in UDS.h for why that wrapper went away. route_id
+   is whatever UDS_rx_indication() was called with for the request this response answers (UDS.c
+   just stores and returns it, see UDS_ctrl_st.req_route_id), so a request received via
+   APP_PDU_UDS_PHYSICAL gets its reply sent via APP_PDU_UDS_PHYSICAL too, not a single fixed route
+   as before. */
+void app_uds_tx( UDS_route_id_t route_id, u8_t* data_p, u16_t len )
 {
     app_can_trace_g = 5u;
-    (void)PDUR_tx( APP_PDU_UDS_FUNCTIONAL, data_p, len );
+    (void)PDUR_tx( (PDUR_pdu_id_t)route_id, data_p, len );
 }
 
 /* Deliberately NOT a designated initializer: CANTP_instance_st embeds the RX/TX queues and TP
@@ -495,18 +512,7 @@ void app_cantp_instance_init( void )
 
 const PDUR_route_st pdur_routing_table_s[] =
 {
-    CAN_SENSOR_PDUR_ENTRY(  0u ),
-    CAN_SENSOR_PDUR_ENTRY(  1u ),
-    CAN_SENSOR_PDUR_ENTRY(  2u ),
-    CAN_SENSOR_PDUR_ENTRY(  3u ),
-    CAN_SENSOR_PDUR_ENTRY(  4u ),
-    CAN_SENSOR_PDUR_ENTRY(  5u ),
-    CAN_SENSOR_PDUR_ENTRY(  6u ),
-    CAN_SENSOR_PDUR_ENTRY(  7u ),
-    CAN_SENSOR_PDUR_ENTRY(  8u ),
-    CAN_SENSOR_PDUR_ENTRY(  9u ),
-    CAN_SENSOR_PDUR_ENTRY( 10u ),
-    CAN_SENSOR_PDUR_ENTRY( 11u ),
+    APP_SENSOR_SLOTS( CAN_SENSOR_PDUR_ENTRY )
     /* TX-only PDUR route for the cyclic heartbeat frame */
     [APP_PDU_HEARTBEAT] = { .tx_id = APP_HEARTBEAT_CAN_ID, .lower_layer_tx_func = pdur_hal_can_tx },
     /* Functional (0x700->0x600) and physical (0x7E0->0x7E8) UDS request/response routes - TX goes
@@ -537,10 +543,12 @@ STATIC void can_sensor_get_data( u8_t msg_idx, u8_t* buf_p, u8_t* len_p )
 
 /* One on-event MSG_SCHED entry per sensor slot. MSG_SCHED calls PDUR_tx() with this value directly
    (MSG_SCHED.c), so it's a PDUR_pdu_id_t - APP_PDU_SENSOR_BASE + n - not the physical CAN_SENSOR_BASE_ID
-   + n value the route itself carries; the two happen to have the same shape here only because sensor
-   slot n's PDUR route lives at that same index (see CAN_SENSOR_PDUR_ENTRY above). */
+   + n value the route itself carries. Built from the same APP_SENSOR_SLOTS list as
+   CAN_SENSOR_PDUR_ENTRY above, so slot n here and slot n's PDUR route are guaranteed to be the same
+   n, not just conventionally kept in step by hand. Trailing comma in the macro body, not between
+   invocations - see CAN_SENSOR_PDUR_ENTRY's comment. */
 #define CAN_SENSOR_MSG_ENTRY( n ) \
-    { ( APP_PDU_SENSOR_BASE + (u32_t)(n) ), 0u, 0u, MSG_SCHED_TX_ON_EVENT, can_sensor_get_data }
+    { ( APP_PDU_SENSOR_BASE + (u32_t)(n) ), 0u, 0u, MSG_SCHED_TX_ON_EVENT, can_sensor_get_data },
 
 STATIC u8_t app_heartbeat_ctr_s = 0u;
 
@@ -556,18 +564,7 @@ STATIC void app_heartbeat_get_data( u8_t msg_idx, u8_t* buf_p, u8_t* len_p )
 
 STATIC const MSG_SCHED_msg_cfg_st can_msg_table_s[] =
 {
-    CAN_SENSOR_MSG_ENTRY(  0u ),
-    CAN_SENSOR_MSG_ENTRY(  1u ),
-    CAN_SENSOR_MSG_ENTRY(  2u ),
-    CAN_SENSOR_MSG_ENTRY(  3u ),
-    CAN_SENSOR_MSG_ENTRY(  4u ),
-    CAN_SENSOR_MSG_ENTRY(  5u ),
-    CAN_SENSOR_MSG_ENTRY(  6u ),
-    CAN_SENSOR_MSG_ENTRY(  7u ),
-    CAN_SENSOR_MSG_ENTRY(  8u ),
-    CAN_SENSOR_MSG_ENTRY(  9u ),
-    CAN_SENSOR_MSG_ENTRY( 10u ),
-    CAN_SENSOR_MSG_ENTRY( 11u ),
+    APP_SENSOR_SLOTS( CAN_SENSOR_MSG_ENTRY )
     //{ APP_PDU_HEARTBEAT, APP_HEARTBEAT_PERIOD_MS, 0u, MSG_SCHED_TX_CYCLIC, app_heartbeat_get_data },
 };
 
