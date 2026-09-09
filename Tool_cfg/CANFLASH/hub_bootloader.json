@@ -46,5 +46,12 @@
 
     "_comment_validate": "FBL now accepts an optional 4-byte big-endian expected-CRC32 in the routine's Option Record: send it and FBL reports back a single pass($00)/fail($01) status byte instead of a raw CRC (see FBL_uds_handle_check_memory() in xCOMMON_MODULES/Src/FBL/FBL.c). Sending no Option Record keeps the old raw-CRC response for backward compatibility. This tool still only checks that the request itself didn't NRC - it does not yet send the expected CRC or check the status byte, so a bad transfer still isn't caught until BM's post-reset validation. Wiring that up is a CANFLASH-side follow-up, not an FBL firmware change.",
     "routine_validate_all":        "0xFF02"
+  },
+
+  "keepalive": {
+    "_comment": "can_id must not collide with can.tx_id/func_id (0x700) - the same ID as diag requests would let a stray keepalive frame land mid-multiframe and stomp the CAN-TP reassembly session for an in-progress TransferData block (see CANTP.c cantp_free_tp_session_index_search / cantp_handle_rx_tp_single_frame).",
+    "can_id":     "0x100",
+    "data":       "00 00 00 00 00 00 00 00",
+    "interval_s": 0.2
   }
 }

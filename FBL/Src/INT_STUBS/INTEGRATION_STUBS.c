@@ -31,6 +31,7 @@
 #include "UDS_config.h"
 #include "HAL_I2C.h"
 #include "SH1106.h"
+#include "VER.h"
 #include "printf.h"
 #include "stm32f10x_gpio.h"
 #include "stm32f10x_rcc.h"
@@ -172,10 +173,18 @@ STATIC bool_et            fbl_display_page_dirty_s[SH1106_NUM_PAGES];
  *  second while idle. Redraws the whole screen so a shrinking number leaves no stale digit. */
 STATIC void display_render( u8_t percent, u8_t seconds_remaining )
 {
-    char line[SH1106_MAX_CHARS_PER_LINE + 1u];
+    char  line[SH1106_MAX_CHARS_PER_LINE + 1u];
+    u8_t  sw_version[SW_VERSION_NUM_SIZE];
 
     SH1106_buffer_clear( &fbl_display_instance_s );
-    SH1106_buffer_write_string( &fbl_display_instance_s, 1u, 0u, "FIELD BOOTLOADER", FALSE );
+
+    /* VER_init() (called from FBL_init(), before board_init()/display_init() run - see FBL.c)
+       has already populated this from autoversion.h, same source as the 0xF180 boot-software-ID
+       UDS response (FBL_uds_handle_read_boot_sw_id()). */
+    VER_get_sw_version_num( sw_version );
+    (void)PRINTF_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "BOOTLOADER v%u.%u.%u",
+                            (unsigned int)sw_version[0], (unsigned int)sw_version[1], (unsigned int)sw_version[2] );
+    SH1106_buffer_write_string( &fbl_display_instance_s, 1u, 0u, line, FALSE );
 
     (void)PRINTF_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "Progress:  %3u%%", (unsigned int)percent );
     SH1106_buffer_write_string( &fbl_display_instance_s, 3u, 0u, line, FALSE );

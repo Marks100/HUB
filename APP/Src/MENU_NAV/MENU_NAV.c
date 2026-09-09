@@ -969,7 +969,13 @@ STATIC void menu_nav_handle_static( const MENU_NAV_screen_st* screen_p, HMI_SH11
 ***************************************************************************************************/
 STATIC void menu_nav_draw_home( void )
 {
-    HMI_SH1106_draw_text( 1u, 0u, "HUB", TRUE );
+    char  line[MENU_NAV_LINE_CHARS];
+    u8_t  sw_ver[SW_VERSION_NUM_SIZE];
+
+    VER_get_sw_version_num( sw_ver );
+    (void)PRINTF_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "HUB v%u.%u.%u", sw_ver[0], sw_ver[1], sw_ver[2] );
+    HMI_SH1106_draw_text( 1u, 0u, line, TRUE );
+
     HMI_SH1106_draw_text( 3u, 0u, "Press CONFIRM", TRUE );
     HMI_SH1106_draw_text( 4u, 0u, "for the menu", TRUE );
 }
