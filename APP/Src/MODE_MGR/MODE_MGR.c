@@ -11,6 +11,7 @@
 #include "HMI_SH1106.h"   /* This module owns the panel's tick slot - see mode_mgr_action_schedule_normal() */
 #include "CANTP.h"
 #include "UDS.h"
+#include "CPS.h"
 
 /***************************************************************************************************
 **                              Data declarations and definitions                                 **
@@ -20,6 +21,7 @@ STATIC MODE_MGR_mode_et  mode_mgr_mode_s;
 
 extern NRF24_instance_st     nrf24_instance_s;
 extern BUZZER_instance_st    buzzer_instance_s;
+extern CPS_instance_st       cps_crank_instance_s;
 extern WS2811_instance_st    ws2811_instance_s;
 extern CTRL_AXIS_instance_st steering_axis_s;
 extern CTRL_AXIS_instance_st throttle_axis_s;
@@ -342,6 +344,7 @@ void mode_mgr_action_schedule_normal( void )
 		NRF24_tick( &nrf24_instance_s );
 		RF_MGR_tick();
 		MSG_SCHED_tick();
+		CPS_tick( &cps_crank_instance_s );
 	}
 
 	if( mode_mgr_check_time_interval( 50u ) == TRUE )

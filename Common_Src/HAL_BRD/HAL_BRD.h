@@ -33,6 +33,7 @@ typedef void(*HAL_BRD_nrf_func_type)( void );
 **                              Function Prototypes                                               **
 ***************************************************************************************************/
 void        HAL_BRD_init( void );
+void        HAL_BRD_cps_crank_interrupt_enable( void );
 low_high_et HAL_BRD_read_pin_state( GPIO_TypeDef* port, u16_t pin );
 void        HAL_BRD_set_pin_state( GPIO_TypeDef* port, u16_t pin, low_high_et state );
 void        HAL_BRD_toggle_pin_state( GPIO_TypeDef* port, u16_t pin );

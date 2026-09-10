@@ -105,7 +105,8 @@ void HAL_TIM2_init( void )
 
 	/* Add IRQ vector to NVIC */
 	NVIC_InitStruct.NVIC_IRQChannel = TIM2_IRQn;
-	/* Priority 1 — below the CPS input ISR (EXTI2, priority 0) so it can preempt this */
+	/* Priority 1 — priority 0 is reserved for the board's highest-priority input ISR, see
+	   HAL_BRD_init()'s priority scheme comment */
 	NVIC_InitStruct.NVIC_IRQChannelPreemptionPriority = 0x01;
 	/* Set sub priority */
 	NVIC_InitStruct.NVIC_IRQChannelSubPriority = 0x00;
@@ -242,9 +243,9 @@ void HAL_TIM4_register_callback( HAL_TIM_func_type HAL_TIM_func_p )
 *   \return        none
 *
 *   \note          Call before HAL_TIM1_start()/HAL_TIM1_start_periodic() to change the
-*                  achievable period range — e.g. for stress-testing CPS at high simulated
-*                  frequencies, a small or zero prescaler gives fine-grained control over
-*                  very short periods that the default ~9kHz tick rate cannot express.
+*                  achievable period range — e.g. for generating very short test periods, a
+*                  small or zero prescaler gives fine-grained control that the default ~9kHz
+*                  tick rate cannot express.
 *
 ***************************************************************************************************/
 void HAL_TIM1_set_prescaler( u16_t prescaler )
@@ -274,7 +275,8 @@ void HAL_TIM1_start( u16_t counter )
 
 	NVIC_InitTypeDef NVIC_InitStruct;
 	NVIC_InitStruct.NVIC_IRQChannel                   = TIM1_UP_IRQn;
-	/* Priority 1 — below the CPS input ISR (EXTI2, priority 0) so it can preempt this */
+	/* Priority 1 — priority 0 is reserved for the board's highest-priority input ISR, see
+	   HAL_BRD_init()'s priority scheme comment */
 	NVIC_InitStruct.NVIC_IRQChannelPreemptionPriority = 0x01;
 	NVIC_InitStruct.NVIC_IRQChannelSubPriority        = 0x00;
 	NVIC_InitStruct.NVIC_IRQChannelCmd                = ENABLE;
@@ -312,7 +314,8 @@ void HAL_TIM1_start_periodic( u16_t period )
 
 	NVIC_InitTypeDef NVIC_InitStruct;
 	NVIC_InitStruct.NVIC_IRQChannel                   = TIM1_UP_IRQn;
-	/* Priority 1 — below the CPS input ISR (EXTI2, priority 0) so it can preempt this */
+	/* Priority 1 — priority 0 is reserved for the board's highest-priority input ISR, see
+	   HAL_BRD_init()'s priority scheme comment */
 	NVIC_InitStruct.NVIC_IRQChannelPreemptionPriority = 0x01;
 	NVIC_InitStruct.NVIC_IRQChannelSubPriority        = 0x00;
 	NVIC_InitStruct.NVIC_IRQChannelCmd                = ENABLE;
@@ -643,7 +646,8 @@ void HAL_TIM_IC_init( TIM_TypeDef* tim_p, u8_t channel, HAL_TIM_IC_edge_et edge,
 		TIM_Cmd( tim_p, ENABLE );
 
 		NVIC_InitStructure.NVIC_IRQChannel                   = irqn;
-		/* Priority 1 — below the CPS input ISR (EXTI2, priority 0) so it can preempt this */
+		/* Priority 1 — priority 0 is reserved for the board's highest-priority input ISR, see
+	   HAL_BRD_init()'s priority scheme comment */
 		NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = 0x01;
 		NVIC_InitStructure.NVIC_IRQChannelSubPriority        = 0x00;
 		NVIC_InitStructure.NVIC_IRQChannelCmd                = ENABLE;

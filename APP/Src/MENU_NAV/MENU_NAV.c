@@ -17,6 +17,7 @@
 #include "TB.h"
 #include "PRESS_CONV.h"
 #include "GFX.h"
+#include "CPS.h"
 #include "printf.h"
 #include "SHARED_RAM.h"
 #include "MCU_JUMP.h"
@@ -70,10 +71,13 @@ typedef struct
  */
 typedef struct
 {
-    u16_t*              value_p;    /*!< Live value - drawn and knob-edited in place */
-    u16_t                min;
-    u16_t                max;
-    u16_t                knob_step;  /*!< How far one detent moves the value; clamped, not wrapped */
+    u32_t*              value_p;    /*!< Live value - drawn and knob-edited in place. u32_t so a
+                                     *   gauge fed by something uncapped (e.g. Rev Counter's bench-
+                                     *   test CPS reading) can display past 65535 - see
+                                     *   menu_nav_tacho_refresh_from_cps(). */
+    u32_t                min;
+    u32_t                max;
+    u32_t                knob_step;  /*!< How far one detent moves the value; clamped, not wrapped */
     MENU_NAV_screen_et   screen;    /*!< Looked up in menu_nav_screens_s for back_screen */
 } menu_nav_value_edit_st;
 
@@ -173,12 +177,11 @@ STATIC void menu_nav_enter_buzzer( void );
 STATIC void menu_nav_value_edit_handle( const menu_nav_value_edit_st* cfg_p, HMI_SH1106_input_et input );
 STATIC void menu_nav_gauge_draw( const menu_nav_gauge_cfg_st* cfg_p );
 STATIC void menu_nav_gauge_handle( const menu_nav_gauge_cfg_st* cfg_p, HMI_SH1106_input_et input );
+STATIC void menu_nav_tacho_refresh_from_cps( void );
 STATIC void menu_nav_draw_rev_counter( void );
-STATIC void menu_nav_handle_rev_counter( HMI_SH1106_input_et input );
 STATIC void menu_nav_bar_gauge_draw( const menu_nav_bar_gauge_cfg_st* cfg_p );
 STATIC void menu_nav_bar_gauge_handle( const menu_nav_bar_gauge_cfg_st* cfg_p, HMI_SH1106_input_et input );
 STATIC void menu_nav_draw_rev_counter_bar( void );
-STATIC void menu_nav_handle_rev_counter_bar( HMI_SH1106_input_et input );
 
 /***************************************************************************************************
 **                              Screen contents                                                   **
@@ -239,13 +242,19 @@ STATIC const menu_nav_tire_reading_st menu_nav_tire_rr_s = { 21, 30 };
 #define MENU_NAV_REAR_AXLE_Y    ( MENU_NAV_REAR_TIRE_Y  + ( MENU_NAV_TIRE_HEIGHT / 2u ) )
 #define MENU_NAV_DRIVESHAFT_X   ( ( MENU_NAV_AXLE_LEFT_X + MENU_NAV_AXLE_RIGHT_X ) / 2u )
 
-/* ===== Rev Counter - placeholder, knob-driven. cps_instance_s/cps_instance_2_s (INTEGRATION_STUBS.c)
-   are wheel-speed ABS tone rings wired through the CPS tooth-counter, not an engine crank/cam
-   sensor - there is no real engine RPM source anywhere in this codebase, so like Fan Speed this
-   only edits a stored value. The knob steps it in MENU_NAV_TACHO_KNOB_STEP_RPM increments rather
-   than moving a cursor, same shape as menu_nav_handle_sensors() - but drawing/input both go through
-   the generic menu_nav_gauge_draw()/menu_nav_gauge_handle(), configured by menu_nav_rev_counter_gauge_s
-   below, rather than Rev Counter having its own copy - see menu_nav_gauge_cfg_st.
+/* ===== Rev Counter - now a live gauge, reading the crank position sensor.
+   menu_nav_tacho_rpm_s is refreshed from CPS_get_rpm(&cps_crank_instance_s) every draw (see
+   menu_nav_tacho_refresh_from_cps(), called from menu_nav_draw_rev_counter()/
+   menu_nav_draw_rev_counter_bar() below) - cps_crank_instance_s (INTEGRATION_STUBS.c) is driven by
+   a bench-test crank sensor input (EXTI3/PB3 - see HAL_BRD.c).
+   Since the value is now live rather than knob-edited, both screens' .handle_func_p is NULL_P in
+   the screen table below - MENU_NAV_on_input() falls through to menu_nav_handle_static() for plain
+   BACK navigation, same as any other read-only screen (e.g. About). Drawing still goes through the
+   generic menu_nav_gauge_draw()/menu_nav_bar_gauge_draw(), configured by
+   menu_nav_rev_counter_gauge_s / menu_nav_rev_counter_bar_gauge_s below, rather than Rev Counter
+   having its own copy - see menu_nav_gauge_cfg_st. MENU_NAV_TACHO_KNOB_STEP_RPM/menu_nav_value_edit_st
+   plumbing is left in place (harmless, unreferenced by the static-screen input path) since a future
+   gauge that IS meant to be knob-edited (e.g. a setpoint) reuses the same menu_nav_gauge_cfg_st shape.
 
    Needle tip and tick mark positions are precomputed pixel offsets from the pivot, one entry per
    MENU_NAV_TACHO_RPM_STEP RPM, rather than computed with sinf/cosf at draw time - the STM32F103
@@ -337,11 +346,28 @@ STATIC const menu_nav_gauge_label_st menu_nav_tacho_labels_s[MENU_NAV_ITEM_COUNT
     { 99u, 4u, "9" },  /* 9000 RPM */
 };
 
-STATIC u16_t menu_nav_tacho_rpm_s = MENU_NAV_TACHO_MIN_RPM;
+extern CPS_instance_st cps_crank_instance_s;   /* INTEGRATION_STUBS.c - see HAL_BRD.c for the EXTI3/PB3 input */
+
+STATIC u32_t menu_nav_tacho_rpm_s = MENU_NAV_TACHO_MIN_RPM;
+
+/*!
+ * \brief Refreshes menu_nav_tacho_rpm_s from the live crank sensor
+ *
+ * Deliberately NOT clamped to the gauge's MENU_NAV_TACHO_MAX_RPM (9000) dial range - this is a
+ * bench test to find the sensor/ISR's real ceiling, and clamping here would hide the true reading.
+ * menu_nav_tacho_rpm_s and menu_nav_value_edit_st.value_p are both u32_t (CPS_get_rpm()'s own
+ * return type) specifically so the digital readout can show past 65535 - see
+ * menu_nav_gauge_draw()/menu_nav_bar_gauge_draw() for how the needle/bar visuals (still u16_t at
+ * the GFX layer) get a separately-clamped copy so they pin at max instead of wrapping around.
+ */
+STATIC void menu_nav_tacho_refresh_from_cps( void )
+{
+    menu_nav_tacho_rpm_s = CPS_get_rpm( &cps_crank_instance_s );
+}
 
 /* The Rev Counter's own instance of the generic gauge mechanism - see menu_nav_gauge_cfg_st. Any
    future needle gauge (boost, coolant temp, ...) is another one of these plus its own tables,
-   pivot and bar rect - not a copy of menu_nav_draw_rev_counter()/menu_nav_handle_rev_counter(). */
+   pivot and bar rect - not a copy of menu_nav_draw_rev_counter(). */
 STATIC const menu_nav_gauge_cfg_st menu_nav_rev_counter_gauge_s =
 {
     .title_p = "REV COUNTER",
@@ -558,14 +584,16 @@ STATIC const MENU_NAV_screen_st menu_nav_screens_s[MENU_NAV_NUM_SCREENS] =
     [MENU_NAV_SCREEN_REV_COUNTER] =
     {
         .draw_func_p   = menu_nav_draw_rev_counter,
-        .handle_func_p = menu_nav_handle_rev_counter,   /* The knob edits the placeholder RPM */
+        /* handle_func_p left NULL_P - live reading now, not knob-edited. Falls through to
+           menu_nav_handle_static() for plain BACK navigation. */
         .back_screen   = MENU_NAV_SCREEN_MAIN_MENU,
     },
 
     [MENU_NAV_SCREEN_REV_COUNTER_BAR] =
     {
         .draw_func_p   = menu_nav_draw_rev_counter_bar,
-        .handle_func_p = menu_nav_handle_rev_counter_bar,   /* The knob edits the placeholder RPM */
+        /* handle_func_p left NULL_P - live reading now, not knob-edited. Falls through to
+           menu_nav_handle_static() for plain BACK navigation. */
         .back_screen   = MENU_NAV_SCREEN_MAIN_MENU,
     },
 
@@ -1392,16 +1420,16 @@ STATIC void menu_nav_value_edit_handle( const menu_nav_value_edit_st* cfg_p, HMI
     {
         case HMI_SH1106_INPUT_CW:
         {
-            u16_t next = (u16_t)( *cfg_p->value_p + cfg_p->knob_step );
+            u32_t next = *cfg_p->value_p + cfg_p->knob_step;
             *cfg_p->value_p = ( next > cfg_p->max ) ? cfg_p->max : next;
             HMI_SH1106_request_redraw();
         }
         break;
 
         case HMI_SH1106_INPUT_CCW:
-            *cfg_p->value_p = ( *cfg_p->value_p <= (u16_t)( cfg_p->min + cfg_p->knob_step ) )
+            *cfg_p->value_p = ( *cfg_p->value_p <= ( cfg_p->min + cfg_p->knob_step ) )
                              ? cfg_p->min
-                             : (u16_t)( *cfg_p->value_p - cfg_p->knob_step );
+                             : ( *cfg_p->value_p - cfg_p->knob_step );
             HMI_SH1106_request_redraw();
         break;
 
@@ -1432,16 +1460,27 @@ STATIC void menu_nav_value_edit_handle( const menu_nav_value_edit_st* cfg_p, HMI
 *                   adds what GFX can't draw itself: the title, the tick labels and the digital
 *                   readout, all text (see menu_nav_gauge_cfg_st for why that split exists).
 *
+*   \note          GFX_draw_gauge() takes u16_t (needle math only ever needs to reach this gauge's
+*                  own dial range). edit.value_p is u32_t so the digital text below can go past
+*                  65535, so the value handed to GFX has to be clamped to u16_t range here first -
+*                  a plain narrowing cast would silently wrap (e.g. 65540 -> 4), which GFX's own
+*                  internal min/max clamp would then read as a tiny in-range value instead of "off
+*                  the top of the dial", pointing the needle to the wrong place instead of pinning
+*                  it at max. Clamping to 0xFFFF (always > any real dial max) keeps GFX's own
+*                  clamp doing the right thing - no change needed inside GFX.c itself.
+*
 ***************************************************************************************************/
 STATIC void menu_nav_gauge_draw( const menu_nav_gauge_cfg_st* cfg_p )
 {
     GFX_target_st target = HMI_SH1106_get_target();
     char          line[MENU_NAV_LINE_CHARS];
+    u32_t         value     = *cfg_p->edit.value_p;
+    u16_t         gfx_value = (u16_t)( ( value > 0xFFFFu ) ? 0xFFFFu : value );
     u8_t          i;
 
     HMI_SH1106_draw_text( 0u, 0u, cfg_p->title_p, FALSE );
 
-    GFX_draw_gauge( &target, &cfg_p->gfx_cfg, *cfg_p->edit.value_p, cfg_p->edit.min, cfg_p->edit.max );
+    GFX_draw_gauge( &target, &cfg_p->gfx_cfg, gfx_value, (u16_t)cfg_p->edit.min, (u16_t)cfg_p->edit.max );
 
     for( i = 0u; i < cfg_p->gfx_cfg.num_ticks; i++ )
     {
@@ -1449,7 +1488,7 @@ STATIC void menu_nav_gauge_draw( const menu_nav_gauge_cfg_st* cfg_p )
                                cfg_p->label_table_p[i].text_p, FALSE );
     }
 
-    (void)PRINTF_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "%u", (unsigned int)*cfg_p->edit.value_p );
+    (void)PRINTF_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "%u", (unsigned int)value );
     HMI_SH1106_draw_text( 7u, 0u, line, FALSE );
 }
 
@@ -1474,7 +1513,7 @@ STATIC void menu_nav_gauge_handle( const menu_nav_gauge_cfg_st* cfg_p, HMI_SH110
 /*!
 ****************************************************************************************************
 *
-*   \brief         Rev Counter - needle gauge plus a linear bar, knob-driven placeholder value
+*   \brief         Rev Counter - needle gauge plus a linear bar, live crank sensor reading
 *
 *   \author        MS
 *
@@ -1483,24 +1522,8 @@ STATIC void menu_nav_gauge_handle( const menu_nav_gauge_cfg_st* cfg_p, HMI_SH110
 ***************************************************************************************************/
 STATIC void menu_nav_draw_rev_counter( void )
 {
+    menu_nav_tacho_refresh_from_cps();
     menu_nav_gauge_draw( &menu_nav_rev_counter_gauge_s );
-}
-
-/*!
-****************************************************************************************************
-*
-*   \brief         Rev Counter - the knob steps the value instead of moving a cursor
-*
-*   \author        MS
-*
-*   \param         input - What the panel reported
-*
-*   \return        none
-*
-***************************************************************************************************/
-STATIC void menu_nav_handle_rev_counter( HMI_SH1106_input_et input )
-{
-    menu_nav_gauge_handle( &menu_nav_rev_counter_gauge_s, input );
 }
 
 /*!
@@ -1517,19 +1540,24 @@ STATIC void menu_nav_handle_rev_counter( HMI_SH1106_input_et input )
 *   \note          value - min is what GFX_draw_bar() scales against, not the raw value - see
 *                   menu_nav_bar_gauge_cfg_st's comment on why an empty bar has to mean value == min.
 *
+*   \note          GFX_draw_bar() takes u16_t, same reasoning/clamp-before-narrow as
+*                  menu_nav_gauge_draw() - see its note.
+*
 ***************************************************************************************************/
 STATIC void menu_nav_bar_gauge_draw( const menu_nav_bar_gauge_cfg_st* cfg_p )
 {
     GFX_target_st target = HMI_SH1106_get_target();
     char          line[MENU_NAV_LINE_CHARS];
+    u32_t         value     = *cfg_p->edit.value_p;
+    u16_t         gfx_value = (u16_t)( ( value > 0xFFFFu ) ? 0xFFFFu : value );
 
     HMI_SH1106_draw_text( 0u, 0u, cfg_p->title_p, FALSE );
 
     GFX_draw_bar( &target, &cfg_p->bar_cfg,
-                  (u16_t)( *cfg_p->edit.value_p - cfg_p->edit.min ),
+                  (u16_t)( gfx_value - (u16_t)cfg_p->edit.min ),
                   (u16_t)( cfg_p->edit.max - cfg_p->edit.min ) );
 
-    (void)PRINTF_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "%u", (unsigned int)*cfg_p->edit.value_p );
+    (void)PRINTF_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "%u", (unsigned int)value );
     HMI_SH1106_draw_text( 7u, 0u, line, FALSE );
 }
 
@@ -1554,36 +1582,21 @@ STATIC void menu_nav_bar_gauge_handle( const menu_nav_bar_gauge_cfg_st* cfg_p, H
 /*!
 ****************************************************************************************************
 *
-*   \brief         Rev Counter (Bar) - vertical fill bar, knob-driven placeholder value
+*   \brief         Rev Counter (Bar) - vertical fill bar, live crank sensor reading
 *
 *   \author        MS
 *
 *   \return        none
 *
 *   \note          Shares menu_nav_tacho_rpm_s with the needle Rev Counter - see the data section's
-*                   comment for why.
+*                   comment for why. Refreshing it here too means whichever of the two screens is
+*                   actually on-screen is the one that pays for the CPS_get_rpm() call.
 *
 ***************************************************************************************************/
 STATIC void menu_nav_draw_rev_counter_bar( void )
 {
+    menu_nav_tacho_refresh_from_cps();
     menu_nav_bar_gauge_draw( &menu_nav_rev_counter_bar_gauge_s );
-}
-
-/*!
-****************************************************************************************************
-*
-*   \brief         Rev Counter (Bar) - the knob steps the value instead of moving a cursor
-*
-*   \author        MS
-*
-*   \param         input - What the panel reported
-*
-*   \return        none
-*
-***************************************************************************************************/
-STATIC void menu_nav_handle_rev_counter_bar( HMI_SH1106_input_et input )
-{
-    menu_nav_bar_gauge_handle( &menu_nav_rev_counter_bar_gauge_s, input );
 }
 
 /*!

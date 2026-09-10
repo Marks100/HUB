@@ -74,6 +74,16 @@
 #define ENC_CH1_PIN         GPIO_Pin_6
 #define ENC_CH2_PIN         GPIO_Pin_7
 
+/* Crank Position Sensor (CPS) tooth input - EXTI Line 3. PB3 chosen because SWJ_JTAGDisable
+ * (see HAL_BRD_init()) frees it from its JTDO alternate function, same reasoning PA15 was
+ * freed for NRF_IRQ. This is the board's highest-priority (0) NVIC slot - see
+ * HAL_BRD_init()'s priority scheme comment. */
+#define CPS_CRANK_INPUT_PORT            GPIOB
+#define CPS_CRANK_INPUT_PIN             GPIO_Pin_3
+#define CPS_CRANK_INPUT_EXTI_LINE       EXTI_Line3
+#define CPS_CRANK_INPUT_EXTI_PORT_SRC   GPIO_PortSourceGPIOB
+#define CPS_CRANK_INPUT_EXTI_PIN_SRC    GPIO_PinSource3
+
 /* I2C1 pins (remapped: PB8=SCL, PB9=SDA) */
 #define I2C1_PORT           GPIOB
 #define I2C1_SCL_PIN        GPIO_Pin_8

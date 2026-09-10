@@ -58,7 +58,8 @@ void HAL_USART1_init( void )
 	NVIC_InitTypeDef NVIC_InitStructure;
 	/* Enable the USARTx Interrupt */
 	NVIC_InitStructure.NVIC_IRQChannel = USART1_IRQn;
-	/* Priority 1 - below the CPS input ISR (EXTI2, priority 0) so it can preempt this */
+	/* Priority 1 - priority 0 is reserved for the board's highest-priority input ISR, see
+	   HAL_BRD_init()'s priority scheme comment */
 	NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = 1;
 	NVIC_InitStructure.NVIC_IRQChannelSubPriority = 0;
 	NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE;
@@ -273,7 +274,8 @@ void HAL_USART2_init( void )
 	NVIC_InitTypeDef NVIC_InitStructure;
 	/* Enable the USARTx Interrupt */
 	NVIC_InitStructure.NVIC_IRQChannel = USART2_IRQn;
-	/* Priority 1 - below the CPS input ISR (EXTI2, priority 0) so it can preempt this */
+	/* Priority 1 - priority 0 is reserved for the board's highest-priority input ISR, see
+	   HAL_BRD_init()'s priority scheme comment */
 	NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = 1;
 	NVIC_InitStructure.NVIC_IRQChannelSubPriority = 0;
 	NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE;
@@ -468,8 +470,8 @@ void USART1_IRQHandler( void )
 {
 	/* Direct USART1->SR/DR access instead of the SPL's USART_GetITStatus()/USART_ReceiveData() -
 	 * this build has no LTO, so those are real, avoidable non-inlined calls (they are just masked
-	 * register reads) on every byte in both directions, same reasoning as CPS's direct EXTI->PR
-	 * access. SR is sampled once: reading it repeatedly would race with the hardware. */
+	 * register reads) on every byte in both directions. SR is sampled once: reading it
+	 * repeatedly would race with the hardware. */
 	u16_t status = (u16_t)USART1->SR;
 
 	/* Reading DR is what clears RXNE, so it must happen only when RXNE is genuinely set. The

@@ -64,6 +64,7 @@ void app_main( void )
 
     DBG_MGR_init( &dbg_mgr_cfg_s, SystemCoreClock );
     DWT_init( SystemCoreClock );
+
     HAL_BRD_init();
     HAL_CAN_init();
     HAL_CAN_set_rx_callback( app_can_rx_wrapper );
@@ -74,26 +75,15 @@ void app_main( void )
     HAL_SPI1_init();
     HAL_I2C1_init();
     CHKSUM_init_hw_crc( &hw_crc_cfg_s );
+    CPS_init( &cps_crank_instance_s, &cps_crank_cfg_s, SystemCoreClock );
     UID_init();
-
-    /* Hardware-unique + boot-timing seed (UID_get_unique_id_32() XOR the free-running DWT cycle
-       count at this point in boot, already ticking since DWT_init() above) - RNG_README.md's own
-       "Best Practice" pattern, so uds_handle_security_request_seed() (UDS_config.c) produces a
-       different SecurityAccess seed per device and per boot, not the same fixed value every time.
-       Still not a CSPRNG (see RNG.h's own caveat) - fine here since SecurityAccess itself is still
-       a placeholder that accepts any key (see UDS_config.c's file header note). */
-    RNG_init( UID_get_unique_id_32() ^ DWT_get_count() );
+    RNG_init( UID_get_unique_id_32() );
 
     VER_init();
     BTN_MGR_init( &btm_mgr_instance_s, btm_mgr_control_s,
                   btm_mgr_func_table_s, BTM_MGR_FUNC_TABLE_SIZE( btm_mgr_func_table_s ),
                   NULL_P, 0u, BTN_MGR_TICK_TIME_MS );
     TIME_init( &time_cfg_s );
-
-    /* SH1106 panel - owns TIM4's encoder, its own three buttons and the OLED. Needs I2C1 up
-       first. There is no standalone ROTARY_MGR instance: the board has one encoder and this
-       panel is what drives it. MENU_NAV_init() has to run after the panel exists, since it
-       selects the screen that HMI_SH1106's pending first repaint will paint. */
     HMI_SH1106_init( &hmi_sh1106_cfg_s );
     MENU_NAV_init();
     BUZZER_init( &buzzer_instance_s, &buzzer_func_table_s );
@@ -106,17 +96,9 @@ void app_main( void )
     TB_CBK_init( &tb_cfg_s );
     TB_init( &tb_cfg_s );
     TJA1051_init( &tja1051_func_s, &tja1051_cfg_s );
-    (void)PDUR_init( pdur_routing_table_s, pdur_num_routes_s );
+    PDUR_init( pdur_routing_table_s, pdur_num_routes_s );
     MSG_SCHED_init( &msg_sched_cfg_s );
-
-    /* UDS diagnostics over CAN - ECU reset (0x11) is handled entirely inside UDS.c.
-       UDS_get_service_table() (APP/Src/UDS_CFG/UDS_config.c) supplies every SID this project
-       answers, including the SessionControl (0x10) row that restricts entry into PROGRAMMING to
-       EXTENDED-plus-unlocked and the SecurityAccess (0x27) row with APP's own seed/key handlers -
-       see UDS_service_table_st in UDS.h for why UDS.c still dispatches those two specially despite
-       them being ordinary rows. The PROGRAMMING row's own on_transition callback
-       (uds_handle_programming_session_notify(), same UDS_config.c) is what actually requests FBL
-       entry, by setting the shared-RAM flag before the reset that transition schedules. */
+    
     app_cantp_instance_init();
     CANTP_init( &app_cantp_instance_s );
 

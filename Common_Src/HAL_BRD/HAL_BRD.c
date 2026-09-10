@@ -8,11 +8,7 @@
 #include "HAL_BRD.h"
 #include "CPS.h"
 
-/* Owned by INTEGRATION_STUBS.c — redeclared here (rather than pulling in the whole
- * INTEGRATION_STUBS.h chain) so the ABS input ISRs can call CPS_tooth_event() directly,
- * with zero indirection/trampoline between the edge and the driver. */
-extern CPS_instance_st cps_instance_s;
-extern CPS_instance_st cps_instance_2_s;
+extern CPS_instance_st cps_crank_instance_s;
 
 #if ( HW_VARIANT == HW_VARIANT_SUPER_PILL )
 STATIC HAL_BRD_nrf_func_type HAL_BRD_nrf_func_p;
@@ -36,7 +32,7 @@ void HAL_BRD_init( void )
 	/* Establish the board's interrupt priority scheme before any NVIC_Init() call.
 	 * Full 4 preemption-priority bits, 0 subpriority bits — every peripheral gets a
 	 * distinct preemption level rather than an undefined tie at the NVIC's reset default.
-	 *   0 (highest) - ABS wheel-speed sensor inputs (EXTI3, EXTI9_5, configured below)
+	 *   0 (highest) - Crank position sensor input (EXTI3, configured below)
 	 *   1           - every other peripheral ISR (see HAL_TIM.c, HAL_CAN.c, HAL_UART.c)
 	 *   lowest      - SysTick (sets its own priority in SYSTICK_init() — see systick_driver.h) */
 	NVIC_PriorityGroupConfig( NVIC_PriorityGroup_4 );
@@ -67,7 +63,43 @@ void HAL_BRD_init( void )
 	GPIO_InitStructure.GPIO_Mode  = GPIO_Mode_IPU;
 	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_10MHz;
 	GPIO_Init( ENC_PORT, &GPIO_InitStructure );
-	
+
+	/* Crank Position Sensor (CPS) tooth input - PB3/EXTI3. Floating, not pulled: actively
+	   driven by the sensor/signal source, so an internal pull would just fight it. Rising edge
+	   only, matching cps_crank_cfg_s.capture_edge (CPS_EDGE_RISING) in INTEGRATION_STUBS.c -
+	   CPS_tooth_event() is called directly from EXTI3_IRQHandler below. Priority 0 (highest,
+	   see this function's priority-scheme comment above) so it preempts every other peripheral
+	   ISR for accurate tooth timestamping - CAN/TIM/UART are all deliberately priority 1.
+
+	   NVIC left DISABLED here on purpose - CPS_tooth_event() no longer NULL/state-guards
+	   instance_p (see its own doc in CPS.c), so the interrupt must not be able to fire before
+	   CPS_init() has finished setting cps_crank_instance_s up, which happens later in main() than
+	   this function runs. EXTI itself (below) is still armed, so a real edge during that window
+	   just sets EXTI->PR and waits - nothing is lost, the CPU just doesn't act on it yet.
+	   HAL_BRD_cps_crank_interrupt_enable() (below) is what actually unmasks it, wired as
+	   cps_crank_cfg_s.interrupt_enable_func_p and called by CPS_init() itself as its last step -
+	   see CPS.h's interrupt_enable_func_p doc. */
+	GPIO_InitStructure.GPIO_Pin   = CPS_CRANK_INPUT_PIN;
+	GPIO_InitStructure.GPIO_Mode  = GPIO_Mode_IN_FLOATING;
+	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_10MHz;
+	GPIO_Init( CPS_CRANK_INPUT_PORT, &GPIO_InitStructure );
+
+	GPIO_EXTILineConfig( CPS_CRANK_INPUT_EXTI_PORT_SRC, CPS_CRANK_INPUT_EXTI_PIN_SRC );
+
+	EXTI_InitTypeDef EXTI_InitStructure;
+	EXTI_InitStructure.EXTI_Line    = CPS_CRANK_INPUT_EXTI_LINE;
+	EXTI_InitStructure.EXTI_Mode    = EXTI_Mode_Interrupt;
+	EXTI_InitStructure.EXTI_Trigger = EXTI_Trigger_Rising;
+	EXTI_InitStructure.EXTI_LineCmd = ENABLE;
+	EXTI_Init( &EXTI_InitStructure );
+
+	NVIC_InitTypeDef NVIC_InitStructure;
+	NVIC_InitStructure.NVIC_IRQChannel                   = EXTI3_IRQn;
+	NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = 0u;
+	NVIC_InitStructure.NVIC_IRQChannelSubPriority        = 0u;
+	NVIC_InitStructure.NVIC_IRQChannelCmd                = DISABLE;
+	NVIC_Init( &NVIC_InitStructure );
+
 #if ( HW_VARIANT == HW_VARIANT_SUPER_PILL )
 	/* Configure the NRF24 CS pin */
 	GPIO_InitStructure.GPIO_Pin = NRF_CS_PIN;
@@ -90,6 +122,26 @@ void HAL_BRD_init( void )
 	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_10MHz;
 	GPIO_Init( ONBOARD_LED_PORT, &GPIO_InitStructure );
 	HAL_BRD_set_onboard_led( OFF );
+}
+
+/*!
+****************************************************************************************************
+*
+*   \brief         Unmasks the crank position sensor's tooth-edge interrupt at the NVIC
+*
+*   \author        MS
+*
+*   \return        none
+*
+*   \note          Wired as cps_crank_cfg_s.interrupt_enable_func_p (INTEGRATION_STUBS.c) and
+*                  called by CPS_init() itself, once, as its last step - see CPS.h's
+*                  interrupt_enable_func_p doc and this file's HAL_BRD_init() comment on why the
+*                  NVIC is left disabled there instead of enabled immediately.
+*
+***************************************************************************************************/
+void HAL_BRD_cps_crank_interrupt_enable( void )
+{
+	NVIC_EnableIRQ( EXTI3_IRQn );
 }
 
 /*!
@@ -402,15 +454,21 @@ void EXTI15_10_IRQHandler(void)
 /*!
 ****************************************************************************************************
 *
-*   \brief         Interrupt Handler ( 3 ) — ABS #1 input pin
+*   \brief         Interrupt Handler ( 3 ) — Crank Position Sensor input pin
 *
 *   \author        MS
 *
 *   \return        none
 *
-*   \note          Calls CPS_tooth_event() directly, by name — no registered callback, no
-*                  dispatch table, no trampoline. This pin is dedicated to ABS #1, so there
-*                  is nothing generic to abstract.
+*   \note          Calls CPS_tooth_event_uniform() directly, by name — no registered callback, no
+*                  dispatch table, no trampoline. This pin is dedicated to the crank sensor, which
+*                  is configured CPS_GAP_NONE (cps_crank_cfg_s, INTEGRATION_STUBS.c), so the
+*                  generic gap-type-dispatching CPS_tooth_event() isn't needed here - see
+*                  CPS_tooth_event_uniform()'s own doc in CPS.c for why that's a real, measured
+*                  saving rather than a premature one. If this pin's sensor config ever changes to
+*                  a missing-tooth wheel (CPS_GAP_1_MISSING/2_MISSING), this call must change back
+*                  to CPS_tooth_event() - CPS_tooth_event_uniform() would silently skip all gap
+*                  detection otherwise.
 *   \note          Direct EXTI->PR access (write-1-to-clear) instead of the SPL's
 *                  EXTI_ClearITPendingBit() — this build has no LTO, so that would be a real,
 *                  avoidable non-inlined function call on the hottest ISR in the system.
@@ -418,30 +476,8 @@ void EXTI15_10_IRQHandler(void)
 ***************************************************************************************************/
 void EXTI3_IRQHandler(void)
 {
-	//EXTI->PR = ABS1_INPUT_EXTI_LINE;   /* write-1-to-clear */
-	//CPS_tooth_event( &cps_instance_s );
-}
-
-/*!
-****************************************************************************************************
-*
-*   \brief         Interrupt Handler ( 5-9, shared vector ) — ABS #2 input pin
-*
-*   \author        MS
-*
-*   \return        none
-*
-*   \note          Calls CPS_tooth_event() directly, same zero-indirection reasoning as
-*                  EXTI3_IRQHandler above. This is nominally a shared vector (lines 5-9),
-*                  but nothing else in this system uses any of those lines, so it is
-*                  unconditionally treated as line 9 — no need to check EXTI->PR for other
-*                  bits that will never be set.
-*
-***************************************************************************************************/
-void EXTI9_5_IRQHandler(void)
-{
-	//EXTI->PR = ABS2_INPUT_EXTI_LINE;   /* write-1-to-clear */
-	//CPS_tooth_event( &cps_instance_2_s );
+	CPS_tooth_event_uniform( &cps_crank_instance_s );
+	EXTI->PR = CPS_CRANK_INPUT_EXTI_LINE;   /* write-1-to-clear */
 }
 
 /****************************** END OF FILE *******************************************************/
