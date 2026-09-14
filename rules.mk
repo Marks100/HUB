@@ -86,4 +86,4 @@ START_TIME               := $(shell date +%s)
 
 # Parallel job count - set explicitly or leave unset to auto-detect via nproc
 #JOBS                     := 1
-JOBS                     ?= $(shell nproc 2>/dev/null || echo 6)
+JOBS                      ?= $(shell nproc 2>/dev/null || echo 6)

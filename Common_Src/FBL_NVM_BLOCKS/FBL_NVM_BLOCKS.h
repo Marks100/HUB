@@ -82,7 +82,7 @@ typedef struct
                                                fbl_uds_handle_write_fingerprint() in FBL/Src/UDS_CFG/
                                                UDS_config.c. Every write of this DID already means a
                                                flash succeeded - see that function's comment. */
-    u32_t last_flash_timestamp_ms;         /* TIME_get_cumulative_run_time_ms_u32() at the moment of
+    u32_t last_flash_timestamp_ms;         /* TIME_get_cumulative_run_time_ms() at the moment of
                                                the last successful write - milliseconds since THIS
                                                boot, NOT a wall-clock time (FBL has no RTC). Reset to
                                                a small number on every power cycle; only meaningful

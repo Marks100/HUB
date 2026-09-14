@@ -501,7 +501,7 @@ u16_t tb_telemetry_sensors_callback( u8_t* buffer_p, u16_t buffer_size )
             u64_t         last_pub = sensor_last_publish_ms_s[idx];
             false_true_et time_ok  = FALSE;
 
-            if( ( last_pub == 0u ) || ( TIME_has_time_elapsed_ms( last_pub, TB_CBK_SENSOR_MIN_PUBLISH_INTERVAL_MS ) == TRUE ) )
+            if( ( last_pub == 0u ) || ( TIME_has_time_elapsed_ms_64( last_pub, TB_CBK_SENSOR_MIN_PUBLISH_INTERVAL_MS ) == TRUE ) )
             {
                 time_ok = TRUE;
             }
@@ -520,7 +520,7 @@ u16_t tb_telemetry_sensors_callback( u8_t* buffer_p, u16_t buffer_size )
                 if( TB_publish_telemetry( (const char*)buffer_p, json_len ) == PASS )
                 {
                     db_p[idx].tb_publish_pending  = FALSE;
-                    sensor_last_publish_ms_s[idx] = TIME_get_cumulative_run_time_ms();
+                    sensor_last_publish_ms_s[idx] = TIME_get_cumulative_run_time_ms_64();
                 }
 
                 next_sensor_s = ( idx + 1u ) % RF_MGR_MAX_SENSORS;

@@ -70,16 +70,24 @@ INTERRUPT SAFE FREERTOS API FUNCTIONS FROM ANY INTERRUPT THAT HAS A HIGHER
 PRIORITY THAN THIS! (higher priorities are lower numeric values. */
 #define configLIBRARY_MAX_SYSCALL_INTERRUPT_PRIORITY ( 1 )
 
-/* Memory allocation related definitions. */
-#define configSUPPORT_STATIC_ALLOCATION             0
-#define configSUPPORT_DYNAMIC_ALLOCATION            1
-#define configTOTAL_HEAP_SIZE                       (( size_t ) 8192 )
-#define configAPPLICATION_ALLOCATED_HEAP            0
+/* Memory allocation related definitions.
+   Dynamic allocation is NOT permitted on this project (no heap, no pvPortMalloc/vPortFree,
+   no heap_x.c vendored at all - see APP/Makefile's FREERTOS_C_SRCS). Every task/queue/semaphore
+   must be created with the xxxCreateStatic() APIs, sized explicitly by the caller.
+   configKERNEL_PROVIDED_STATIC_MEMORY lets the kernel itself supply
+   vApplicationGetIdleTaskMemory()/vApplicationGetTimerTaskMemory() (tasks.c) using
+   configMINIMAL_STACK_SIZE/configTIMER_TASK_STACK_DEPTH below, instead of the application
+   hand-rolling that boilerplate. */
+#define configSUPPORT_STATIC_ALLOCATION             1
+#define configSUPPORT_DYNAMIC_ALLOCATION            0
+#define configKERNEL_PROVIDED_STATIC_MEMORY         1
 
 /* Hook function related definitions. */
 #define configUSE_IDLE_HOOK                         1
 #define configUSE_TICK_HOOK                         1
-#define configUSE_MALLOC_FAILED_HOOK                1
+/* No dynamic allocation (above) means pvPortMalloc() doesn't exist to fail, so there is
+   nothing for this hook to ever be called for. */
+#define configUSE_MALLOC_FAILED_HOOK                0
 #define configCHECK_FOR_STACK_OVERFLOW              2
 #define configUSE_DAEMON_TASK_STARTUP_HOOK          0
 
@@ -88,7 +96,10 @@ PRIORITY THAN THIS! (higher priorities are lower numeric values. */
 #define portCONFIGURE_TIMER_FOR_RUN_TIME_STATS()    
 #define portGET_RUN_TIME_COUNTER_VALUE()            xTaskGetTickCount()
 #define configUSE_TRACE_FACILITY                    0
-#define configUSE_STATS_FORMATTING_FUNCTIONS        1
+/* Must be 0 unless configUSE_TRACE_FACILITY or configGENERATE_RUN_TIME_STATS (above) is 1 -
+   FreeRTOS.h #errors otherwise, since vTaskList()/vTaskGetRunTimeStats() would have nothing
+   to format with both of those off. */
+#define configUSE_STATS_FORMATTING_FUNCTIONS        0
 
 /* Co-routine related definitions. */
 #define configUSE_CO_ROUTINES                       0
@@ -164,10 +175,28 @@ See http://www.FreeRTOS.org/RTOS-Cortex-M3-M4.html. */
 #endif
 
 /* Definitions that map the FreeRTOS port interrupt handlers to their CMSIS
-standard names. */
+standard names. SVC_Handler/PendSV_Handler have no other definition anywhere in this codebase
+(only weak defaults in the MCAL startup files), so aliasing those two is harmless even though
+nothing calls vTaskStartScheduler() yet.
+
+The SysTick alias is commented out ON PURPOSE - DO NOT just uncomment it as-is. Right now
+xCOMMON_MODULES/Src/SYSTICK/SYSTICK.c owns the real SysTick_Handler symbol (it drives
+MODE_MGR_tick, the app's existing periodic heartbeat); aliasing xPortSysTickHandler to the same
+name would be a duplicate definition and fail to link (see git history).
+
+Before FreeRTOS's scheduler is ever started (vTaskStartScheduler()), this MUST be resolved,
+because with no tick handler wired up xTaskGetTickCount() never advances, so
+vTaskDelay()/timeouts/software timers/round-robin time-slicing between equal-priority tasks
+will all silently hang forever. Pick one:
+  - Migrating MODE_MGR_tick to a FreeRTOS task (let FreeRTOS own SysTick, the port's default) -
+    remove/rename SYSTICK.c's SysTick_Handler, then uncomment the line below unchanged.
+  - Pointing FreeRTOS at a different timer instead (override the weak vPortSetupTimerInterrupt()
+    in port.c, leave SYSTICK.c/MODE_MGR_tick untouched) - uncomment the line below but change
+    SysTick_Handler on the right to that timer's own IRQ handler name instead. */
 #define vPortSVCHandler                             SVC_Handler
 #define xPortPendSVHandler                          PendSV_Handler
-#define xPortSysTickHandler                         SysTick_Handler   
+//#define xPortSysTickHandler                         SysTick_Handler
+
 
 
 #endif /* FREERTOS_CONFIG_H */

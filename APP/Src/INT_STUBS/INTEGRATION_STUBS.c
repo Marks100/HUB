@@ -572,7 +572,7 @@ const MSG_SCHED_cfg_st msg_sched_cfg_s =
 {
     .msg_table      = can_msg_table_s,
     .num_msgs       = (u8_t)( sizeof(can_msg_table_s) / sizeof(can_msg_table_s[0u]) ),
-    .get_time_ms_fn = TIME_get_cumulative_run_time_ms,
+    .get_time_ms_fn = TIME_get_cumulative_run_time_ms_64,
 };
 
 /***************************************************************************************************

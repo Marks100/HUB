@@ -507,7 +507,7 @@ void rf_mgr_decode_sensor_frame( u8_t* data_p )
         entry_p->wakeup_interval_sec    = STDC_copy_buffer_msb_first_to_16bit( &data_p[RF_FRAME_OFFSET_WAKEUP_INTERVAL] );
         entry_p->runtime_sec            = STDC_copy_buffer_msb_first_to_32bit( &data_p[RF_FRAME_OFFSET_RUNTIME] );
         entry_p->battery_flags          = data_p[RF_FRAME_OFFSET_BATT_FLAGS];
-        entry_p->last_rx_time_ms        = TIME_get_cumulative_run_time_ms();
+        entry_p->last_rx_time_ms        = TIME_get_cumulative_run_time_ms_64();
         entry_p->rx_frame_count         += 1u;
         entry_p->comms_lost             = FALSE;
         entry_p->tb_publish_pending     = TRUE;
@@ -534,7 +534,7 @@ void rf_mgr_check_comms_lost( void )
     {
         if( rf_mgr_sensor_db_s[i].valid == TRUE )
         {
-            if( TIME_has_time_elapsed_ms( rf_mgr_sensor_db_s[i].last_rx_time_ms, RF_MGR_COMMS_LOST_TIMEOUT_SECS * MSECS_PER_SEC ) == TRUE )
+            if( TIME_has_time_elapsed_ms_64( rf_mgr_sensor_db_s[i].last_rx_time_ms, RF_MGR_COMMS_LOST_TIMEOUT_SECS * MSECS_PER_SEC ) == TRUE )
             {
                 rf_mgr_sensor_db_s[i].comms_lost = TRUE;
             }

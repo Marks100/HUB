@@ -1231,11 +1231,13 @@ STATIC void menu_nav_draw_sensors( void )
         s16_t       temp_frac  = (s16_t)( node_p->temperature_centidegC % 100 );
         s16_t       hum_whole  = (s16_t)( node_p->humidity_tenths_pct / 10 );
         s16_t       hum_frac   = (s16_t)( node_p->humidity_tenths_pct % 10 );
-        /* Cast to u32_t before dividing, not after - dividing while still u64_t pulls the ~700-byte
-           __aeabi_uldivmod helper into the link for this one call site. Safe to truncate: comms_lost
-           already trips after RF_MGR_COMMS_LOST_TIMEOUT_SECS (30 minutes), so this age is never
-           anywhere near the ~49.7 days a 32-bit millisecond difference can hold before wrapping. */
-        u32_t       age_secs   = (u32_t)( TIME_get_cumulative_run_time_ms() - node_p->last_rx_time_ms ) / MSECS_PER_SEC;
+        /* Truncate each operand to u32_t before subtracting, not the result after - mathematically
+           identical in modular arithmetic ((a-b) mod 2^32 == ((a mod 2^32)-(b mod 2^32)) mod 2^32),
+           but avoids a genuine 64-bit subtract (and the division that follows staying 32-bit avoids
+           pulling in the ~700-byte __aeabi_uldivmod helper for this one call site). Safe regardless
+           of magnitude: comms_lost already trips after RF_MGR_COMMS_LOST_TIMEOUT_SECS (30 minutes),
+           so this age is never anywhere near the ~49.7 days a 32-bit ms difference can hold. */
+        u32_t       age_secs   = (u32_t)( TIME_get_cumulative_run_time_ms() - (u32_t)node_p->last_rx_time_ms ) / MSECS_PER_SEC;
         const char* batt_str;
 
         temp_frac = ( temp_frac < 0 ) ? (s16_t)-temp_frac : temp_frac;

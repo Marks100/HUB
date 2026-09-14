@@ -225,7 +225,7 @@ STATIC u8_t fbl_uds_handle_request_seed( u16_t subfunc, u8_t* data_p, u16_t* len
         /* UDS.c arms UDS_security_seed_was_requested() itself once this returns
            UDS_RC_POSITIVE_RESPONSE (see uds_process_security_access()'s comment in UDS.c) - nothing
            to record here. */
-        fbl_last_seed_s = (u32_t)TIME_get_cumulative_run_time_ms() * FBL_SECURITY_SEED_MULTIPLIER;
+        fbl_last_seed_s = TIME_get_cumulative_run_time_ms() * FBL_SECURITY_SEED_MULTIPLIER;
 
         STDC_copy_32bit_to_buffer_msb_first( data_p, fbl_last_seed_s );
         *len_p = 4u;
@@ -310,7 +310,7 @@ STATIC u8_t fbl_uds_handle_write_fingerprint( u16_t subfunc, u8_t* data_p, u16_t
         fbl_fingerprint_g.len = (u8_t)fingerprint_len;
         STDC_memcpy( fbl_fingerprint_g.data, data_p, (u8_t)fingerprint_len );
         fbl_fingerprint_g.flash_count++;
-        fbl_fingerprint_g.last_flash_timestamp_ms         = TIME_get_cumulative_run_time_ms_u32();
+        fbl_fingerprint_g.last_flash_timestamp_ms         = TIME_get_cumulative_run_time_ms();
         fbl_fingerprint_g.boot_count_at_flash             = fbl_boot_count_g.count;
         fbl_fingerprint_g.download_attempt_count_at_flash = fbl_download_attempt_count_g.count;
         NVM_GEN2_flush_block( FBL_FINGERPRINT_BLOCK_ID );

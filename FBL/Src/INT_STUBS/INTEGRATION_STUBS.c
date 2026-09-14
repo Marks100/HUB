@@ -475,7 +475,7 @@ const fbl_config_st fbl_config_s =
     /* Runtime function pointers */
     .wdg_kick_func_p           = NULL_P,
     .comms_tick_func_p         = fbl_comms_tick,
-    .time_get_tick_func_p      = TIME_get_cumulative_run_time_ms,
+    .time_get_tick_func_p      = TIME_get_cumulative_run_time_ms_64,
     .flash_erase_sector_func_p = FLS_STM32F1_erase_sector,
     .flash_write_data_func_p   = FLS_STM32F1_write_data,
     .crc_calculate_func_p      = CHKSUM_calc_hw_crc32,

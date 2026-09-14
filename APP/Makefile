@@ -162,27 +162,57 @@ MCAL_INCLUDES                := $(addprefix -I ,$(shell find $(MCAL_SRC_DIR) $(M
                                 -I ../xCOMMON_MODULES/Src/MCAL
 
 ####################################################################################################
+# FreeRTOS Sources (vendored copy, xCOMMON_MODULES/Src/FREERTOS - shared tree, multiple ports
+# vendored so it covers every MCU this repo targets (ARM_CM3/STM32F103, ARM_CM4F/S32K144); each
+# consumer selects only the port it needs via FREERTOS_PORT_DIR below, same pattern as
+# MCAL_SRC_DIR selecting stm32f10x out of the shared MCAL tree. Only APP currently builds it -
+# BM/FBL stay bare-metal/superloop and never reference FREERTOS_C_SRCS/FREERTOS_INCLUDES, so
+# this costs them nothing; their own Makefiles use curated file lists, not a blanket find, so
+# they can never accidentally sweep these files in either.
+#
+# NOT a git submodule: pruned down to only the kernel core, the two ports above, and heap_4,
+# rather than tracking upstream FreeRTOS-Kernel's full tree, which bundles ports/examples for
+# architectures nothing here will ever build (AARCH64, AVR32, NiosII, Xtensa, ...). A submodule
+# can't hold a pruned subset of upstream - re-syncing it would just restore everything this
+# deliberately removed. To update: pull in new versions of just these files by hand.
+####################################################################################################
+FREERTOS_DIR                  := ../xCOMMON_MODULES/Src/FREERTOS
+FREERTOS_PORT_DIR             := $(FREERTOS_DIR)/portable/GCC/ARM_CM3
+# No heap_x.c: this project doesn't permit dynamic allocation (configSUPPORT_STATIC_ALLOCATION/
+# configSUPPORT_DYNAMIC_ALLOCATION in FreeRTOSConfig.h), so there's no pvPortMalloc()/vPortFree()
+# implementation to link - nothing calls them. stream_buffer.c is also removed from the vendored
+# tree (not just excluded here) since it's unused - see note above on hand-pruning. A blanket
+# find isn't needed (and would be wrong) here - see note above.
+FREERTOS_C_SRCS               := $(wildcard $(FREERTOS_DIR)/*.c) \
+                                  $(FREERTOS_PORT_DIR)/port.c
+FREERTOS_INCLUDES             := -I $(FREERTOS_DIR)/include -I $(FREERTOS_PORT_DIR)
+
+####################################################################################################
 # Source File Discovery
 ####################################################################################################
 APP_C_SRCS                   := $(shell find $(APP_SRC_DIRS) -type f -name '*.c')
 APP_S_SRCS                   := $(shell find $(APP_SRC_DIRS) -type f -name '*.S')
-COMMON_SRCS                  := $(shell find $(COMMON_SRC_DIRS) -type f -name '*.c' ! -path '*/test/*' ! -path '*/MCAL/*' ! -path '*/CRYPTO/*' ! -path '*/xCOMMON_MODULES/cfg/*')
+COMMON_SRCS                  := $(shell find $(COMMON_SRC_DIRS) -type f -name '*.c' ! -path '*/test/*' ! -path '*/MCAL/*' ! -path '*/CRYPTO/*' ! -path '*/xCOMMON_MODULES/cfg/*' ! -path '*/FREERTOS/*')
 
 # Include paths - add "-I" prefix to all discovered directories
-# Exclude all MCAL subdirs from the broad search; MCAL headers come exclusively from MCAL_INCLUDES
-INCLUDES                     := $(addprefix -I ,$(shell find $(APP_SRC_DIRS) $(COMMON_SRC_DIRS) -type d ! -path '*/MCAL/*')) \
-                                 $(MCAL_INCLUDES)
+# Exclude MCAL and FREERTOS subdirs from the broad search; their headers come exclusively from
+# MCAL_INCLUDES/FREERTOS_INCLUDES (a blanket -I of portable/ would pull in every other port's
+# headers too, some of which shadow each other by filename across architectures)
+INCLUDES                     := $(addprefix -I ,$(shell find $(APP_SRC_DIRS) $(COMMON_SRC_DIRS) -type d ! -path '*/MCAL/*' ! -path '*/FREERTOS/*')) \
+                                 $(MCAL_INCLUDES) $(FREERTOS_INCLUDES)
 
 ####################################################################################################
 # Object File Generation
 ####################################################################################################
-VPATH                        := $(dir $(APP_C_SRCS) $(APP_S_SRCS) $(COMMON_SRCS) $(MCAL_C_SRCS) $(MCAL_S_SRCS))
+VPATH                        := $(dir $(APP_C_SRCS) $(APP_S_SRCS) $(COMMON_SRCS) $(MCAL_C_SRCS) $(MCAL_S_SRCS) $(FREERTOS_C_SRCS))
 APP_C_OBJS                   := $(patsubst %.c, $(APP_OBJ_DIR)/%.o, $(notdir $(APP_C_SRCS)))
 APP_S_OBJS                   := $(patsubst %.S, $(APP_OBJ_DIR)/%.o, $(notdir $(APP_S_SRCS)))
 COMMON_OBJS                  := $(patsubst %.c, $(COMMON_OBJ_DIR)/%.o, $(notdir $(COMMON_SRCS)))
 MCAL_C_OBJS                  := $(patsubst %.c, $(MCAL_OBJ_DIR)/%.o, $(notdir $(MCAL_C_SRCS)))
 MCAL_S_OBJS                  := $(patsubst %.S, $(MCAL_OBJ_DIR)/%.o, $(notdir $(MCAL_S_SRCS)))
-TARGET_DEPS                  := $(APP_C_OBJS:.o=.d) $(COMMON_OBJS:.o=.d) $(MCAL_C_OBJS:.o=.d)
+FREERTOS_OBJ_DIR             := $(BUILD_OUT_DIR)/obj/freertos
+FREERTOS_C_OBJS              := $(patsubst %.c, $(FREERTOS_OBJ_DIR)/%.o, $(notdir $(FREERTOS_C_SRCS)))
+TARGET_DEPS                  := $(APP_C_OBJS:.o=.d) $(COMMON_OBJS:.o=.d) $(MCAL_C_OBJS:.o=.d) $(FREERTOS_C_OBJS:.o=.d)
 
 ####################################################################################################
 # Compilation Settings
@@ -289,9 +319,13 @@ $(MCAL_OBJ_DIR)/%.o: %.S
 	@echo "--> Compiling $(notdir $@)..."
 	@$(CC) $(CFLAGS) $(MCAL_OPTIMISATION) $(INCLUDES) -c $< -o $@ 2>&1 | tee -a $(APP_COMPILER_OUTPUT) >&2
 
+$(FREERTOS_OBJ_DIR)/%.o: %.c
+	@echo "--> Compiling $(notdir $@)..."
+	@$(CC) $(CFLAGS) $(COMMON_OPTIMISATION) $(INCLUDES) -c $< -o $@ 2>&1 | tee -a $(APP_COMPILER_OUTPUT) >&2
+
 $(APP_OBJ_DIR):
 	@echo "--> Creating build directories..."
-	@mkdir -p $(APP_OBJ_DIR) $(COMMON_OBJ_DIR) $(MCAL_OBJ_DIR)
+	@mkdir -p $(APP_OBJ_DIR) $(COMMON_OBJ_DIR) $(MCAL_OBJ_DIR) $(FREERTOS_OBJ_DIR)
 
 # Print build banner before any compilation starts
 build_banner:
@@ -304,10 +338,10 @@ build_banner:
 $(APP_ELF_FILE): build_banner autoversion $(APP_OBJ_DIR) #$(BearSSL_LIB)
 	@mkdir -p $(BUILD_OUT_DIR)
 	@echo Compiler warnings generated by $(CC) for $(PROJECT_NAME) > $(APP_COMPILER_OUTPUT)
-	@$(MAKE) -j$(JOBS) $(MAKE_FLAGS) $(APP_C_OBJS) $(APP_S_OBJS) $(COMMON_OBJS) $(MCAL_C_OBJS) $(MCAL_S_OBJS)
+	@$(MAKE) -j$(JOBS) $(MAKE_FLAGS) $(APP_C_OBJS) $(APP_S_OBJS) $(COMMON_OBJS) $(MCAL_C_OBJS) $(MCAL_S_OBJS) $(FREERTOS_C_OBJS)
 	@echo ""
 	@echo "--> Linking Object Files..."
-	@$(LD) $(LDFLAGS) $(APP_C_OBJS) $(APP_S_OBJS) $(COMMON_OBJS) $(MCAL_C_OBJS) $(MCAL_S_OBJS) $(BearSSL_LIB)
+	@$(LD) $(LDFLAGS) $(APP_C_OBJS) $(APP_S_OBJS) $(COMMON_OBJS) $(MCAL_C_OBJS) $(MCAL_S_OBJS) $(FREERTOS_C_OBJS) $(BearSSL_LIB)
 	@$(OBJCOPY) -O binary $(APP_ELF_FILE) $(BUILD_OUT_DIR)/$(PROJECT_NAME).bin
 	@$(OBJCOPY) -O ihex $(APP_ELF_FILE) $(APP_HEX_FILE)
 	@$(SREC) $(APP_HEX_FILE) -Intel -o $(BUILD_OUT_DIR)/$(PROJECT_NAME).srec -Motorola
@@ -323,7 +357,7 @@ $(APP_ELF_FILE): build_banner autoversion $(APP_OBJ_DIR) #$(BearSSL_LIB)
 	@echo "--> Output files generated in: $(realpath $(BUILD_OUT_DIR))"
 	@echo "   $(notdir $(APP_ELF_FILE))   (executable)"
 	@echo "   $(notdir $(APP_HEX_FILE))   (Intel HEX - raw)"
-	@echo "   $(notdir $(APP_HEX_WITH_CRC_FILE))   (Intel HEX with CRC)"
+	@echo "   $(notdir $(APP_HEX_WITH_CRC_FILE)) (Intel HEX with CRC)"
 	@echo "   $(notdir $(APP_HEX_SIGNED_FILE))   (Intel HEX signed - FLASH THIS!)"
 	@echo "   $(notdir $(APP_S19_SIGNED_FILE))   (Motorola S19 signed - FLASH THIS!)"
 	@echo "   $(notdir $(APP_BIN_FILE))   (binary)"
