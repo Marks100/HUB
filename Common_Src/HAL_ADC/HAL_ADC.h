@@ -35,6 +35,7 @@ u16_t HAL_ADC_measure_vref_internal( void );
 u16_t HAL_ADC_measure_steering_input( void );
 u16_t HAL_ADC_measure_steering_trim( void );
 u16_t HAL_ADC_measure_throttle_input( void );
+u16_t HAL_ADC_measure_throttle_input_2( void );
 
 #endif
 

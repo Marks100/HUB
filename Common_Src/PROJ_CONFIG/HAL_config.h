@@ -93,6 +93,7 @@
 #define ADC_STEERING_CHANNEL        ADC_Channel_4   /* PA4 */
 #define ADC_STEERING_TRIM_CHANNEL   ADC_Channel_5   /* PA5 -- placeholder, verify */
 #define ADC_THROTTLE_CHANNEL        ADC_Channel_6   /* PA6 -- placeholder, verify */
+#define ADC_THROTTLE_CHANNEL_2      ADC_Channel_7   /* PA7 -- placeholder, verify - APS channel 2 */
 
 /* TJA1051 CAN transceiver */
 #define TJA1051_EN_PORT             GPIOB

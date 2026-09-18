@@ -23,7 +23,6 @@
 #include "RF_MGR.h"
 #include "PDUR.h"
 #include "MSG_SCHED.h"
-#include "CPS.h"
 #include "CANTP.h"
 #include "UDS.h"
 
@@ -51,10 +50,7 @@ extern const PDUR_route_st           pdur_routing_table_s[];
 extern const u16_t                   pdur_num_routes_s;
 extern       CANTP_instance_st        app_cantp_instance_s;
 void app_cantp_instance_init( void );
-void app_uds_tx( UDS_route_id_t route_id, u8_t* data_p, u16_t len );  /* UDS_init_cfg_st.tp_send_func_p - see main.c */
 void app_can_rx_wrapper( u32_t id, u8_t id_type, u8_t* data_p, u8_t dlc );
 extern const MSG_SCHED_cfg_st        msg_sched_cfg_s;
-extern       CPS_instance_st         cps_crank_instance_s;
-extern const CPS_cfg_st              cps_crank_cfg_s;
 
 #endif /* INTEGRATION_STUBS_H */

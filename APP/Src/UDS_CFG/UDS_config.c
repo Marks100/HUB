@@ -328,9 +328,9 @@ STATIC u8_t uds_handle_check_programming_preconditions( u16_t subfunc, u8_t* dat
 *   \brief         0x28 - CommunicationControl
 *   \details       SLP3 §2.2.5: gates non-diagnostic bus traffic during the Pre/Post-Programming
 *                  Steps. This product's only non-diagnostic TX is MSG_SCHED's cyclic sensor
-*                  telemetry and heartbeat frames (see APP_HEARTBEAT_CAN_ID/CAN_SENSOR_BASE_ID in
-*                  INT_STUBS/INTEGRATION_STUBS.c) - there is no separate non-diagnostic RX path to
-*                  gate, so $01 (enable RX, disable TX) and $03 (disable RX and TX) are treated the
+*                  telemetry (see CAN_SENSOR_BASE_ID in INT_STUBS/INTEGRATION_STUBS.c) - there is
+*                  no separate non-diagnostic RX path to gate, so $01 (enable RX, disable TX) and
+*                  $03 (disable RX and TX) are treated the
 *                  same: suspend MSG_SCHED. $00 resumes it. CommunicationType (data_p[0], always
 *                  $01 Normal Communication for this product) is not otherwise checked. subfunc
 *                  arrives already stripped of suppressPosRspMsgIndicationBit - see

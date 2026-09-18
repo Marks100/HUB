@@ -32,6 +32,7 @@
 #include "TJA1051.h"
 #include "HAL_CAN.h"
 #include "CPS.h"
+#include "VEHICLE_SIM_config.h"
 #include "VER.h"
 #include "UDS_config.h"
 #include "SHARED_RAM.h"
@@ -76,6 +77,8 @@ void app_main( void )
     HAL_I2C1_init();
     CHKSUM_init_hw_crc( &hw_crc_cfg_s );
     CPS_init( &cps_crank_instance_s, &cps_crank_cfg_s, SystemCoreClock );
+    APS_init( &aps_pedal_instance_s, &aps_pedal_cfg_s );
+    ENGINE_SIM_init( &engine_sim_instance_s, &engine_sim_cfg_s );
     UID_init();
     RNG_init( UID_get_unique_id_32() );
 
@@ -98,13 +101,17 @@ void app_main( void )
     TJA1051_init( &tja1051_func_s, &tja1051_cfg_s );
     PDUR_init( pdur_routing_table_s, pdur_num_routes_s );
     MSG_SCHED_init( &msg_sched_cfg_s );
-    
+
+    TCU_init( &tcu_cfg_s );
+    GKT_SHIFTER_init( &gkt_shifter_cfg_s );
+    MQB_CLUSTER_init( &mqb_cluster_cfg_s );
+
     app_cantp_instance_init();
     CANTP_init( &app_cantp_instance_s );
 
     const UDS_init_cfg_st app_uds_init_cfg_s =
     {
-        .tp_send_func_p          = app_uds_tx,
+        .tp_send_func_p          = PDUR_tx,
         .message_received_notify = NULL_P,
         .service_table_p         = UDS_get_service_table(),
         .service_table_size      = UDS_get_service_table_size(),

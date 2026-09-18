@@ -12,6 +12,7 @@
 #include "CANTP.h"
 #include "UDS.h"
 #include "CPS.h"
+#include "VEHICLE_SIM_config.h"
 
 /***************************************************************************************************
 **                              Data declarations and definitions                                 **
@@ -345,6 +346,15 @@ void mode_mgr_action_schedule_normal( void )
 		RF_MGR_tick();
 		MSG_SCHED_tick();
 		CPS_tick( &cps_crank_instance_s );
+		APS_tick( &aps_pedal_instance_s );
+		/* TCU decides the gear (using last cycle's engine RPM feedback) before ENGINE_SIM computes
+		   this cycle's RPM from it - see tcu_cfg_s/engine_sim_cfg_s's comments, INTEGRATION_STUBS.c. */
+		TCU_tick();
+		app_tcu_gear_state_local_relay();
+		ENGINE_SIM_tick( &engine_sim_instance_s );
+		app_engine_sim_cluster_relay();
+		GKT_SHIFTER_tick();
+		MQB_CLUSTER_tick();
 	}
 
 	if( mode_mgr_check_time_interval( 50u ) == TRUE )

@@ -133,15 +133,39 @@ void HAL_BRD_init( void )
 *
 *   \return        none
 *
-*   \note          Wired as cps_crank_cfg_s.interrupt_enable_func_p (INTEGRATION_STUBS.c) and
-*                  called by CPS_init() itself, once, as its last step - see CPS.h's
-*                  interrupt_enable_func_p doc and this file's HAL_BRD_init() comment on why the
-*                  NVIC is left disabled there instead of enabled immediately.
+*   \note          Wired as cps_crank_cfg_s.interrupt_enable_func_p AND .critical_exit_func_p
+*                  (INTEGRATION_STUBS.c) - called once by CPS_init() itself as its last step (see
+*                  CPS.h's interrupt_enable_func_p doc and this file's HAL_BRD_init() comment on
+*                  why the NVIC is left disabled there instead of enabled immediately), and
+*                  repeatedly thereafter to end each critical section CPS_tick() opens with
+*                  HAL_BRD_cps_crank_interrupt_disable() around its ring-buffer read.
 *
 ***************************************************************************************************/
 void HAL_BRD_cps_crank_interrupt_enable( void )
 {
 	NVIC_EnableIRQ( EXTI3_IRQn );
+}
+
+/*!
+****************************************************************************************************
+*
+*   \brief         Masks the crank position sensor's tooth-edge interrupt at the NVIC
+*
+*   \author        MS
+*
+*   \return        none
+*
+*   \note          Wired as cps_crank_cfg_s.critical_enter_func_p (INTEGRATION_STUBS.c) - narrower
+*                  than a global __disable_irq(), so it doesn't add latency to any other interrupt
+*                  in the system. See CPS.h's critical_enter_func_p/critical_exit_func_p doc: without
+*                  this, a tooth edge landing mid-average (very likely at high input frequencies,
+*                  since CPS_tooth_event() runs at priority 0 and can preempt CPS_tick() at any
+*                  point) corrupts the RPM average with a torn mix of old/new samples.
+*
+***************************************************************************************************/
+void HAL_BRD_cps_crank_interrupt_disable( void )
+{
+	NVIC_DisableIRQ( EXTI3_IRQn );
 }
 
 /*!

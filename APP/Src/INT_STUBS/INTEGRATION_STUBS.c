@@ -1,13 +1,24 @@
 /***************************************************************************************************
 **                              INTEGRATION_STUBS                                                 **
+**  Generic board/peripheral wiring for this project. The bench vehicle-simulation stack (APS      **
+**  pedal, CPS crank sensor, TCU/GKT_SHIFTER/MQB_CLUSTER gearbox+dash, ENGINE_SIM) lives in its     **
+**  own file - see APP/Src/VEHICLE_SIM_CFG/VEHICLE_SIM_config.c - split out from here since it's a  **
+**  cohesive concern of its own, distinct from plain HAL/peripheral bring-up. The one piece that    **
+**  stayed is pdur_routing_table_s's APP_PDU_GKT_LEVER_RX route below - splitting a single row out  **
+**  of that array (which also carries the unrelated sensor/UDS routes) would fragment one cohesive  **
+**  table across two files for no real gain, so only its handler (app_pdur_gkt_lever_rx(), non-     **
+**  STATIC) lives in VEHICLE_SIM_config.c instead.                                                   **
 ***************************************************************************************************/
 #include "INTEGRATION_STUBS.h"
+#include "VEHICLE_SIM_config.h"   /* app_pdur_gkt_lever_rx() - see this file's own header comment */
 #include "HAL_BRD.h"
 #include "HAL_CAN.h"
 #include "PDUR.h"
 #include "MSG_SCHED.h"
 #include "WIFI.h"
-#include "HAL_ADC.h"
+#include "GKT_SHIFTER.h"    /* GKT_SHIFTER_STATE_CAN_ID, used directly in pdur_routing_table_s below
+                               (also reachable via VEHICLE_SIM_config.h, but this file uses the
+                               symbol itself so it earns its own include) */
 #include "HAL_TIM.h"
 #include "HAL_SPI.h"
 #include "HAL_I2C.h"
@@ -19,7 +30,6 @@
 #include "nvic_driver.h"
 #include "TB_CBK.h"
 #include "TJA1051.h"
-#include "CPS.h"
 #include "HMI_SH1106.h"
 #include "MENU_NAV.h"
 #include "HEADER.h"
@@ -117,7 +127,7 @@ const HMI_SH1106_cfg_st hmi_sh1106_cfg_s =
 {
     /* Display - HAL_I2C_write_registers matches i2c_write_func_p's signature exactly
        (dev_addr, reg_addr, data_p, len -> pass_fail_et), so no adapter is needed */
-    .i2c_write_func_p       = HAL_I2C_write_registers,
+    .i2c_write_func_p           = HAL_I2C_write_registers,
     .i2c_address            = SH1106_I2C_ADDR_DEFAULT,
     .contrast               = SH1106_DEFAULT_CONTRAST,
     /* Panel is mounted rotated 180 degrees on this board - flipping both axes together rotates
@@ -366,11 +376,6 @@ STATIC pass_fail_et pdur_hal_can_tx( u32_t id, PDUR_medium_et medium, u8_t* data
 #define CAN_SENSOR_PDUR_ENTRY( n ) \
     [APP_PDU_SENSOR_BASE + (n)] = { .tx_id = ( CAN_SENSOR_BASE_ID + (u32_t)(n) ), .lower_layer_tx_func = pdur_hal_can_tx },
 
-/* Cyclic hub heartbeat/status frame - byte0 rolling counter (proves the frame is still live,
-   not just present), byte1 current MODE_MGR mode, byte2 current RF_MGR link state. */
-#define APP_HEARTBEAT_CAN_ID    ( 0x200u )
-#define APP_HEARTBEAT_PERIOD_MS ( 1000u )
-
 /* UDS diagnostics over CAN-TP - functional (0x700/0x600) and physical (0x7E0/0x7E8) request/
    response pair, same IDs FBL uses (FBL/Src/UDS_CFG/UDS_config.h) - safe to reuse rather than
    needing a second set, since BM only ever runs one of APP/FBL at a time, never both, so a tester
@@ -381,44 +386,24 @@ STATIC pass_fail_et pdur_hal_can_tx( u32_t id, PDUR_medium_et medium, u8_t* data
 #define APP_CAN_TX_ID        ( 0x7E8u )
 
 /* APP's own logical PDU IDs - these, not the raw CAN IDs above, are what pdur_routing_table_s's
-   array position means and what app_uds_tx()/CAN_SENSOR_MSG_ENTRY dispatch on. Values double as
+   array position means and what PDUR_tx()/CAN_SENSOR_MSG_ENTRY dispatch on. Values double as
    array indices (designated-index initializers pin each route to its enum value explicitly, so
    reordering this enum without reordering the table - or vice versa - is a compile error from a
    duplicate/out-of-range index, not a silent mismatch). */
 typedef enum
 {
-    APP_PDU_SENSOR_BASE    = 0u,                    /* sensor slots occupy +0 .. +(APP_NUM_SENSOR_SLOTS-1) */
-    APP_PDU_HEARTBEAT      = APP_PDU_SENSOR_BASE + APP_NUM_SENSOR_SLOTS,
-    APP_PDU_UDS_FUNCTIONAL,   /* rx: APP_UDS_REQUEST_ID (0x700) / tx: APP_UDS_RESPONSE_ID (0x600) */
-    APP_PDU_UDS_PHYSICAL,     /* rx: APP_CAN_RX_ID (0x7E0) / tx: APP_CAN_TX_ID (0x7E8) */
+    APP_PDU_SENSOR_BASE          = 0u,                    /* sensor slots occupy +0 .. +(APP_NUM_SENSOR_SLOTS-1) */
+    APP_PDU_GKT_LEVER_RX         = APP_PDU_SENSOR_BASE + APP_NUM_SENSOR_SLOTS,   /* rx-only: GKT_SHIFTER_STATE_CAN_ID (0x197) -> TCU */
+    APP_PDU_UDS_FUNCTIONAL,      /* rx: APP_UDS_REQUEST_ID (0x700) / tx: APP_UDS_RESPONSE_ID (0x600) */
+    APP_PDU_UDS_PHYSICAL,        /* rx: APP_CAN_RX_ID (0x7E0) / tx: APP_CAN_TX_ID (0x7E8) */
     APP_PDU_NUM_ROUTES
 } app_pdu_id_et;
-
-/* TEMP DEBUG TRACE - remove once the CAN-flash hang is found. Read this one value after a hang
-   (e.g. Trace32 Var.View app_can_trace_g, or Data.dump &app_can_trace_g) to see how far the CAN
-   RX chain got: 1 = ISR wrapper entered, 2 = CANTP_rx_frame_received returned (ISR side done),
-   3 = CANTP handed a reassembled frame to PDUR, 4 = PDUR_rx_indication returned, 5 = UDS sent a
-   response. If it stops at 1, the hang is inside CANTP_rx_frame_received itself (still in ISR
-   context). If it stops at 2, the hang is in CANTP's own tick-driven reassembly (main loop, not
-   the ISR) before PDUR ever sees it - despite the ISR context evidence, since that would mean the
-   ISR itself returned fine. */
-volatile u32_t app_can_trace_g = 0u;
 
 /* Not STATIC - passed to HAL_CAN_set_rx_callback() from main.c, the same way MODE_MGR_tick
    (MODE_MGR.h) is referenced by name from systick_cfg_s below, just in the opposite direction. */
 void app_can_rx_wrapper( u32_t id, u8_t id_type, u8_t* data_p, u8_t dlc )
 {
-    app_can_trace_g = 1u;
     CANTP_rx_frame_received( &app_cantp_instance_s, id, (CANTP_id_type_et)id_type, data_p, (u16_t)dlc );
-    app_can_trace_g = 2u;
-}
-
-STATIC void app_cantp_send_wrapper( CANTP_can_msg_format_st* msg_p )
-{
-    if( msg_p != NULL_P )
-    {
-        (void)HAL_CAN_send_frame( msg_p->Id, (u8_t)msg_p->id_type, msg_p->Data, msg_p->DLC );
-    }
 }
 
 /* CANTP_tx_request()'s message_sent_noti_p shape - fires once a queued transfer genuinely finishes
@@ -448,31 +433,27 @@ STATIC pass_fail_et app_cantp_tx_request_wrapper( u32_t id, PDUR_medium_et mediu
    accepts one (see PDUR_pdu_id_t's comment in PDUR.h), so this resolves it to a logical route via
    PDUR_lookup_rx_pdu_id() first. STANDARD_ID/EXTENDED_ID (0/1) line up numerically with
    PDUR_MEDIUM_CAN_STD/_CAN_EXT (0/1), so the cast carries the right value without a translation
-   table. A frame CANTP hands up always matches one of pdur_routing_table_s's two UDS rx_ids (that's
-   the only reason CANTP called back at all), so the lookup can't genuinely miss here - but
-   PDUR_rx_indication() bounds-checks anyway, so a miss would just no-op rather than misbehave. */
+   table.
+   CANTP calls this for every reassembled TP session AND, via cantp_handle_rx_normal_frame(), for
+   every other received frame that isn't part of a TP session at all (CANTP.c) - so this genuinely
+   sees the whole bus, not just the two UDS routes. A frame whose id isn't in pdur_routing_table_s
+   makes PDUR_lookup_rx_pdu_id() return PDUR_INVALID_PDU_ID, and PDUR_rx_indication() bounds-checks
+   and no-ops rather than misbehaving - that's the normal case for most bus traffic, not a fallback
+   for something that "can't genuinely happen". */
 STATIC void app_cantp_rx_indication_wrapper( u32_t id, CANTP_id_type_et id_type, u8_t* data_p, u16_t len )
 {
     PDUR_pdu_id_t pdu_id;
 
-    app_can_trace_g = 3u;
     pdu_id = PDUR_lookup_rx_pdu_id( id, (PDUR_medium_et)id_type );
     (void)PDUR_rx_indication( pdu_id, data_p, len );
-    app_can_trace_g = 4u;
 }
 
-/* Not STATIC: this is UDS_init_cfg_st.tp_send_func_p, assigned directly in main.c's
-   app_uds_init_cfg_s (see INTEGRATION_STUBS.h's prototype) rather than through a UDS_func_p_st
-   wrapper object - see UDS_init_cfg_st's comment in UDS.h for why that wrapper went away. route_id
-   is whatever UDS_rx_indication() was called with for the request this response answers (UDS.c
-   just stores and returns it, see UDS_ctrl_st.req_route_id), so a request received via
-   APP_PDU_UDS_PHYSICAL gets its reply sent via APP_PDU_UDS_PHYSICAL too, not a single fixed route
-   as before. */
-void app_uds_tx( UDS_route_id_t route_id, u8_t* data_p, u16_t len )
-{
-    app_can_trace_g = 5u;
-    (void)PDUR_tx( (PDUR_pdu_id_t)route_id, data_p, len );
-}
+/* UDS_init_cfg_st.tp_send_func_p is assigned PDUR_tx directly in main.c's app_uds_init_cfg_s -
+   PDUR_pdu_id_t and UDS_route_id_t are both u16_t and PDUR_tx's pass_fail_et return now matches
+   the typedef exactly (see UDS_init_cfg_st's comment in UDS.h), so no adapter is needed here.
+   route_id is whatever UDS_rx_indication() was called with for the request this response answers
+   (UDS.c just stores and returns it, see UDS_ctrl_st.req_route_id), so a request received via
+   APP_PDU_UDS_PHYSICAL gets its reply sent via APP_PDU_UDS_PHYSICAL too, not a single fixed route. */
 
 /* Deliberately NOT a designated initializer: CANTP_instance_st embeds the RX/TX queues and TP
    session arrays (~1.7KB, almost entirely zero) alongside these config fields. Giving the struct
@@ -486,7 +467,7 @@ CANTP_instance_st app_cantp_instance_s;
 void app_cantp_instance_init( void )
 {
     app_cantp_instance_s.CANTP_message_rx_func_p = app_cantp_rx_indication_wrapper;
-    app_cantp_instance_s.tx_func_p               = app_cantp_send_wrapper;
+    app_cantp_instance_s.tx_func_p               = HAL_CAN_send_frame;
     app_cantp_instance_s.tp_buffer               = pdur_buffer_s;
     app_cantp_instance_s.tp_ids[0].req_id        = APP_UDS_REQUEST_ID;
     app_cantp_instance_s.tp_ids[0].resp_id       = APP_UDS_RESPONSE_ID;
@@ -506,15 +487,18 @@ void app_cantp_instance_init( void )
    PROGRAMMING row's own on_transition callback (uds_handle_programming_session_notify(), same
    file) is what used to be .session_change_notify here, and the old .perform_soft_reset/
    .perform_hard_reset moved into APP's SID 0x11 row (ecu_reset_cfg_s, same file) - see
-   UDS_ecu_reset_cfg_st's comment in UDS.h. app_uds_tx (tp_send_func_p) and NULL_P
+   UDS_ecu_reset_cfg_st's comment in UDS.h. PDUR_tx (tp_send_func_p) and NULL_P
    (message_received_notify) are now assigned directly in main.c's app_uds_init_cfg_s instead of a
    UDS_func_p_st wrapper object - see UDS_init_cfg_st's comment in UDS.h. */
 
 const PDUR_route_st pdur_routing_table_s[] =
 {
     APP_SENSOR_SLOTS( CAN_SENSOR_PDUR_ENTRY )
-    /* TX-only PDUR route for the cyclic heartbeat frame */
-    [APP_PDU_HEARTBEAT] = { .tx_id = APP_HEARTBEAT_CAN_ID, .lower_layer_tx_func = pdur_hal_can_tx },
+    /* RX-only route (no lower_layer_tx_func - TCU/GKT_SHIFTER/MQB_CLUSTER each transmit via their
+       own tick(), not through PDUR) for the F30 lever's real bus input. TCU's own
+       TCU_GEAR_STATE_CAN_ID broadcast has no matching RX route here - see
+       app_tcu_gear_state_local_relay() (VEHICLE_SIM_CFG/VEHICLE_SIM_config.c) for why. */
+    [APP_PDU_GKT_LEVER_RX] = { .rx_id = GKT_SHIFTER_STATE_CAN_ID, .upperLayerRxIndication = app_pdur_gkt_lever_rx },
     /* Functional (0x700->0x600) and physical (0x7E0->0x7E8) UDS request/response routes - TX goes
        via app_cantp_tx_request_wrapper, which always requests TP (ISO-TP) framing. */
     [APP_PDU_UDS_FUNCTIONAL] = { .rx_id = APP_UDS_REQUEST_ID, .tx_id = APP_UDS_RESPONSE_ID,
@@ -550,22 +534,9 @@ STATIC void can_sensor_get_data( u8_t msg_idx, u8_t* buf_p, u8_t* len_p )
 #define CAN_SENSOR_MSG_ENTRY( n ) \
     { ( APP_PDU_SENSOR_BASE + (u32_t)(n) ), 0u, 0u, MSG_SCHED_TX_ON_EVENT, can_sensor_get_data },
 
-STATIC u8_t app_heartbeat_ctr_s = 0u;
-
-STATIC void app_heartbeat_get_data( u8_t msg_idx, u8_t* buf_p, u8_t* len_p )
-{
-    (void)msg_idx;
-
-    buf_p[0u] = app_heartbeat_ctr_s++;
-    buf_p[1u] = (u8_t)MODE_MGR_get_mode();
-    buf_p[2u] = (u8_t)RF_MGR_get_state();
-    *len_p    = 3u;
-}
-
 STATIC const MSG_SCHED_msg_cfg_st can_msg_table_s[] =
 {
     APP_SENSOR_SLOTS( CAN_SENSOR_MSG_ENTRY )
-    //{ APP_PDU_HEARTBEAT, APP_HEARTBEAT_PERIOD_MS, 0u, MSG_SCHED_TX_CYCLIC, app_heartbeat_get_data },
 };
 
 const MSG_SCHED_cfg_st msg_sched_cfg_s =
@@ -573,70 +544,6 @@ const MSG_SCHED_cfg_st msg_sched_cfg_s =
     .msg_table      = can_msg_table_s,
     .num_msgs       = (u8_t)( sizeof(can_msg_table_s) / sizeof(can_msg_table_s[0u]) ),
     .get_time_ms_fn = TIME_get_cumulative_run_time_ms_64,
-};
-
-/***************************************************************************************************
-**                              CPS — Crank Position Sensor                                        **
-**  Bench-test input: a plain square wave, 60 pulses = 1 revolution (CPS_GAP_NONE/total_teeth=60) - **
-**  stands in for a real 60-2 wheel's tooth rate without the actual missing-tooth gap, since a       **
-**  plain signal generator can't produce one. At this tooth count, Hz numerically ≈ RPM (60 teeth /  **
-**  60 sec-per-min cancel out) - e.g. ~800 Hz for 800 RPM idle, ~8000 Hz for 8000 RPM. Swap gap_type **
-**  to CPS_GAP_2_MISSING (still 60 total_teeth) once a gap-capable signal source (real sensor, or a  **
-**  programmable pulse generator) is available. Pin setup + EXTI3_IRQHandler live in HAL_BRD.c,      **
-**  which calls CPS_tooth_event() directly — no generic dispatch layer. Wired directly in main():    **
-**  CPS_init(&cps_crank_instance_s, &cps_crank_cfg_s, SystemCoreClock), which itself runs AFTER      **
-**  HAL_BRD_init() (unlike a plain GPIO peripheral, order here doesn't matter for safety - see       **
-**  interrupt_enable_func_p below). Ticked via CPS_tick() from MODE_MGR. Watch                        **
-**  cps_crank_instance_s.rpm live in the debugger, or call CPS_get_rpm().                            **
-**  CPS_tooth_event() does not NULL/state-guard instance_p (see its own doc, CPS.c) - that's traded  **
-**  for HAL_BRD_init() leaving EXTI3's NVIC line disabled (EXTI itself still armed, so a real edge    **
-**  in the meantime just sets EXTI->PR and waits) and interrupt_enable_func_p below unmasking it      **
-**  only once CPS_init() has fully finished - order-independent by construction, not by convention.  **
-***************************************************************************************************/
-CPS_instance_st cps_crank_instance_s;
-
-/* Mask/unmask just the crank tooth-edge line (EXTI3) around CPS_tick()'s ring-buffer read —
- * narrower than a global __disable_irq(), so it doesn't add latency to any other interrupt
- * in the system. See critical_enter_func_p/critical_exit_func_p doc in CPS.h: without this,
- * a tooth edge landing mid-average (very likely at high input frequencies, since
- * CPS_tooth_event() runs at priority 0 and can preempt CPS_tick() at any point) corrupts
- * the RPM average with a torn mix of old/new samples. */
-STATIC void cps_crank_critical_enter( void )
-{
-    NVIC_DisableIRQ( EXTI3_IRQn );
-}
-
-STATIC void cps_crank_critical_exit( void )
-{
-    NVIC_EnableIRQ( EXTI3_IRQn );
-}
-
-const CPS_cfg_st cps_crank_cfg_s =
-{
-    .total_teeth                     = 60u,           /* stand-in for a 60-2 wheel's tooth rate */
-    .gap_type                        = CPS_GAP_NONE,   /* plain square wave, no gap to sync on */
-    .capture_edge                    = CPS_EDGE_RISING,
-    .filter_depth                    = CPS_RPM_FILTER_DEPTH_MAX, /* max averaging (8 samples) —
-                                                 * smooths out sample-to-sample jitter at high
-                                                 * input frequencies */
-    .stall_timeout_us                = 500000u,
-    .rpm_max_credible                = 0xFFFFFFFFu, /* deliberately unclamped - bench-testing to
-                                                 * find the sensor/ISR's real ceiling, a credible-
-                                                 * range reject would hide exactly the reading being
-                                                 * looked for. Put a real ceiling back once this
-                                                 * engine's actual redline is known. */
-    .get_timer_ticks_func_p          = DWT_get_count, /* raw cycle counter — no conversion in the ISR */
-    .revolution_sync_callback_func_p = NULL_P, /* never fires under CPS_GAP_NONE — no gap to find */
-    .stall_callback_func_p           = NULL_P,
-    .rpm_implausible_callback_func_p = NULL_P, /* rpm_max_credible is unclamped above, so this can
-                                                 * never actually fire — wire it up once a real
-                                                 * credible ceiling is set */
-    .critical_enter_func_p           = cps_crank_critical_enter,
-    .critical_exit_func_p            = cps_crank_critical_exit,
-    .interrupt_enable_func_p         = HAL_BRD_cps_crank_interrupt_enable, /* NVIC starts disabled
-                                                 * in HAL_BRD_init() specifically so this can be the
-                                                 * thing that arms it, once CPS_init() has finished -
-                                                 * see CPS.h's interrupt_enable_func_p doc */
 };
 
 /****************************** END OF FILE *******************************************************/

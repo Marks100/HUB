@@ -216,5 +216,10 @@ u16_t HAL_ADC_measure_throttle_input( void )
     return HAL_ADC_read_channel( ADC_THROTTLE_CHANNEL );
 }
 
+u16_t HAL_ADC_measure_throttle_input_2( void )
+{
+    return HAL_ADC_read_channel( ADC_THROTTLE_CHANNEL_2 );
+}
+
 /****************************** END OF FILE *******************************************************/
 

@@ -4,9 +4,11 @@
 *
 *   Everything here exists to bind generic modules to this board. Most functions are one-liners
 *   that supply something the module's function-pointer signature has no room for: a config struct
-*   (clk_init, crc_init), an instance pointer (fbl_cantp_*), a fixed CAN ID (fbl_pdur_tx_uds), or a
-*   type the two layers spell differently (fbl_cantp_rx_indication). They are adapters, not
-*   indirection - deleting one means changing a module's contract for every project that uses it.
+*   (clk_init, crc_init), an instance pointer (fbl_cantp_*), or a type the two layers spell
+*   differently (fbl_cantp_rx_indication). They are adapters, not indirection - deleting one means
+*   changing a module's contract for every project that uses it. Where a module's function-pointer
+*   type already matches a lower layer's signature exactly (PDUR_tx, HAL_CAN_send_frame), it's
+*   bound directly below with no adapter at all.
 *
 *   Definitions are ordered so each is complete before it is referenced, which is why this file
 *   carries no forward-declaration block. Keep it that way when adding to it.
@@ -273,12 +275,6 @@ STATIC const TJA1051_config_st tja1051_config_s =
    fitting and not. Zero-initialised in .bss, populated at runtime in fbl_comms_init(). */
 STATIC CANTP_instance_st fbl_cantp_instance_s;
 
-/* Unpacks CANTP's message struct into HAL_CAN's argument list. */
-STATIC void fbl_cantp_send( CANTP_can_msg_format_st* msg_p )
-{
-    (void)HAL_CAN_send_frame( msg_p->Id, (u8_t)msg_p->id_type, msg_p->Data, msg_p->DLC );
-}
-
 /* CANTP_message_rx_func_p hands PDUR a physical CAN ID - PDUR_rx_indication() no longer accepts one
    (see PDUR_pdu_id_t's comment in PDUR.h), so this resolves it to a logical route via
    PDUR_lookup_rx_pdu_id() first. STANDARD_ID/EXTENDED_ID (0/1) line up numerically with
@@ -333,7 +329,7 @@ STATIC void fbl_comms_tick( void )
 }
 
 /* FBL's own logical PDU IDs - these, not FBL_UDS_REQUEST_ID/FBL_CAN_RX_ID etc., are what
-   fbl_pdur_routing_table_s's array position means and what fbl_pdur_tx_uds() dispatches on. Values
+   fbl_pdur_routing_table_s's array position means and what PDUR_tx() dispatches on. Values
    double as array indices (designated-index initializers below pin each route to its enum value
    explicitly, so reordering this enum without reordering the table - or vice versa - is a compile
    error from a duplicate/out-of-range index, not a silent mismatch). */
@@ -355,14 +351,12 @@ STATIC const PDUR_route_st fbl_pdur_routing_table_s[] =
       .upperLayerRxIndication = UDS_rx_indication, .lower_layer_tx_func = fbl_cantp_tx_request },
 };
 
-/* UDS's tp_send_func_p - route_id is whatever UDS_rx_indication() was called with for the request
-   this response answers (UDS.c just stores and returns it, see UDS_ctrl_st.req_route_id), so a
-   request received via FBL_PDU_UDS_PHYSICAL gets its reply sent via FBL_PDU_UDS_PHYSICAL too, not a
-   single fixed route as before this cast made the two typedefs' shared underlying type explicit. */
-STATIC void fbl_pdur_tx_uds( UDS_route_id_t route_id, u8_t* data_p, u16_t len )
-{
-    (void)PDUR_tx( (PDUR_pdu_id_t)route_id, data_p, len );
-}
+/* UDS_init_cfg_st.tp_send_func_p is assigned PDUR_tx directly below - PDUR_pdu_id_t and
+   UDS_route_id_t are both u16_t and PDUR_tx's pass_fail_et return now matches the typedef exactly
+   (see UDS_init_cfg_st's comment in UDS.h), so no adapter is needed. route_id is whatever
+   UDS_rx_indication() was called with for the request this response answers (UDS.c just stores and
+   returns it, see UDS_ctrl_st.req_route_id), so a request received via FBL_PDU_UDS_PHYSICAL gets
+   its reply sent via FBL_PDU_UDS_PHYSICAL too, not a single fixed route. */
 
 /***************************************************************************************************
 **                              UDS                                                               **
@@ -371,7 +365,7 @@ STATIC void fbl_pdur_tx_uds( UDS_route_id_t route_id, u8_t* data_p, u16_t len )
    UDS_func_p_st here - both moved into UDS_config.c service table rows (ecu_reset_cfg_s /
    tester_present_cfg_s, SID 0x11 / 0x3E - see UDS_ecu_reset_cfg_st/UDS_tester_present_cfg_st in
    UDS.h). FBL manages its own 30s boot delay rather than using UDS.c's S3 timeout (there is no
-   s3_timeout_notify hook any more). tp_send_func_p/message_received_notify (fbl_pdur_tx_uds /
+   s3_timeout_notify hook any more). tp_send_func_p/message_received_notify (PDUR_tx /
    FBL_reset_auto_boot_timer - the latter covers the "any SID" half of keeping FBL's boot-delay
    timer fresh; TesterPresent's own half is tester_present_cfg_s above) are now assigned directly
    in fbl_uds_init_cfg_s below instead of a separate wrapper object - see UDS_init_cfg_st's comment
@@ -402,7 +396,7 @@ STATIC void fbl_comms_init( void )
     fbl_cantp_instance_s = (CANTP_instance_st)
     {
         .CANTP_message_rx_func_p = fbl_cantp_rx_indication,
-        .tx_func_p               = fbl_cantp_send,
+        .tx_func_p               = HAL_CAN_send_frame,
         .tp_buffer               = pdur_buffer_s,
         .tp_ids                  = { { FBL_UDS_REQUEST_ID, FBL_UDS_RESPONSE_ID },
                                      { FBL_CAN_RX_ID,       FBL_CAN_TX_ID       } },
@@ -433,7 +427,7 @@ STATIC void fbl_comms_init( void )
        comment, FBL.c). */
     const UDS_init_cfg_st fbl_uds_init_cfg_s =
     {
-        .tp_send_func_p          = fbl_pdur_tx_uds,
+        .tp_send_func_p          = PDUR_tx,
         .message_received_notify = FBL_reset_auto_boot_timer,
         .service_table_p         = UDS_get_service_table(),
         .service_table_size      = UDS_get_service_table_size(),
