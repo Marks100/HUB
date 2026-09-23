@@ -33,6 +33,7 @@ extern const ENGINE_SIM_cfg_st      engine_sim_cfg_s;
    route - not STATIC so that table (which also carries the unrelated sensor/UDS routes, so it
    stayed in INTEGRATION_STUBS.c) can still reference it. */
 void app_pdur_gkt_lever_rx( PDUR_pdu_id_t pdu_id, u8_t* data_p, u16_t len );
+void app_pdur_gkt_heartbeat_rx( PDUR_pdu_id_t pdu_id, u8_t* data_p, u16_t len );
 void app_tcu_gear_state_local_relay( void );  /* call once per cycle, right after TCU_tick() - see MODE_MGR.c */
 void app_engine_sim_cluster_relay( void );    /* call once per cycle, right after ENGINE_SIM_tick() - see MODE_MGR.c */
 

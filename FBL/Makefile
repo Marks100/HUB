@@ -18,6 +18,7 @@ FBL_ELF_FILE          := $(OUTPUT_NAME).elf
 FBL_MAP_FILE          := $(OUTPUT_NAME).map
 FBL_HEX_FILE          := $(OUTPUT_NAME).hex
 FBL_BIN_FILE          := $(OUTPUT_NAME).bin
+FBL_HEX_PADDED_FILE   := $(OUTPUT_NAME)_padded.hex
 FBL_HEX_WITH_CRC_FILE := $(OUTPUT_NAME)_with_CRC.hex
 FBL_HEX_SIGNED_FILE   := $(OUTPUT_NAME)_signed.hex
 FBL_MEM_OUTPUT_FILE   := $(BUILD_OUT_DIR)/memory_analysis.txt
@@ -35,6 +36,9 @@ BUILD_ENV_BIN         := ../BuildEnv/xBuildEnv/bin
 FBL_HEADER_ADDR := 0x08002800
 FBL_CODE_START  := 0x08002900
 FBL_CODE_END    := 0x08007FFF
+# One past FBL_CODE_END - the exclusive upper bound srec_cat's -fill wants. The built hex is padded
+# from FBL_HEADER_ADDR to here, see the padding step in $(FBL_ELF_FILE)'s recipe below.
+FBL_FLASH_LIMIT := $(shell printf '0x%08X' $$(( $(FBL_CODE_END) + 1 )))
 FBL_CRC_TYPE    := stm32-hw-crc32
 
 # Signing key - must stay in lockstep with APP/Makefile's SIGN_ALGORITHM/SIGNING_KEY and with
@@ -203,8 +207,16 @@ $(FBL_ELF_FILE): $(FBL_C_OBJS) $(MCAL_C_OBJS) $(FBL_LINKER_SCRIPT)
 	@$(LD) $(LDFLAGS) $(FBL_C_OBJS) $(MCAL_C_OBJS)
 	@$(OBJCOPY) -O ihex   $(FBL_ELF_FILE) $(FBL_HEX_FILE)
 	@$(OBJCOPY) -O binary $(FBL_ELF_FILE) $(FBL_BIN_FILE)
+	@echo "--> Padding HEX to the whole FBL region (0xFF fill)..."
+# BM's CRC and signature cover the ENTIRE region [FBL_CODE_START, FBL_CODE_END], not just the bytes the
+# linker emitted, and BM traps (never falls back) on an invalid FBL. A hex that stops short of
+# FBL_CODE_END lets a flasher that only rewrites the pages a hex touches leave the previous build's
+# bytes in the untouched tail pages, breaking that CRC. Defining every byte of the region makes the hex
+# self-contained. The 0xFF fill is what both tools already assume for the gap, so CRC and signature
+# values are unchanged. See the matching step in APP/Makefile.
+	@$(SREC) $(FBL_HEX_FILE) -Intel -fill 0xFF $(FBL_HEADER_ADDR) $(FBL_FLASH_LIMIT) -o $(FBL_HEX_PADDED_FILE) -Intel
 	@echo "--> Injecting CRC32 into FBL header (HEX file)..."
-	@$(BUILD_ENV_BIN)/app_crc_injector $(FBL_HEX_FILE) --output=$(FBL_HEX_WITH_CRC_FILE) --header-addr=$(FBL_HEADER_ADDR) --code-start=$(FBL_CODE_START) --code-end=$(FBL_CODE_END) --crc-type=$(FBL_CRC_TYPE)
+	@$(BUILD_ENV_BIN)/app_crc_injector $(FBL_HEX_PADDED_FILE) --output=$(FBL_HEX_WITH_CRC_FILE) --header-addr=$(FBL_HEADER_ADDR) --code-start=$(FBL_CODE_START) --code-end=$(FBL_CODE_END) --crc-type=$(FBL_CRC_TYPE)
 	@echo "--> Signing firmware ($(SIGN_ALGORITHM))..."
 	@$(BUILD_ENV_BIN)/app_signer $(FBL_HEX_WITH_CRC_FILE) --output=$(FBL_HEX_SIGNED_FILE) --header-addr=$(FBL_HEADER_ADDR) --code-start=$(FBL_CODE_START) --code-end=$(FBL_CODE_END) --algorithm=$(SIGN_ALGORITHM) --signing-key=$(SIGNING_KEY)
 	@echo "--> FBL image: $(realpath $(FBL_HEX_SIGNED_FILE))  (FLASH THIS!)"

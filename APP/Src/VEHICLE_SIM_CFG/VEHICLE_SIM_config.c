@@ -12,9 +12,12 @@
 *
 *               One piece stayed behind regardless: pdur_routing_table_s (INTEGRATION_STUBS.c)
 *               also carries the unrelated sensor and UDS routes, so it's a single array that
-*               can't be split across files - only its APP_PDU_GKT_LEVER_RX row is vehicle-sim's
-*               concern. app_pdur_gkt_lever_rx() below is that row's upperLayerRxIndication -
-*               external linkage (not STATIC) purely so that table can still reference it.
+*               can't be split across files - only its GKT_SHIFTER RX rows and the TX rows for
+*               TCU/GKT_SHIFTER/MQB_CLUSTER are vehicle-sim's concern. Every frame those modules
+*               send goes out via PDUR_tx() on the route id given in their cfg structs below
+*               (APP_PDU_*_TX, APP_PDU_IDS.h). app_pdur_gkt_lever_rx() below is the
+*               APP_PDU_GKT_LEVER_RX row's upperLayerRxIndication - external linkage (not STATIC)
+*               purely so that table can still reference it.
 *
 *               Every tunable scalar (not the real per-gear ratio tables below - those are fixed
 *               spec data for a named real gearbox, not a bench "taste" figure) is a named
@@ -29,6 +32,7 @@
 **                              Includes                                                          **
 ***************************************************************************************************/
 #include "VEHICLE_SIM_config.h"
+#include "APP_PDU_IDS.h"    /* APP_PDU_*_TX - the PDUR routes TCU/GKT_SHIFTER/MQB_CLUSTER transmit on */
 #include "HAL_CAN.h"
 #include "HAL_ADC.h"
 #include "HAL_BRD.h"
@@ -43,33 +47,54 @@
 #define GEARBOX_DQ381   ( 0u )   /* 7-speed DSG, vRS 245 / facelift diesel */
 #define GEARBOX_DQ250   ( 1u )   /* 6-speed DSG, pre-facelift / early Mk3, wet clutch */
 #define GEARBOX_722_9   ( 2u )   /* 7-speed torque-converter auto, Mercedes 7G-Tronic Plus */
-#define ACTIVE_GEARBOX  GEARBOX_DQ381
+#define GEARBOX_ZF_8HP  ( 3u )   /* 8-speed torque-converter auto, ZF 8HP - the F30's own gearbox */
+#define ACTIVE_GEARBOX  GEARBOX_ZF_8HP
 
 /* TCU tuning - see TCU.h's own doc on these fields */
 #define TCU_AUTO_UPSHIFT_RPM            ( 8000u )
 #define TCU_AUTO_DOWNSHIFT_RPM          ( 1500u )
 #define TCU_MIN_AUTO_SHIFT_INTERVAL_MS  ( 300u )
 #define TCU_WHEEL_CIRCUMFERENCE_M       ( 2.00f ) /* ~225/40R18's */
+#define TCU_COAST_DECEL_KMH_PER_S       ( 3.0f )  /* PLACEHOLDER: how fast road speed falls in Neutral, km/h per second
+                                                     (0.0f = snap to 0). ~38 s to stop from 114 km/h. A real car free-rolling
+                                                     in Neutral loses roughly 1-2 km/h/s at speed, so this is a touch brisk
+                                                     to be easy to watch on the bench - tune to taste */
 #define TCU_GEAR_STATE_PERIOD_MS        ( 20u )
+#define TCU_DYNAMICS_PERIOD_MS          ( 20u )   /* RPM + speed + requested throttle, one frame */
+
+/* BENCH ONLY: the REQUESTED THROTTLE is this fixed percentage instead of the APS pedal (APS is still
+   ticked, just not read). Set to 0u to use the real pedal. It is a stand-in for the pedal, not a
+   stand-in for the RPM: nothing here sets an RPM - ENGINE_SIM turns this request into one (idle +
+   throttle% of the way to redline, so 50% gives 800 + 0.5 x 7200 = 4400 RPM, and it free-revs to that
+   in Park/Neutral as well). The same request is on the bus in TCU_DYNAMICS_CAN_ID, next to the RPM and
+   speed it produces, because TCU reads it through app_read_throttle_percent() too. Why a throttle is
+   needed at all: with none, an idling ENGINE_SIM (ENGINE_IDLE_RPM) sits below TCU_AUTO_DOWNSHIFT_RPM,
+   and the low-RPM downshift (active in the manual gate too) would pull every manual upshift straight
+   back down. With it held, TCU acts on a real RPM and the rev-match
+   dip after each shift shows on the tacho and in TCU_DYNAMICS_CAN_ID. Pace matters, because RPM recovers
+   slowly in the tall gears: M+ taps faster than roughly one a second sink it under
+   TCU_AUTO_DOWNSHIFT_RPM (the tap gets bounced back), and rapid M- taps can rev-match past
+   TCU_AUTO_UPSHIFT_RPM (bounced up) - both are TCU's engine protection, not faults. */
+#define BENCH_FIXED_THROTTLE_PERCENT    ( 0u )
 
 /* CPS tuning - see CPS.h's own doc on these fields */
 #define CPS_TOTAL_TEETH       ( 60u )          /* stand-in for a 60-2 wheel's tooth rate */
 #define CPS_STALL_TIMEOUT_US  ( 500000u )
 #define CPS_RPM_MAX_CREDIBLE  ( 0xFFFFFFFFu )
 
-/* APS tuning - see APS.h's own doc on these fields. PLACEHOLDER calibration below - not yet
-   measured against the real sensor, verify on the bench before trusting
-   APS_get_output_percent() for anything beyond bring-up. */
-#define APS_IDLE_COUNTS                     ( 700u )   /* ch1 raw count, pedal released */
-#define APS_WOT_COUNTS                      ( 3600u )  /* ch1 raw count, pedal floored */
-#define APS_CH2_RATIO                       ( 2u )     /* nominal channel1:channel2 ratio */
-#define APS_PLAUSIBILITY_TOLERANCE_PERCENT  ( 10u )    /* max allowed ch1 vs scaled-ch2 disagreement. ~10% */
+/* APS tuning - see APS.h's own doc on these fields. Measured on the bench (PA0/ADC_THROTTLE_CHANNEL -
+   see HAL_config.h). Note wot_counts is the ADC's nominal 12-bit full scale (2^12), one past the
+   highest count HAL_ADC_read_channel() can actually return (0-4095) - aps_map_to_percent() clamps,
+   so a floored pedal reads 99% rather than 100%; re-measure the real WOT count if that matters. */
+#define APS_IDLE_COUNTS                     ( 2065u )  /* ch1 raw count, pedal released */
+#define APS_WOT_COUNTS                      ( 4092u )  /* ch1 raw count, pedal floored */
 #define APS_EMA_WEIGHTING                   ( 50u )    /* light smoothing (tau ~29ms, 90%
                                               * settle ~66ms at this 20ms tick rate - see
                                               * APS_tick()'s call site, MODE_MGR.c) so pedal
-                                              * response stays crisp; only the plausibility check
-                                              * above is relied on to catch a genuine sensor fault,
-                                              * not the filter */
+                                              * response stays crisp. Single-channel for now (see
+                                              * aps_pedal_cfg_s below), so there is no plausibility
+                                              * check to catch a genuine sensor fault - just this
+                                              * filter */
 
 /* ENGINE_SIM tuning - see ENGINE_SIM.h's own doc on these fields. PLACEHOLDER figures below -
    tune to taste. */
@@ -158,23 +183,46 @@ STATIC const TCU_gear_ratio_cfg_st tcu_gear_ratios_s[] =
 
 STATIC const TCU_gear_ratio_cfg_st tcu_reverse_gear_ratio_s = { 3.42f, 3.07f };  /* normal, not Comfort/Winter - see above */
 
+#elif ACTIVE_GEARBOX == GEARBOX_ZF_8HP
+
+/* ZF 8HP45 8-speed torque-converter automatic (what the F30 this shifter comes from is fitted
+   with). One output shaft like the 722.9, so every gear and reverse share the same final drive.
+   Gear ratios are the commonly published 8HP45 set - verify against your own unit's spec sheet.
+   PLACEHOLDER final drive: 3.15 is a mid-range figure, the real one varies with model/engine
+   (roughly 2.8 - 3.9) - set yours, since it scales the road speed TCU_get_speed_kmh() reports and
+   ENGINE_SIM's reflected inertia. */
+STATIC const TCU_gear_ratio_cfg_st tcu_gear_ratios_s[] =
+{
+    /* gear_ratio, final_drive_ratio */
+    { 4.714f, 3.15f },  /* 1st */
+    { 3.143f, 3.15f },  /* 2nd */
+    { 2.106f, 3.15f },  /* 3rd */
+    { 1.667f, 3.15f },  /* 4th */
+    { 1.285f, 3.15f },  /* 5th */
+    { 1.000f, 3.15f },  /* 6th - direct drive */
+    { 0.839f, 3.15f },  /* 7th - overdrive */
+    { 0.667f, 3.15f },  /* 8th - overdrive */
+};
+
+STATIC const TCU_gear_ratio_cfg_st tcu_reverse_gear_ratio_s = { 3.317f, 3.15f };
+
 #else
-#error "ACTIVE_GEARBOX must be GEARBOX_DQ381, GEARBOX_DQ250, or GEARBOX_722_9"
+#error "ACTIVE_GEARBOX must be GEARBOX_DQ381, GEARBOX_DQ250, GEARBOX_722_9, or GEARBOX_ZF_8HP"
 #endif
 
 STATIC const TCU_lever_source_cfg_st tcu_lever_sources_s[] =
 {
-    { GKT_SHIFTER_STATE_CAN_ID, GKT_SHIFTER_decode_lever_frame },
+    { GKT_SHIFTER_STATE_CAN_ID, GKT_SHIFTER_decode_status_frame },
 };
 
 STATIC const TCU_periodic_output_cfg_st tcu_periodic_outputs_s[] =
 {
-    { TCU_GEAR_STATE_CAN_ID, TCU_GEAR_STATE_DLC, TCU_GEAR_STATE_PERIOD_MS, TCU_encode_gear_state_frame },
+    { APP_PDU_TCU_GEAR_STATE_TX, TCU_GEAR_STATE_DLC, TCU_GEAR_STATE_PERIOD_MS, TCU_encode_gear_state_frame },
+    { APP_PDU_TCU_DYNAMICS_TX,   TCU_DYNAMICS_DLC,   TCU_DYNAMICS_PERIOD_MS,   TCU_encode_dynamics_frame },
 };
 
 const TCU_cfg_st tcu_cfg_s =
 {
-    .can_send_func_p            = HAL_CAN_send_frame,
     .get_time_ms_func_p         = TIME_get_cumulative_run_time_ms_64,
     .num_gears                  = (u8_t)( sizeof(tcu_gear_ratios_s) / sizeof(tcu_gear_ratios_s[0u]) ),
     .lever_sources              = tcu_lever_sources_s,
@@ -188,17 +236,23 @@ const TCU_cfg_st tcu_cfg_s =
     .gear_ratios                = tcu_gear_ratios_s,
     .reverse_gear_ratio         = &tcu_reverse_gear_ratio_s,
     .wheel_circumference_m      = TCU_WHEEL_CIRCUMFERENCE_M,
+    .coast_decel_kmh_per_s      = TCU_COAST_DECEL_KMH_PER_S,
+    .idle_rpm                   = ENGINE_IDLE_RPM,   /* same idle ENGINE_SIM free-revs to at 0% throttle - see
+                                                         TCU_cfg_st.idle_rpm's own doc, TCU.h, on why Drive/Reverse
+                                                         needs to know it */
+    .get_throttle_percent_func_p = app_read_throttle_percent,   /* the very function ENGINE_SIM reads below, so the
+                                                                   throttle on the bus is exactly what drives the RPM */
 };
 
 const GKT_SHIFTER_cfg_st gkt_shifter_cfg_s =
 {
-    .can_send_func_p    = HAL_CAN_send_frame,
-    .get_time_ms_func_p = TIME_get_cumulative_run_time_ms_64,
+    .led_pdu_id         = APP_PDU_GKT_LED_TX,
+    .backlight_pdu_id   = APP_PDU_GKT_BACKLIGHT_TX,
 };
 
 const MQB_CLUSTER_cfg_st mqb_cluster_cfg_s =
 {
-    .can_send_func_p    = HAL_CAN_send_frame,
+    .tx_pdu_id_base     = APP_PDU_MQB_TX_BASE,
     .get_time_ms_func_p = TIME_get_cumulative_run_time_ms_64,
 };
 
@@ -245,12 +299,15 @@ const CPS_cfg_st cps_crank_cfg_s =
 
 /***************************************************************************************************
 **                              APS — Accelerator Pedal Sensor                                     **
-**  Dual-channel redundant pedal position sensor (VW/Audi/Bosch-style 2-track pedal - see APS.h     **
-**  for why the driver itself isn't tied to any one vendor). ch2_read_func_p's channel              **
-**  (ADC_THROTTLE_CHANNEL_2, HAL_config.h) is itself a placeholder pin assignment - confirm it's     **
-**  actually wired to the sensor's second track. Ticked from MODE_MGR. Its only consumer in this     **
-**  project is ENGINE_SIM below (app_read_throttle_percent) - that's why it lives here rather than   **
-**  in INTEGRATION_STUBS.c's generic peripheral wiring.                                              **
+**  Single-channel for now: only ch1 is wired on the bench (PA0/ADC_THROTTLE_CHANNEL, HAL_config.h  **
+**  - GPIO_Mode_AIN configured in HAL_BRD_init()). ch2 has no ADC-capable pin free at all right now  **
+**  (see ADC_THROTTLE_CHANNEL_2's own comment, HAL_config.h) - see APS.h on ch2_read_func_p ==       **
+**  NULL_P (no second channel, no plausibility check, ch1 accepted as-is). Swap in                   **
+**  HAL_ADC_measure_throttle_input_2 for ch2_read_func_p once a pin is freed up and the second        **
+**  track is wired to it (and give it its own GPIO_Mode_AIN in HAL_BRD_init()), and restore           **
+**  ch2_ratio/plausibility_tolerance_percent (APS.h's own doc on those). Ticked from MODE_MGR. Its    **
+**  only consumer in this project is ENGINE_SIM below (app_read_throttle_percent) - that's why it     **
+**  lives here rather than in INTEGRATION_STUBS.c's generic peripheral wiring.                        **
 ***************************************************************************************************/
 APS_instance_st aps_pedal_instance_s;
 
@@ -258,11 +315,9 @@ const APS_cfg_st aps_pedal_cfg_s =
 {
     .idle_counts                    = APS_IDLE_COUNTS,
     .wot_counts                     = APS_WOT_COUNTS,
-    .ch2_ratio                      = APS_CH2_RATIO,
-    .plausibility_tolerance_percent = APS_PLAUSIBILITY_TOLERANCE_PERCENT,
     .ema_weighting                  = APS_EMA_WEIGHTING,
     .ch1_read_func_p                = HAL_ADC_measure_throttle_input,
-    .ch2_read_func_p                = HAL_ADC_measure_throttle_input_2,
+    .ch2_read_func_p                = NULL_P,
     .implausible_fn_p               = NULL_P,
 };
 
@@ -275,10 +330,12 @@ const APS_cfg_st aps_pedal_cfg_s =
 **  really TCU deciding when, driven by ENGINE_SIM's RPM feedback, and ENGINE_SIM just responding     **
 **  to whatever gear TCU says it's in. An implausible APS reading forces APS_get_output_percent()     **
 **  to 0%, which drives ENGINE_SIM back towards idle exactly like a real lifted throttle would - no   **
-**  special-casing needed here either. Only RPM is relayed to the cluster below - MQB_CLUSTER's       **
-**  gear-selector display is separately driven by TCU/GKT_SHIFTER's P/R/N/D + gear state (see        **
-**  app_tcu_gear_state_local_relay(), Application Adapter Functions below). Road speed is TCU's job   **
-**  too (TCU_get_speed_kmh()) - not relayed from here at all, since ENGINE_SIM only produces RPM.    */
+**  special-casing needed here either (dormant for now since aps_pedal_cfg_s is single-channel -      **
+**  see its own comment - so nothing ever goes implausible). Only RPM is relayed to the cluster       **
+**  below - MQB_CLUSTER's gear-selector display is separately driven by TCU/GKT_SHIFTER's P/R/N/D +   **
+**  gear state (see app_tcu_gear_state_local_relay(), Application Adapter Functions below). Road       **
+**  speed is TCU's job too (TCU_get_speed_kmh()) - not relayed from here at all, since ENGINE_SIM     **
+**  only produces RPM.                                                                                */
 ENGINE_SIM_instance_st engine_sim_instance_s;
 
 const ENGINE_SIM_cfg_st engine_sim_cfg_s =
@@ -310,10 +367,23 @@ STATIC u16_t app_read_engine_rpm( void )
     return( ENGINE_SIM_get_rpm( &engine_sim_instance_s ) );
 }
 
+/* GKT_SHIFTER is the gateway for every real CAN frame the physical shifter sends - this goes to
+   GKT_SHIFTER_process_rx_frame(), not straight to TCU_process_rx_frame(). GKT_SHIFTER tracks its
+   own P/R/N/D from the frame and then feeds it on into TCU itself (see GKT_SHIFTER.c's own header
+   comment); routing it any other way would mean two different modules both claiming to own the
+   shifter's real CAN IDs, and TCU would decode it before GKT_SHIFTER had updated its own gear. */
 void app_pdur_gkt_lever_rx( PDUR_pdu_id_t pdu_id, u8_t* data_p, u16_t len )
 {
     (void)pdu_id;
-    TCU_process_rx_frame( GKT_SHIFTER_STATE_CAN_ID, data_p, (u8_t)len );
+    GKT_SHIFTER_process_rx_frame( GKT_SHIFTER_STATE_CAN_ID, data_p, (u8_t)len );
+}
+
+/* Real bus RX for the shifter's own heartbeat (GKT_SHIFTER_HEARTBEAT_CAN_ID) - same gateway as
+   app_pdur_gkt_lever_rx above, feeds GKT_SHIFTER_is_heartbeat_missing() with live data. */
+void app_pdur_gkt_heartbeat_rx( PDUR_pdu_id_t pdu_id, u8_t* data_p, u16_t len )
+{
+    (void)pdu_id;
+    GKT_SHIFTER_process_rx_frame( GKT_SHIFTER_HEARTBEAT_CAN_ID, data_p, (u8_t)len );
 }
 
 /* This board runs TCU itself rather than TCU being a separate physical ECU, so TCU's own
@@ -327,9 +397,11 @@ void app_pdur_gkt_lever_rx( PDUR_pdu_id_t pdu_id, u8_t* data_p, u16_t len )
    gear is current. */
 void app_tcu_gear_state_local_relay( void )
 {
-    u8_t buf[TCU_GEAR_STATE_DLC];
+    u8_t         buf[TCU_GEAR_STATE_DLC];
+    TCU_state_st state;
 
-    TCU_encode_gear_state_frame( TCU_get_gear_mode(), TCU_get_current_gear(), TCU_is_manual_mode_active(), buf );
+    TCU_get_state( &state );
+    TCU_encode_gear_state_frame( &state, buf );
 
     GKT_SHIFTER_process_rx_frame( TCU_GEAR_STATE_CAN_ID, buf, TCU_GEAR_STATE_DLC );
     MQB_CLUSTER_process_rx_frame( TCU_GEAR_STATE_CAN_ID, buf, TCU_GEAR_STATE_DLC );
@@ -337,10 +409,14 @@ void app_tcu_gear_state_local_relay( void )
 
 /* ENGINE_SIM's get_throttle_percent_func_p - a no-argument adapter binding aps_pedal_instance_s
    above, the same "adapter closes over a fixed instance pointer" pattern used throughout this
-   project. */
+   project. BENCH_FIXED_THROTTLE_PERCENT, if set, replaces the pedal reading - see its own comment. */
 STATIC u8_t app_read_throttle_percent( void )
 {
+#if BENCH_FIXED_THROTTLE_PERCENT > 0u
+    return( (u8_t)BENCH_FIXED_THROTTLE_PERCENT );
+#else
     return( APS_get_output_percent( &aps_pedal_instance_s ) );
+#endif
 }
 
 /* Not STATIC: called from MODE_MGR.c right after ENGINE_SIM_tick() so the cluster sees this

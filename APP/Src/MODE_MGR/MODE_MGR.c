@@ -347,13 +347,19 @@ void mode_mgr_action_schedule_normal( void )
 		MSG_SCHED_tick();
 		CPS_tick( &cps_crank_instance_s );
 		APS_tick( &aps_pedal_instance_s );
+		/* GKT_SHIFTER goes first, deliberately. HAL_CAN has no TX queue - each PDUR_tx() needs one
+		   of bxCAN's 3 hardware mailboxes and FAILs if they're all busy - and TCU sends 3 frames
+		   back to back every cycle. Ticked after TCU, the shifter's LED (0x3FD) and backlight
+		   (0x202) frames found every mailbox taken and were starved. The shifter needs its
+		   frames on time; TCU retries a rejected frame next cycle, so it can afford to be the one
+		   that waits (its 2nd/3rd frame slips one cycle whenever the shifter is due, every 100 ms). */
+		GKT_SHIFTER_tick();
 		/* TCU decides the gear (using last cycle's engine RPM feedback) before ENGINE_SIM computes
 		   this cycle's RPM from it - see tcu_cfg_s/engine_sim_cfg_s's comments, INTEGRATION_STUBS.c. */
 		TCU_tick();
 		app_tcu_gear_state_local_relay();
 		ENGINE_SIM_tick( &engine_sim_instance_s );
 		app_engine_sim_cluster_relay();
-		GKT_SHIFTER_tick();
 		MQB_CLUSTER_tick();
 	}
 

@@ -3,13 +3,16 @@
 **  Generic board/peripheral wiring for this project. The bench vehicle-simulation stack (APS      **
 **  pedal, CPS crank sensor, TCU/GKT_SHIFTER/MQB_CLUSTER gearbox+dash, ENGINE_SIM) lives in its     **
 **  own file - see APP/Src/VEHICLE_SIM_CFG/VEHICLE_SIM_config.c - split out from here since it's a  **
-**  cohesive concern of its own, distinct from plain HAL/peripheral bring-up. The one piece that    **
-**  stayed is pdur_routing_table_s's APP_PDU_GKT_LEVER_RX route below - splitting a single row out  **
-**  of that array (which also carries the unrelated sensor/UDS routes) would fragment one cohesive  **
-**  table across two files for no real gain, so only its handler (app_pdur_gkt_lever_rx(), non-     **
-**  STATIC) lives in VEHICLE_SIM_config.c instead.                                                   **
+**  cohesive concern of its own, distinct from plain HAL/peripheral bring-up. The pieces that        **
+**  stayed are pdur_routing_table_s's APP_PDU_GKT_LEVER_RX/APP_PDU_GKT_HEARTBEAT_RX routes below -   **
+**  splitting a couple of rows out of that array (which also carries the unrelated sensor/UDS        **
+**  routes) would fragment one cohesive table across two files for no real gain, so only their       **
+**  handlers (app_pdur_gkt_lever_rx()/app_pdur_gkt_heartbeat_rx(), non-STATIC) live in                **
+**  VEHICLE_SIM_config.c instead - both real CAN IDs the physical shifter sends route to             **
+**  GKT_SHIFTER's own gateway from there.                                                            **
 ***************************************************************************************************/
 #include "INTEGRATION_STUBS.h"
+#include "APP_PDU_IDS.h"       /* app_pdu_id_et - the route ids pdur_routing_table_s is indexed by */
 #include "VEHICLE_SIM_config.h"   /* app_pdur_gkt_lever_rx() - see this file's own header comment */
 #include "HAL_BRD.h"
 #include "HAL_CAN.h"
@@ -360,21 +363,29 @@ STATIC pass_fail_et pdur_hal_can_tx( u32_t id, PDUR_medium_et medium, u8_t* data
    CAN_SENSOR_MSG_ENTRY(n) calls that had to be edited in lockstep by hand, with nothing catching a
    slot added to one but not the other. Expanding both tables from this one list instead means
    adding/removing a slot is a one-line change here, not a two-place edit that can silently drift.
-   Must still be kept equal to APP_NUM_SENSOR_SLOTS below (the enum needs a plain integer, which
-   can't be derived from this list without more preprocessor machinery than 12 fixed slots justify). */
+   Must still be kept equal to APP_NUM_SENSOR_SLOTS (APP_PDU_IDS.h) - the enum there needs a plain
+   integer, which can't be derived from this list without more preprocessor machinery than 12 fixed
+   slots justify. */
 #define APP_SENSOR_SLOTS( ENTRY ) \
     ENTRY(0u)  ENTRY(1u)  ENTRY(2u)  ENTRY(3u)  \
     ENTRY(4u)  ENTRY(5u)  ENTRY(6u)  ENTRY(7u)  \
     ENTRY(8u)  ENTRY(9u)  ENTRY(10u) ENTRY(11u)
 
-/* Must match the number of ENTRY(n) calls in APP_SENSOR_SLOTS above. */
-#define APP_NUM_SENSOR_SLOTS ( 12u )
+/* APP_NUM_SENSOR_SLOTS (APP_PDU_IDS.h) must match the number of ENTRY(n) calls in APP_SENSOR_SLOTS
+   above. */
 
 /* One TX-only PDUR route per sensor slot - designated array-index initializer so this always lands
    on the matching app_pdu_id_et slot (below) regardless of macro invocation order. Trailing comma
    in the macro body (not between invocations) since APP_SENSOR_SLOTS expands these back-to-back. */
 #define CAN_SENSOR_PDUR_ENTRY( n ) \
     [APP_PDU_SENSOR_BASE + (n)] = { .tx_id = ( CAN_SENSOR_BASE_ID + (u32_t)(n) ), .lower_layer_tx_func = pdur_hal_can_tx },
+
+/* One TX-only PDUR route per MQB_CLUSTER frame - designated array-index initializer, so each lands on
+   the slot MQB_CLUSTER_tx_msg_et says it belongs to (APP_PDU_MQB_TX_BASE + enumerator, exactly what
+   MQB_CLUSTER sends to via mqb_cluster_cfg_s.tx_pdu_id_base). Trailing comma in the macro body, same as
+   CAN_SENSOR_PDUR_ENTRY, since MQB_CLUSTER_TX_MSG_LIST expands these back-to-back. */
+#define APP_MQB_PDUR_ENTRY( msg, can_id ) \
+    [APP_PDU_MQB_TX_BASE + (msg)] = { .tx_id = (can_id), .lower_layer_tx_func = pdur_hal_can_tx },
 
 /* UDS diagnostics over CAN-TP - functional (0x700/0x600) and physical (0x7E0/0x7E8) request/
    response pair, same IDs FBL uses (FBL/Src/UDS_CFG/UDS_config.h) - safe to reuse rather than
@@ -385,19 +396,7 @@ STATIC pass_fail_et pdur_hal_can_tx( u32_t id, PDUR_medium_et medium, u8_t* data
 #define APP_CAN_RX_ID        ( 0x7E0u )
 #define APP_CAN_TX_ID        ( 0x7E8u )
 
-/* APP's own logical PDU IDs - these, not the raw CAN IDs above, are what pdur_routing_table_s's
-   array position means and what PDUR_tx()/CAN_SENSOR_MSG_ENTRY dispatch on. Values double as
-   array indices (designated-index initializers pin each route to its enum value explicitly, so
-   reordering this enum without reordering the table - or vice versa - is a compile error from a
-   duplicate/out-of-range index, not a silent mismatch). */
-typedef enum
-{
-    APP_PDU_SENSOR_BASE          = 0u,                    /* sensor slots occupy +0 .. +(APP_NUM_SENSOR_SLOTS-1) */
-    APP_PDU_GKT_LEVER_RX         = APP_PDU_SENSOR_BASE + APP_NUM_SENSOR_SLOTS,   /* rx-only: GKT_SHIFTER_STATE_CAN_ID (0x197) -> TCU */
-    APP_PDU_UDS_FUNCTIONAL,      /* rx: APP_UDS_REQUEST_ID (0x700) / tx: APP_UDS_RESPONSE_ID (0x600) */
-    APP_PDU_UDS_PHYSICAL,        /* rx: APP_CAN_RX_ID (0x7E0) / tx: APP_CAN_TX_ID (0x7E8) */
-    APP_PDU_NUM_ROUTES
-} app_pdu_id_et;
+/* APP's logical PDU IDs (app_pdu_id_et) live in APP_PDU_IDS.h - see there. */
 
 /* Not STATIC - passed to HAL_CAN_set_rx_callback() from main.c, the same way MODE_MGR_tick
    (MODE_MGR.h) is referenced by name from systick_cfg_s below, just in the opposite direction. */
@@ -427,6 +426,21 @@ STATIC void app_cantp_tx_confirmation( u32_t id, pass_fail_et status )
 STATIC pass_fail_et app_cantp_tx_request_wrapper( u32_t id, PDUR_medium_et medium, u8_t* data_p, u16_t len )
 {
     return( CANTP_tx_request( &app_cantp_instance_s, id, (CANTP_id_type_et)medium, TP, data_p, len, app_cantp_tx_confirmation ) );
+}
+
+/* PDUR's lower_layer_tx_func_t shape for plain, single-frame CAN messages (the shifter's LED/backlight
+   commands, TCU's broadcasts): posts them to CANTP's NORMAL TX queue instead of straight to the CAN
+   hardware like pdur_hal_can_tx does. The hardware has only 3 TX mailboxes and no queue of its own, so
+   a burst bigger than that (every module sending at the top of the same tick) loses whatever doesn't
+   fit. CANTP_tick() (MODE_MGR_tick, every 10 ms) drains this queue, and retries a frame the hardware
+   refused on the next tick instead of dropping it - see CANTP_tx_request()'s note. The payload is
+   copied at once, so data_p need not outlive this call. PASS only means "queued" (FAIL = queue full or
+   the frame is oversize), not "on the wire"; no completion callback - nothing here needs one. Costs up
+   to one CANTP_tick() of latency (10 ms) versus a direct send.
+   Not for UDS: those routes need TP framing (app_cantp_tx_request_wrapper above). */
+STATIC pass_fail_et app_cantp_tx_normal_wrapper( u32_t id, PDUR_medium_et medium, u8_t* data_p, u16_t len )
+{
+    return( CANTP_tx_request( &app_cantp_instance_s, id, (CANTP_id_type_et)medium, NORMAL, data_p, len, NULL_P ) );
 }
 
 /* Adapter: CANTP_message_rx_func_p hands PDUR a physical CAN ID - PDUR_rx_indication() no longer
@@ -493,18 +507,35 @@ void app_cantp_instance_init( void )
 
 const PDUR_route_st pdur_routing_table_s[] =
 {
-    APP_SENSOR_SLOTS( CAN_SENSOR_PDUR_ENTRY )
-    /* RX-only route (no lower_layer_tx_func - TCU/GKT_SHIFTER/MQB_CLUSTER each transmit via their
-       own tick(), not through PDUR) for the F30 lever's real bus input. TCU's own
-       TCU_GEAR_STATE_CAN_ID broadcast has no matching RX route here - see
-       app_tcu_gear_state_local_relay() (VEHICLE_SIM_CFG/VEHICLE_SIM_config.c) for why. */
+    //APP_SENSOR_SLOTS( CAN_SENSOR_PDUR_ENTRY )
+    /* RX-only routes (no lower_layer_tx_func) for every real CAN ID the physical F30 shifter itself
+       sends. Both go to GKT_SHIFTER (the shifter's CAN gateway - see GKT_SHIFTER.c's own header
+       comment), never straight to TCU. TCU's own TCU_GEAR_STATE_CAN_ID broadcast has no matching RX
+       route here - see app_tcu_gear_state_local_relay() (VEHICLE_SIM_CFG/VEHICLE_SIM_config.c) for why. */
     [APP_PDU_GKT_LEVER_RX] = { .rx_id = GKT_SHIFTER_STATE_CAN_ID, .upperLayerRxIndication = app_pdur_gkt_lever_rx },
+    [APP_PDU_GKT_HEARTBEAT_RX] = { .rx_id = GKT_SHIFTER_HEARTBEAT_CAN_ID, .upperLayerRxIndication = app_pdur_gkt_heartbeat_rx },
     /* Functional (0x700->0x600) and physical (0x7E0->0x7E8) UDS request/response routes - TX goes
        via app_cantp_tx_request_wrapper, which always requests TP (ISO-TP) framing. */
     [APP_PDU_UDS_FUNCTIONAL] = { .rx_id = APP_UDS_REQUEST_ID, .tx_id = APP_UDS_RESPONSE_ID,
       .upperLayerRxIndication = UDS_rx_indication, .lower_layer_tx_func = app_cantp_tx_request_wrapper },
     [APP_PDU_UDS_PHYSICAL] = { .rx_id = APP_CAN_RX_ID, .tx_id = APP_CAN_TX_ID,
       .upperLayerRxIndication = UDS_rx_indication, .lower_layer_tx_func = app_cantp_tx_request_wrapper },
+    /* TX-only routes (no upperLayerRxIndication) for every frame TCU/GKT_SHIFTER/MQB_CLUSTER send.
+       Each of those modules keeps its own period/encoder in its own tick() - unlike the sensor
+       frames above, which MSG_SCHED schedules - but hands every finished frame to PDUR_tx() with the
+       route id from its cfg (VEHICLE_SIM_config.c), so this table is the one place a CAN ID or
+       medium is chosen. These go through CANTP's NORMAL TX queue (app_cantp_tx_normal_wrapper), not
+       straight to the hardware (pdur_hal_can_tx) - together they send more frames per tick than the
+       CAN controller has TX mailboxes. Anything re-enabled below (the sensor slots, MQB_CLUSTER) still
+       uses pdur_hal_can_tx and will need the same treatment if it sends in bursts. */
+    [APP_PDU_GKT_LED_TX]        = { .tx_id = GKT_SHIFTER_LED_CAN_ID,       .lower_layer_tx_func = app_cantp_tx_normal_wrapper },
+    [APP_PDU_GKT_BACKLIGHT_TX]  = { .tx_id = GKT_SHIFTER_BACKLIGHT_CAN_ID, .lower_layer_tx_func = app_cantp_tx_normal_wrapper },
+    [APP_PDU_TCU_GEAR_STATE_TX] = { .tx_id = TCU_GEAR_STATE_CAN_ID,        .lower_layer_tx_func = app_cantp_tx_normal_wrapper },
+    [APP_PDU_TCU_DYNAMICS_TX]   = { .tx_id = TCU_DYNAMICS_CAN_ID,          .lower_layer_tx_func = app_cantp_tx_normal_wrapper },
+    /* MQB_CLUSTER's routes are generated from the same list the module builds its own enum from
+       (MQB_CLUSTER_TX_MSG_LIST, MQB_CLUSTER.h), so a message added there gets its route here with no
+       edit to this table - and the CAN ID can't disagree with the module's. */
+    //MQB_CLUSTER_TX_MSG_LIST( APP_MQB_PDUR_ENTRY )
 };
 
 const u16_t pdur_num_routes_s = (u16_t)( sizeof(pdur_routing_table_s) / sizeof(pdur_routing_table_s[0u]) );

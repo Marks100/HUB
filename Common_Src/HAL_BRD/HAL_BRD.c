@@ -122,6 +122,14 @@ void HAL_BRD_init( void )
 	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_10MHz;
 	GPIO_Init( ONBOARD_LED_PORT, &GPIO_InitStructure );
 	HAL_BRD_set_onboard_led( OFF );
+
+	/* APS throttle pedal analog input - see ADC_THROTTLE_PORT/PIN's own comment (HAL_config.h) on
+	   why this is PA0 and not PA6. GPIO_Mode_AIN disables the pin's Schmitt trigger/digital input
+	   buffer, as ST recommends for analog inputs. */
+	GPIO_InitStructure.GPIO_Pin   = ADC_THROTTLE_PIN;
+	GPIO_InitStructure.GPIO_Mode  = GPIO_Mode_AIN;
+	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_10MHz;
+	GPIO_Init( ADC_THROTTLE_PORT, &GPIO_InitStructure );
 }
 
 /*!

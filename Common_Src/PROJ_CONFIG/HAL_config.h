@@ -91,9 +91,27 @@
 
 /* ADC channels for analog joystick/pot inputs */
 #define ADC_STEERING_CHANNEL        ADC_Channel_4   /* PA4 */
-#define ADC_STEERING_TRIM_CHANNEL   ADC_Channel_5   /* PA5 -- placeholder, verify */
-#define ADC_THROTTLE_CHANNEL        ADC_Channel_6   /* PA6 -- placeholder, verify */
-#define ADC_THROTTLE_CHANNEL_2      ADC_Channel_7   /* PA7 -- placeholder, verify - APS channel 2 */
+#define ADC_STEERING_TRIM_CHANNEL   ADC_Channel_5   /* PA5 -- placeholder, verify. NOTE: PA5 is also
+                                                       SPI1_SCK_PIN (SPI1 - shared bus, above) - same
+                                                       conflict ADC_THROTTLE_CHANNEL had, not yet moved */
+
+/* APS throttle pedal - PA0 (ADC_Channel_0), the only free ADC1-capable pin left on this board.
+   ADC1 only reaches PA0-PA7/PB0-PB1/PC0-PC5, and this is a Blue Pill-family part (see
+   CLK_STM32F1.c) whose standard 40-pin header exposes just PC13-PC15 out of GPIOC - not remotely
+   ADC-capable - so PC0-PC5 are physically unreachable, not merely "unused". Of what's left,
+   PA4 is ADC_STEERING_CHANNEL, PA5/6/7 are SPI1_SCK_PIN/SPI1_MISO_PIN/SPI1_MOSI_PIN (SPI1 -
+   shared bus, above - a live bus driving the OLED panel and NRF24 radio), and PB0/PB1 are
+   NRF_CE_PIN/BUZZER_TIM_PIN. Originally PA6 - moved off it rather than fighting SPI1 for the pin.
+   ADC_THROTTLE_PORT/PIN is what HAL_BRD_init() configures GPIO_Mode_AIN. There is no free
+   ADC-capable pin left for ch2 at all right now, so it stays unwired: aps_pedal_cfg_s
+   (VEHICLE_SIM_config.c) has ch2_read_func_p = NULL_P - see APS.h - until one of the pins above
+   is freed up for it. */
+#define ADC_THROTTLE_PORT           GPIOA
+#define ADC_THROTTLE_PIN            GPIO_Pin_0
+#define ADC_THROTTLE_CHANNEL        ADC_Channel_0   /* PA0 */
+#define ADC_THROTTLE_CHANNEL_2      ADC_Channel_7   /* PA7 -- unusable placeholder: collides with
+                                                       SPI1_MOSI_PIN and no free ADC pin exists to
+                                                       move it to right now */
 
 /* TJA1051 CAN transceiver */
 #define TJA1051_EN_PORT             GPIOB

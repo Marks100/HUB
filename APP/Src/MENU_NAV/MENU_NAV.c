@@ -17,7 +17,7 @@
 #include "TB.h"
 #include "PRESS_CONV.h"
 #include "GFX.h"
-#include "CPS.h"
+#include "VEHICLE_SIM_config.h"
 #include "printf.h"
 #include "SHARED_RAM.h"
 #include "MCU_JUMP.h"
@@ -72,9 +72,8 @@ typedef struct
 typedef struct
 {
     u32_t*              value_p;    /*!< Live value - drawn and knob-edited in place. u32_t so a
-                                     *   gauge fed by something uncapped (e.g. Rev Counter's bench-
-                                     *   test CPS reading) can display past 65535 - see
-                                     *   menu_nav_tacho_refresh_from_cps(). */
+                                     *   gauge fed by something uncapped can display past 65535 -
+                                     *   see menu_nav_tacho_refresh_from_engine_sim(). */
     u32_t                min;
     u32_t                max;
     u32_t                knob_step;  /*!< How far one detent moves the value; clamped, not wrapped */
@@ -177,7 +176,7 @@ STATIC void menu_nav_enter_buzzer( void );
 STATIC void menu_nav_value_edit_handle( const menu_nav_value_edit_st* cfg_p, HMI_SH1106_input_et input );
 STATIC void menu_nav_gauge_draw( const menu_nav_gauge_cfg_st* cfg_p );
 STATIC void menu_nav_gauge_handle( const menu_nav_gauge_cfg_st* cfg_p, HMI_SH1106_input_et input );
-STATIC void menu_nav_tacho_refresh_from_cps( void );
+STATIC void menu_nav_tacho_refresh_from_engine_sim( void );
 STATIC void menu_nav_draw_rev_counter( void );
 STATIC void menu_nav_bar_gauge_draw( const menu_nav_bar_gauge_cfg_st* cfg_p );
 STATIC void menu_nav_bar_gauge_handle( const menu_nav_bar_gauge_cfg_st* cfg_p, HMI_SH1106_input_et input );
@@ -242,11 +241,14 @@ STATIC const menu_nav_tire_reading_st menu_nav_tire_rr_s = { 21, 30 };
 #define MENU_NAV_REAR_AXLE_Y    ( MENU_NAV_REAR_TIRE_Y  + ( MENU_NAV_TIRE_HEIGHT / 2u ) )
 #define MENU_NAV_DRIVESHAFT_X   ( ( MENU_NAV_AXLE_LEFT_X + MENU_NAV_AXLE_RIGHT_X ) / 2u )
 
-/* ===== Rev Counter - now a live gauge, reading the crank position sensor.
-   menu_nav_tacho_rpm_s is refreshed from CPS_get_rpm(&cps_crank_instance_s) every draw (see
-   menu_nav_tacho_refresh_from_cps(), called from menu_nav_draw_rev_counter()/
-   menu_nav_draw_rev_counter_bar() below) - cps_crank_instance_s (INTEGRATION_STUBS.c) is driven by
-   a bench-test crank sensor input (EXTI3/PB3 - see HAL_BRD.c).
+/* ===== Rev Counter - a live gauge, reading the simulated bench engine.
+   menu_nav_tacho_rpm_s is refreshed from ENGINE_SIM_get_rpm(&engine_sim_instance_s) every draw
+   (see menu_nav_tacho_refresh_from_engine_sim(), called from menu_nav_draw_rev_counter()/
+   menu_nav_draw_rev_counter_bar() below) - engine_sim_instance_s (VEHICLE_SIM_config.c) is the
+   same simulated engine MQB_CLUSTER's own tacho reads (app_engine_sim_cluster_relay(),
+   VEHICLE_SIM_config.c), so this OLED screen and the CAN cluster always agree. The crank sensor
+   (CPS, cps_crank_instance_s) still exists and still ticks - it's a separate bench-test input,
+   independent of ENGINE_SIM, and no longer feeds any screen.
    Since the value is now live rather than knob-edited, both screens' .handle_func_p is NULL_P in
    the screen table below - MENU_NAV_on_input() falls through to menu_nav_handle_static() for plain
    BACK navigation, same as any other read-only screen (e.g. About). Drawing still goes through the
@@ -346,23 +348,22 @@ STATIC const menu_nav_gauge_label_st menu_nav_tacho_labels_s[MENU_NAV_ITEM_COUNT
     { 99u, 4u, "9" },  /* 9000 RPM */
 };
 
-extern CPS_instance_st cps_crank_instance_s;   /* INTEGRATION_STUBS.c - see HAL_BRD.c for the EXTI3/PB3 input */
-
 STATIC u32_t menu_nav_tacho_rpm_s = MENU_NAV_TACHO_MIN_RPM;
 
 /*!
- * \brief Refreshes menu_nav_tacho_rpm_s from the live crank sensor
+ * \brief Refreshes menu_nav_tacho_rpm_s from the simulated bench engine
  *
- * Deliberately NOT clamped to the gauge's MENU_NAV_TACHO_MAX_RPM (9000) dial range - this is a
- * bench test to find the sensor/ISR's real ceiling, and clamping here would hide the true reading.
- * menu_nav_tacho_rpm_s and menu_nav_value_edit_st.value_p are both u32_t (CPS_get_rpm()'s own
- * return type) specifically so the digital readout can show past 65535 - see
- * menu_nav_gauge_draw()/menu_nav_bar_gauge_draw() for how the needle/bar visuals (still u16_t at
- * the GFX layer) get a separately-clamped copy so they pin at max instead of wrapping around.
+ * Not clamped to the gauge's MENU_NAV_TACHO_MAX_RPM (9000) dial range here - ENGINE_SIM's own
+ * redline_rpm (VEHICLE_SIM_config.c) already sits under it, so this never actually reaches the
+ * clamp, but see menu_nav_gauge_draw()/menu_nav_bar_gauge_draw() for the needle/bar visuals'
+ * (still u16_t at the GFX layer) own separately-clamped copy regardless. menu_nav_tacho_rpm_s and
+ * menu_nav_value_edit_st.value_p are u32_t even though ENGINE_SIM_get_rpm() itself returns u16_t
+ * - kept for consistency with the shared value_edit_st plumbing other gauges reuse, not because
+ * this particular source can exceed 65535.
  */
-STATIC void menu_nav_tacho_refresh_from_cps( void )
+STATIC void menu_nav_tacho_refresh_from_engine_sim( void )
 {
-    menu_nav_tacho_rpm_s = CPS_get_rpm( &cps_crank_instance_s );
+    menu_nav_tacho_rpm_s = (u32_t)ENGINE_SIM_get_rpm( &engine_sim_instance_s );
 }
 
 /* The Rev Counter's own instance of the generic gauge mechanism - see menu_nav_gauge_cfg_st. Any
@@ -1515,7 +1516,7 @@ STATIC void menu_nav_gauge_handle( const menu_nav_gauge_cfg_st* cfg_p, HMI_SH110
 /*!
 ****************************************************************************************************
 *
-*   \brief         Rev Counter - needle gauge plus a linear bar, live crank sensor reading
+*   \brief         Rev Counter - needle gauge plus a linear bar, live simulated engine reading
 *
 *   \author        MS
 *
@@ -1524,7 +1525,7 @@ STATIC void menu_nav_gauge_handle( const menu_nav_gauge_cfg_st* cfg_p, HMI_SH110
 ***************************************************************************************************/
 STATIC void menu_nav_draw_rev_counter( void )
 {
-    menu_nav_tacho_refresh_from_cps();
+    menu_nav_tacho_refresh_from_engine_sim();
     menu_nav_gauge_draw( &menu_nav_rev_counter_gauge_s );
 }
 
@@ -1584,7 +1585,7 @@ STATIC void menu_nav_bar_gauge_handle( const menu_nav_bar_gauge_cfg_st* cfg_p, H
 /*!
 ****************************************************************************************************
 *
-*   \brief         Rev Counter (Bar) - vertical fill bar, live crank sensor reading
+*   \brief         Rev Counter (Bar) - vertical fill bar, live simulated engine reading
 *
 *   \author        MS
 *
@@ -1592,12 +1593,12 @@ STATIC void menu_nav_bar_gauge_handle( const menu_nav_bar_gauge_cfg_st* cfg_p, H
 *
 *   \note          Shares menu_nav_tacho_rpm_s with the needle Rev Counter - see the data section's
 *                   comment for why. Refreshing it here too means whichever of the two screens is
-*                   actually on-screen is the one that pays for the CPS_get_rpm() call.
+*                   actually on-screen is the one that pays for the ENGINE_SIM_get_rpm() call.
 *
 ***************************************************************************************************/
 STATIC void menu_nav_draw_rev_counter_bar( void )
 {
-    menu_nav_tacho_refresh_from_cps();
+    menu_nav_tacho_refresh_from_engine_sim();
     menu_nav_bar_gauge_draw( &menu_nav_rev_counter_bar_gauge_s );
 }
 

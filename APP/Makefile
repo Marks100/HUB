@@ -33,6 +33,7 @@ APP_MAP_FILE                 := $(OUTPUT_NAME).map
 APP_HEX_FILE                 := $(OUTPUT_NAME).hex
 APP_BIN_FILE                 := $(OUTPUT_NAME).bin
 APP_SREC_FILE                := $(OUTPUT_NAME).srec
+APP_HEX_PADDED_FILE          := $(OUTPUT_NAME)_padded.hex
 APP_HEX_WITH_CRC_FILE        := $(OUTPUT_NAME)_with_CRC.hex
 APP_HEX_SIGNED_FILE          := $(OUTPUT_NAME)_signed.hex
 APP_S19_SIGNED_FILE          := $(OUTPUT_NAME)_signed.s19
@@ -82,6 +83,10 @@ FBL_FLASH_END                 := $(shell printf '0x%08X' $$(( $(BM_FLASH_START) 
 APP_FLASH_START               := $(shell printf '0x%08X' $$(( $(BM_FLASH_START) + $(BM_FLASH_SIZE) + $(FBL_FLASH_SIZE) )))
 APP_FLASH_SIZE                := 0x17000
 APP_FLASH_END                 := $(shell printf '0x%08X' $$(( $(BM_FLASH_START) + $(BM_FLASH_SIZE) + $(FBL_FLASH_SIZE) + $(APP_FLASH_SIZE) - 1 )))
+
+# One past APP_FLASH_END - the exclusive upper bound srec_cat's -fill wants. See the padding step in
+# $(APP_ELF_FILE)'s recipe below for why the built hex is padded to the whole region.
+APP_FLASH_LIMIT               := $(shell printf '0x%08X' $$(( $(APP_FLASH_START) + $(APP_FLASH_SIZE) )))
 
 # DATASET0/1 - two independent 1KB slots immediately after APP, before the reserved NVM pages.
 # Each is header(96B)+payload(928B) - same APP_header_st fields/tooling as APP/FBL/BM's own
@@ -346,8 +351,19 @@ $(APP_ELF_FILE): build_banner autoversion $(APP_OBJ_DIR) #$(BearSSL_LIB)
 	@$(OBJCOPY) -O ihex $(APP_ELF_FILE) $(APP_HEX_FILE)
 	@$(SREC) $(APP_HEX_FILE) -Intel -o $(BUILD_OUT_DIR)/$(PROJECT_NAME).srec -Motorola
 	@echo ""
+	@echo "--> Padding HEX to the whole APP region (0xFF fill)..."
+# BM's CRC and signature cover the ENTIRE region [APP_CODE_START, APP_CODE_END], not just the bytes
+# the linker emitted. If the hex stopped short of APP_CODE_END, a flasher that only rewrites the pages
+# a hex touches (Lauterbach FLASH.ReProgram, FBL/CAN_FLASH sector erase) left the previous build's
+# bytes in the untouched tail pages, BM's CRC then no longer matched the header, and BM fell back to
+# FBL - whenever a build shrank enough to end in an earlier page than the one before it. Defining every
+# byte of the region makes the hex self-contained: every page is always erased and rewritten, and the
+# CRC/signature below cover exactly what ends up in flash. The 0xFF fill is what both tools already
+# assume for the gap, so CRC and signature values are unchanged.
+	@$(SREC) $(APP_HEX_FILE) -Intel -fill 0xFF $(APP_FLASH_START) $(APP_FLASH_LIMIT) -o $(APP_HEX_PADDED_FILE) -Intel
+	@echo ""
 	@echo "--> Injecting CRC32 into APP header (HEX file)..."
-	@$(BUILD_ENV_BIN)/app_crc_injector $(APP_HEX_FILE) --output=$(APP_HEX_WITH_CRC_FILE) --header-addr=$(APP_HEADER_ADDR) --code-start=$(APP_CODE_START) --code-end=$(APP_CODE_END) --crc-type=$(APP_CRC_TYPE)
+	@$(BUILD_ENV_BIN)/app_crc_injector $(APP_HEX_PADDED_FILE) --output=$(APP_HEX_WITH_CRC_FILE) --header-addr=$(APP_HEADER_ADDR) --code-start=$(APP_CODE_START) --code-end=$(APP_CODE_END) --crc-type=$(APP_CRC_TYPE)
 	@echo ""
 	@echo "--> Signing firmware ($(SIGN_ALGORITHM))..."
 	@$(BUILD_ENV_BIN)/app_signer $(APP_HEX_WITH_CRC_FILE) --output=$(APP_HEX_SIGNED_FILE) --header-addr=$(APP_HEADER_ADDR) --code-start=$(APP_CODE_START) --code-end=$(APP_CODE_END) --algorithm=$(SIGN_ALGORITHM) --signing-key=$(SIGNING_KEY)
