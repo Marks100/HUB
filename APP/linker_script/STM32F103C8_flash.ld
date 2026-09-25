@@ -3,11 +3,12 @@
 **
 ** Flash layout (128 KB total - confirmed via live F_SIZE register read at 0x1FFFF7E0; this part
 ** is a "C8" (64 KB nominal) that's physically 128 KB silicon, a known STM32F103 binning quirk):
-**   BM   : 0x08000000 - 0x080027FF   10 KB
-**   FBL  : 0x08002800 - 0x08007FFF   22 KB  (grown three times from 17 KB - twice to fit the NVM
+**   BM   : 0x08000000 - 0x080023FF    9 KB
+**   FBL  : 0x08002400 - 0x08007FFF   23 KB  (grown four times from 17 KB - twice to fit the NVM
 **                                            driver, once (21->22 KB) to fit a UDS boot-version
-**                                            DID, that last KB coming out of BM's free space
-**                                            rather than APP's. See that image's own linker script
+**                                            DID and once (22->23 KB) to move onto CANIF, those
+**                                            last two KB coming out of BM's free space rather
+**                                            than APP's. See that image's own linker script
 **                                            for the full history. If FBL needs more still, this
 **                                            image has slack to fund it.)
 **   APP  : 0x08008000 - 0x0801EFFF   92 KB  <- this image (shrunk from 99 KB across three FBL/NVM

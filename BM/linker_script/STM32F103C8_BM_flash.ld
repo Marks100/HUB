@@ -3,13 +3,14 @@
 **
 ** Flash layout (128 KB total - confirmed via live F_SIZE register read at 0x1FFFF7E0; this part
 ** is a "C8" (64 KB nominal) that's physically 128 KB silicon, a known STM32F103 binning quirk):
-**   BM   : 0x08000000 - 0x080027FF   10 KB  <- this image (grown from 8 KB to 12 KB, then given
-**                                             back 1 KB twice: 12->11 KB when FBL first ran out
-**                                             of margin, and 11->10 KB when FBL's -Og debug build
+**   BM   : 0x08000000 - 0x080023FF    9 KB  <- this image (grown from 8 KB to 12 KB, then given
+**                                             back 1 KB three times: 12->11 KB when FBL first ran
+**                                             out of margin, 11->10 KB when FBL's -Og debug build
 **                                             hit 96.9% after gaining a UDS 0x22
-**                                             ReadDataByIdentifier boot-version DID. BM still has
-**                                             ~6 KB free)
-**   FBL  : 0x08002800 - 0x08007FFF   22 KB  (grown three times from 17 KB - the first two to fit
+**                                             ReadDataByIdentifier boot-version DID, and 10->9 KB
+**                                             when FBL moved onto CANIF for its hardware RX ID
+**                                             filter. BM still has ~5 KB free)
+**   FBL  : 0x08002400 - 0x08007FFF   23 KB  (grown four times from 17 KB - the first two to fit
 **                                            the NVM driver - FBL persists a WriteDataByIdentifier
 **                                            fingerprint (see fbl_nvm_gen2_hw_interface_s in
 **                                            FBL/Src/INT_STUBS/INTEGRATION_STUBS.c). 17->19 KB
@@ -18,9 +19,9 @@
 **                                            came out of APP's flash budget, not BM's. The third
 **                                            growth, 21->22 KB, came out of BM's own free space
 **                                            instead, once FBL's build had none of its own margin
-**                                            left)
-**     .app_header : 0x08002800 - 0x080028FF  256 B
-**     code start  : 0x08002900               (FBL_CODE_START)
+**                                            left, and so did the fourth, 22->23 KB, for CANIF)
+**     .app_header : 0x08002400 - 0x080024FF  256 B
+**     code start  : 0x08002500               (FBL_CODE_START)
 **   APP  : 0x08008000 - 0x0801EFFF   92 KB  (shrunk from 94 KB to make room for DATASET0/1 below)
 **     .app_header : 0x08008000 - 0x080080FF  256 B
 **     code start  : 0x08008100               (APP_CODE_START)
@@ -102,8 +103,8 @@ _Min_Stack_Size = 0x400;   /* 1 KB */
    version byte) without having to move code_start again. Built by hand-crafting the hex directly
    with those addresses rather than through this project's HEADER.h/linker convention (there is
    no compiled .app_header section for a dataset in any image). */
-__fbl_header_start__  = 0x08002800;
-__fbl_code_start__    = 0x08002900;
+__fbl_header_start__  = 0x08002400;
+__fbl_code_start__    = 0x08002500;
 __fbl_code_end__      = 0x08007FFF;
 __app_header_start__  = 0x08008000;
 __app_code_start__    = 0x08008100;
@@ -117,7 +118,7 @@ __dataset1_code_end__     = 0x0801F7FF;
 
 MEMORY
 {
-    FLASH          (rx)  : ORIGIN = 0x08000000, LENGTH = 10K
+    FLASH          (rx)  : ORIGIN = 0x08000000, LENGTH = 9K
     m_data_shared  (xrw) : ORIGIN = 0x20000000, LENGTH = 0x20
     RAM            (xrw) : ORIGIN = 0x20000020, LENGTH = 0x4FE0
 }

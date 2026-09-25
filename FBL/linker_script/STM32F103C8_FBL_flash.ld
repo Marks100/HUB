@@ -3,8 +3,8 @@
 **
 ** Flash layout (128 KB total - confirmed via live F_SIZE register read at 0x1FFFF7E0; this part
 ** is a "C8" (64 KB nominal) that's physically 128 KB silicon, a known STM32F103 binning quirk):
-**   BM   : 0x08000000 - 0x080027FF   10 KB
-**   FBL  : 0x08002800 - 0x08007FFF   22 KB  <- this image (grown three times from 17 KB - the
+**   BM   : 0x08000000 - 0x080023FF    9 KB
+**   FBL  : 0x08002400 - 0x08007FFF   23 KB  <- this image (grown four times from 17 KB - the
 **                                             first two to fit the NVM driver - FBL persists a
 **                                             WriteDataByIdentifier fingerprint, see
 **                                             fbl_nvm_gen2_hw_interface_s in this project's own
@@ -15,11 +15,13 @@
 **                                             came out of BM's own free space instead (see
 **                                             BM's own linker script) once a UDS 0x22
 **                                             ReadDataByIdentifier boot-version DID left this
-**                                             build with none of its own margin left.)
-**     .app_header : 0x08002800 - 0x080028FF  256 B  (presence pattern + CRC, see HEADER.h -
+**                                             build with none of its own margin left. The fourth,
+**                                             22->23 KB, also came out of BM, when FBL moved onto
+**                                             CANIF for its hardware RX ID filter.)
+**     .app_header : 0x08002400 - 0x080024FF  256 B  (presence pattern + CRC, see HEADER.h -
 **                                                     BM validates this before jumping here,
 **                                                     same tooling/layout as APP's header)
-**     .isr_vector : 0x08002900 ...            code start
+**     .isr_vector : 0x08002500 ...            code start
 **   APP  : 0x08008000 - 0x0801EFFF   92 KB  (shrunk from 94 KB to make room for DATASET0/1 below)
 **   DATASET0 : 0x0801F000 - 0x0801F3FF   1 KB  (independently field-downloadable via FBL_download_
 **                                               request() - same header/CRC/signature layout as
@@ -72,7 +74,7 @@ __dataset1_code_end__     = 0x0801F7FF;
 
 MEMORY
 {
-    FLASH          (rx)  : ORIGIN = 0x08002800, LENGTH = 22K
+    FLASH          (rx)  : ORIGIN = 0x08002400, LENGTH = 23K
     m_data_shared  (xrw) : ORIGIN = 0x20000000, LENGTH = 0x20
     RAM            (xrw) : ORIGIN = 0x20000020, LENGTH = 0x4FE0
 }
@@ -87,7 +89,7 @@ SECTIONS
     {
         . = ALIGN(4);
         KEEP(*(.app_header))
-        . = ALIGN(0x100);   /* pad to 256-byte boundary -> next addr = 0x08002900 */
+        . = ALIGN(0x100);   /* pad to 256-byte boundary -> next addr = 0x08002500 */
     } >FLASH
 
     .isr_vector :

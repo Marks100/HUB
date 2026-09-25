@@ -55,7 +55,7 @@ RELEASE_PACKAGE_NAME         := $(RELEASE_PACKAGE_BASE_DIR)/$(PROJECT_TYPE)_$(VE
 # ID ranges (NVM_GEN2_BLOCK_ID_FBL_* / _APP_*), and compaction copies any record it has no config
 # for across verbatim, so neither image can overwrite the other's data.
 # See xCOMMON_MODULES/Src/NVM_GEN2/README.md.
-# BM=10KB  FBL=22KB  APP=92KB  DATASET0=1KB  DATASET1=1KB (+ 2KB reserved for NVM) — adjust sizes
+# BM=9KB  FBL=23KB  APP=92KB  DATASET0=1KB  DATASET1=1KB (+ 2KB reserved for NVM) — adjust sizes
 # and update linker scripts accordingly, and keep APP_FLASH_END below the reserved NVM pages.
 # BM was sized at 12KB (up from 8KB), then gave back 1KB to FBL, which had run out of its own
 # margin entirely, since BM still has ~7KB free either way (see BM/linker_script/
@@ -71,13 +71,16 @@ RELEASE_PACKAGE_NAME         := $(RELEASE_PACKAGE_BASE_DIR)/$(PROJECT_TYPE)_$(VE
 # carved a further 2KB out of APP's budget (94KB -> 92KB) - two independently field-downloadable
 # data blocks via FBL, sized to exactly one flash sector each so an erase never touches more than
 # one dataset at a time - see FBL_download_request() in xCOMMON_MODULES/Src/FBL/FBL.c and
-# BM_run()'s dataset step in xCOMMON_MODULES/Src/BM/BM.c.
+# BM_run()'s dataset step in xCOMMON_MODULES/Src/BM/BM.c. FBL then moved onto CANIF (so its
+# channel row could program a hardware RX ID filter - other traffic on the bus was costing
+# Consecutive Frames mid-download), which overflowed 22KB; the extra 1KB (22KB -> 23KB) came out of
+# BM again (10KB -> 9KB), BM still having ~5KB free.
 BM_FLASH_START               := 0x08000000
-BM_FLASH_SIZE                := 0x2800
+BM_FLASH_SIZE                := 0x2400
 BM_FLASH_END                 := $(shell printf '0x%08X' $$(( $(BM_FLASH_START) + $(BM_FLASH_SIZE) - 1 )))
 
 FBL_FLASH_START               := $(shell printf '0x%08X' $$(( $(BM_FLASH_START) + $(BM_FLASH_SIZE) )))
-FBL_FLASH_SIZE                := 0x5800
+FBL_FLASH_SIZE                := 0x5C00
 FBL_FLASH_END                 := $(shell printf '0x%08X' $$(( $(BM_FLASH_START) + $(BM_FLASH_SIZE) + $(FBL_FLASH_SIZE) - 1 )))
 
 APP_FLASH_START               := $(shell printf '0x%08X' $$(( $(BM_FLASH_START) + $(BM_FLASH_SIZE) + $(FBL_FLASH_SIZE) )))
