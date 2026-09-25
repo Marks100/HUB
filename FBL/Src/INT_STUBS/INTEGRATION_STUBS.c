@@ -4,11 +4,11 @@
 *
 *   Everything here exists to bind generic modules to this board. Most functions are one-liners
 *   that supply something the module's function-pointer signature has no room for: a config struct
-*   (clk_init, crc_init), an instance pointer (fbl_cantp_*), or a type the two layers spell
-*   differently (fbl_cantp_rx_indication). They are adapters, not indirection - deleting one means
-*   changing a module's contract for every project that uses it. Where a module's function-pointer
-*   type already matches a lower layer's signature exactly (PDUR_tx, HAL_CAN_send_frame), it's
-*   bound directly below with no adapter at all.
+*   (clk_init, crc_init) or an instance pointer (fbl_can_rx, fbl_cantp_tx_request). They are
+*   adapters, not indirection - deleting one means changing a module's contract for every project
+*   that uses it. Where a module's function-pointer type already matches another layer's signature
+*   exactly (PDUR_tx, PDUR_rx_indication_physical, PDUR_tx_confirmation_physical), it's bound
+*   directly below with no adapter at all.
 *
 *   Definitions are ordered so each is complete before it is referenced, which is why this file
 *   carries no forward-declaration block. Keep it that way when adding to it.
@@ -265,6 +265,8 @@ STATIC const TJA1051_config_st tja1051_config_s =
     .event_callback = NULL_P,
 };
 
+STATIC TJA1051_instance_st fbl_tja1051_instance_s;
+
 /***************************************************************************************************
 **                              CAN / CAN-TP / PDU-R                                              **
 ***************************************************************************************************/
@@ -275,48 +277,48 @@ STATIC const TJA1051_config_st tja1051_config_s =
    fitting and not. Zero-initialised in .bss, populated at runtime in fbl_comms_init(). */
 STATIC CANTP_instance_st fbl_cantp_instance_s;
 
-/* CANTP_message_rx_func_p hands PDUR a physical CAN ID - PDUR_rx_indication() no longer accepts one
-   (see PDUR_pdu_id_t's comment in PDUR.h), so this resolves it to a logical route via
-   PDUR_lookup_rx_pdu_id() first. STANDARD_ID/EXTENDED_ID (0/1) line up numerically with
-   PDUR_MEDIUM_CAN_STD/_CAN_EXT (0/1), so the cast carries the right value without a translation
-   table. A frame CANTP hands up always matches one of fbl_pdur_routing_table_s's two rx_ids (that's
-   the only reason CANTP called back at all), so the lookup can't genuinely miss here - but
-   PDUR_rx_indication() bounds-checks anyway, so a miss would just no-op rather than misbehave. */
-STATIC void fbl_cantp_rx_indication( u32_t id, CANTP_id_type_et id_type, u8_t* data_p, u16_t len )
+/* The one message buffer CANTP reassembles requests into and UDS builds responses in. Sized for
+   FBL's largest request, a full TransferData: SID + blockSequenceCounter + max_transfer_block_len
+   of data - enough whether the tester reads maxNumberOfBlockLength as covering those two header
+   bytes (ISO 14229-1) or not. Nothing FBL answers is longer. */
+#define FBL_UDS_BUFFER_SIZE     ( FLS_STM32F1_PAGE_SIZE + 2u )
+STATIC u8_t fbl_uds_buffer_s[ FBL_UDS_BUFFER_SIZE ];
+
+/* CANTP -> PDUR needs no adapter: fbl_cantp_instance_s's rx_indication_func_p is
+   PDUR_rx_indication_physical() and its TP transfers confirm through PDUR_tx_confirmation_physical(),
+   both shaped as CANTP's callbacks. FBL has one bus, so every channel involved is 0 (the CANTP
+   instance's and every route's default). */
+
+/* CANTP_can_tx_func_t shape. FBL has one bus and no CANIF (APP's multi-channel layer isn't worth its
+   flash here), so the channel is always 0 and this goes straight to bxCAN. */
+STATIC pass_fail_et fbl_can_tx( u8_t channel, u32_t id, u8_t id_type, const u8_t* data_p, u8_t dlc )
 {
-    PDUR_pdu_id_t pdu_id = PDUR_lookup_rx_pdu_id( id, (PDUR_medium_et)id_type );
-    (void)PDUR_rx_indication( pdu_id, data_p, len );
+    (void)channel;
+
+    return( HAL_CAN_send_frame( id, id_type, data_p, dlc ) );
 }
 
-/* The three below supply &fbl_cantp_instance_s, which the callback signatures have no room for. */
-STATIC void fbl_can_rx( u32_t id, u8_t id_type, u8_t* data_p, u8_t dlc )
+/* HAL_CAN_rx_callback_ft shape - supplies &fbl_cantp_instance_s (APP's CANIF does this from its
+   channel table; FBL has no CANIF). */
+STATIC void fbl_can_rx( u8_t channel, u32_t id, u8_t id_type, const u8_t* data_p, u8_t dlc )
 {
-    CANTP_rx_frame_received( &fbl_cantp_instance_s, id, (CANTP_id_type_et)id_type, data_p, (u16_t)dlc );
+    (void)channel;
+
+    CANTP_rx_frame_received( &fbl_cantp_instance_s, id, (CANTP_id_type_et)id_type, data_p, dlc );
 }
 
-/* CANTP_tx_request()'s message_sent_noti_p shape - fires once a queued transfer genuinely finishes
-   (PASS) or times out waiting for Flow Control (FAIL), asynchronously from CANTP_tick(), not from
-   the PDUR_tx() call that queued it. Only tells us the physical id back, so PDUR_lookup_tx_pdu_id()
-   resolves which route that was before forwarding to PDUR_tx_confirmation() - see PDUR_pdu_id_t's
-   comment in PDUR.h for why PDUR itself never sees a physical id directly. */
-STATIC void fbl_cantp_tx_confirmation( u32_t id, pass_fail_et status )
+/* PDUR's lower_layer_tx_func_t shape - supplies &fbl_cantp_instance_s, which it has no room for (the
+   job CANIF_pdur_tp_tx does in APP). Always requests TP (ISO-TP) framing: both routes that use this
+   function are UDS request/response pairs, which always need CANTP's segmentation state machine,
+   never a raw/NORMAL frame. Returns CANTP_tx_request()'s own accept/reject (e.g. FAIL if both TP
+   session slots are already busy), and completion goes to PDUR_tx_confirmation_physical(), which
+   finds the route and calls its txConfirmation (UDS_tx_confirmation). channel is ignored: FBL has
+   one bus and one CANTP instance, and every route in fbl_pdur_routing_table_s is on channel 0. */
+STATIC pass_fail_et fbl_cantp_tx_request( PDUR_channel_t channel, u32_t id, PDUR_medium_et medium, u8_t* data_p, u16_t len )
 {
-    PDUR_pdu_id_t pdu_id = PDUR_lookup_tx_pdu_id( id, PDUR_MEDIUM_CAN_STD );
-    PDUR_tx_confirmation( pdu_id, status );
-}
+    (void)channel;
 
-/* PDUR's lower_layer_tx_func_t shape - supplies &fbl_cantp_instance_s, which it has no room for.
-   Always requests TP (ISO-TP) framing: both routes that use this function are UDS request/response
-   pairs, which always need CANTP's segmentation state machine, never a raw/NORMAL frame. A route
-   that genuinely wanted NORMAL framing would get its own equally trivial wrapper, the same way
-   pdur_hal_can_tx below bypasses CANTP entirely - see PDUR_lower_layer_tx_func_t's comment in
-   PDUR.h for why that's a per-route function choice and not a runtime parameter. Returns
-   CANTP_tx_request()'s own accept/reject (e.g. FAIL if both TP session slots are already busy)
-   instead of discarding it, and wires fbl_cantp_tx_confirmation as the completion notify CANTP
-   already supported but nothing previously registered. */
-STATIC pass_fail_et fbl_cantp_tx_request( u32_t id, PDUR_medium_et medium, u8_t* data_p, u16_t len )
-{
-    return( CANTP_tx_request( &fbl_cantp_instance_s, id, (CANTP_id_type_et)medium, TP, data_p, len, fbl_cantp_tx_confirmation ) );
+    return( CANTP_tx_request( &fbl_cantp_instance_s, id, (CANTP_id_type_et)medium, CANTP_FRAME_TP, data_p, len, PDUR_tx_confirmation_physical ) );
 }
 
 /* fbl_config_st's comms_tick_func_p - CAN-TP must pump its queue before UDS_tick() can see
@@ -342,14 +344,23 @@ typedef enum
 
 /* Bidirectional routes: functional (0x700->0x600) and physical (0x7E0->0x7E8). TX goes via CANTP
    (fbl_cantp_tx_request, always TP-framed - see its own comment) so multi-frame UDS responses get
-   segmented. */
+   segmented. UDS_tx_confirmation tells UDS each response has actually gone out - it holds the
+   shared buffer and any scheduled reset/APP jump until then. */
 STATIC const PDUR_route_st fbl_pdur_routing_table_s[] =
 {
     [FBL_PDU_UDS_FUNCTIONAL] = { .rx_id = FBL_UDS_REQUEST_ID, .tx_id = FBL_UDS_RESPONSE_ID,
-      .upperLayerRxIndication = UDS_rx_indication, .lower_layer_tx_func = fbl_cantp_tx_request },
+      .upperLayerRxIndication = UDS_rx_indication, .lower_layer_tx_func = fbl_cantp_tx_request,
+      .txConfirmation = UDS_tx_confirmation },
     [FBL_PDU_UDS_PHYSICAL] = { .rx_id = FBL_CAN_RX_ID, .tx_id = FBL_CAN_TX_ID,
-      .upperLayerRxIndication = UDS_rx_indication, .lower_layer_tx_func = fbl_cantp_tx_request },
+      .upperLayerRxIndication = UDS_rx_indication, .lower_layer_tx_func = fbl_cantp_tx_request,
+      .txConfirmation = UDS_tx_confirmation },
 };
+
+/* UDS_init_cfg_st.is_functional_route_fp - see there */
+STATIC false_true_et fbl_uds_is_functional_route( UDS_route_id_t route_id )
+{
+    return( ( route_id == (UDS_route_id_t)FBL_PDU_UDS_FUNCTIONAL ) ? TRUE : FALSE );
+}
 
 /* UDS_init_cfg_st.tp_send_func_p is assigned PDUR_tx directly below - PDUR_pdu_id_t and
    UDS_route_id_t are both u16_t and PDUR_tx's pass_fail_et return now matches the typedef exactly
@@ -377,6 +388,7 @@ STATIC const PDUR_route_st fbl_pdur_routing_table_s[] =
 STATIC void fbl_comms_init( void )
 {
     GPIO_InitTypeDef gpio_init;
+    pass_fail_et     pdur_ok;
 
     /* CAN: TJA1051 EN pin - push-pull output, driven via tja1051_en_pin_set() */
     RCC_APB2PeriphClockCmd( RCC_APB2Periph_GPIOB, ENABLE );
@@ -385,35 +397,39 @@ STATIC void fbl_comms_init( void )
     gpio_init.GPIO_Speed = GPIO_Speed_2MHz;
     GPIO_Init( TJA1051_EN_PORT, &gpio_init );
 
-    TJA1051_init( &tja1051_func_table_s, &tja1051_config_s );
+    TJA1051_init( &fbl_tja1051_instance_s, &tja1051_func_table_s, &tja1051_config_s );
 
     HAL_CAN_init();
-    HAL_CAN_set_rx_callback( fbl_can_rx );
 
     /* CAN-TP: compound-literal assignment for readability. Still .bss, not .data:
        fbl_cantp_instance_s's own declaration above has no initializer, so this assignment doesn't
        change where the object itself lives - only how the initial values get written into it. */
     fbl_cantp_instance_s = (CANTP_instance_st)
     {
-        .CANTP_message_rx_func_p = fbl_cantp_rx_indication,
-        .tx_func_p               = HAL_CAN_send_frame,
-        .tp_buffer               = pdur_buffer_s,
+        .rx_indication_func_p    = PDUR_rx_indication_physical,
+        .can_tx_func_p           = fbl_can_tx,
+        .rx_buffer_p             = fbl_uds_buffer_s,
+        .rx_buffer_size          = FBL_UDS_BUFFER_SIZE,
         .tp_ids                  = { { FBL_UDS_REQUEST_ID, FBL_UDS_RESPONSE_ID },
                                      { FBL_CAN_RX_ID,       FBL_CAN_TX_ID       } },
-        .st_min                  = 0x01,
+        .st_min                  = 0x01u,
         .rx_block_size           = 10u,     /* 0 = unlimited (ISO 15765-2) - CANTP_init() no longer
                                               rewrites this to a default, so it genuinely means one
                                               Flow Control per TransferData PDU instead of one every
                                               N frames. */
         .N_Cr                    = CANTP_DEFAULT_N_CR,
         .N_Bs                    = CANTP_DEFAULT_N_BS,
-        .N_Ar                    = CANTP_DEFAULT_N_AR,
     };
 
     CANTP_init( &fbl_cantp_instance_s );
 
+    /* Only once CANTP's queues are initialised - a frame delivered mid-init could be lost */
+    HAL_CAN_set_rx_callback( 0u, fbl_can_rx );
+
     /* PDU Router */
-    (void)PDUR_init( fbl_pdur_routing_table_s, (u16_t)( sizeof( fbl_pdur_routing_table_s ) / sizeof( PDUR_route_st ) ) );
+    /* FAIL means a route with neither direction configured - a table typo, caught at boot */
+    pdur_ok = PDUR_init( fbl_pdur_routing_table_s, (u16_t)( sizeof( fbl_pdur_routing_table_s ) / sizeof( PDUR_route_st ) ) );
+    STDC_assert( pdur_ok == PASS );
 
     /* UDS - UDS_get_service_table() supplies every SID FBL answers, including the SessionControl
        (0x10) and SecurityAccess (0x27) rows UDS.c still dispatches specially (see
@@ -431,10 +447,14 @@ STATIC void fbl_comms_init( void )
         .message_received_notify = FBL_reset_auto_boot_timer,
         .service_table_p         = UDS_get_service_table(),
         .service_table_size      = UDS_get_service_table_size(),
-        .buffer_p                = pdur_buffer_s,
-        .buffer_size             = PDUR_BUFFER_SIZE,
+        .buffer_p                = fbl_uds_buffer_s,
+        .buffer_size             = FBL_UDS_BUFFER_SIZE,
         .initial_session         = UDS_SES_PROGRAMMING,
-        .initial_security_level  = 1u
+        .initial_security_level  = 1u,
+        .tick_period_ms          = FBL_TIMER_TICK_RATE_MS,
+        .is_functional_route_fp  = fbl_uds_is_functional_route,
+        .security_max_attempts   = FBL_SECURITY_MAX_FAILED_ATTEMPTS,
+        .security_lockout_ms     = FBL_SECURITY_LOCKOUT_TIME_MS
     };
     UDS_init( &fbl_uds_init_cfg_s );
 }
@@ -469,7 +489,6 @@ const fbl_config_st fbl_config_s =
     /* Runtime function pointers */
     .wdg_kick_func_p           = NULL_P,
     .comms_tick_func_p         = fbl_comms_tick,
-    .time_get_tick_func_p      = TIME_get_cumulative_run_time_ms_64,
     .flash_erase_sector_func_p = FLS_STM32F1_erase_sector,
     .flash_write_data_func_p   = FLS_STM32F1_write_data,
     .crc_calculate_func_p      = CHKSUM_calc_hw_crc32,

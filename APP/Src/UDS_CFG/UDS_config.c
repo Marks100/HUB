@@ -39,6 +39,19 @@
 #define APP_SECURITY_KEY_SECRET_LEVEL_1  ( 0xA5A5A5A5ul )
 #define APP_SECURITY_KEY_SECRET_LEVEL_2  ( 0x5A5A5A5Aul )
 #define APP_SECURITY_KEY_SECRET_LEVEL_3  ( 0x3C3C3C3Cul )
+#define APP_SECURITY_KEY_LEN             ( 4u )  /* SendKey's securityKey, bytes */
+
+/* 0x19 ReadDTCInformation report types this ECU answers (ISO 14229-1 §12.3) */
+#define DTC_REPORT_NUMBER_BY_STATUS_MASK  ( 0x01u )
+#define DTC_REPORT_BY_STATUS_MASK         ( 0x02u )
+#define DTC_REPORT_SUPPORTED_DTC          ( 0x0Au )
+/* Every FAULT_MGR_SB_* bit is maintained, so all eight status bits are supported */
+#define DTC_STATUS_AVAILABILITY_MASK      ( 0xFFu )
+#define DTC_FORMAT_ISO14229_1             ( 0x01u )  /* DTCFormatIdentifier for 19 01 */
+#define DTC_RECORD_LEN                    ( 4u )     /* [DTC hi][DTC mid][DTC lo][status] */
+/* 0x14 groupOfDTC - only "all groups" is supported */
+#define DTC_GROUP_ALL                     ( 0xFFFFFFul )
+#define DTC_GROUP_LEN                     ( 3u )
 
 /***************************************************************************************************
 **                              Private Function Prototypes                                       **
@@ -50,6 +63,8 @@ STATIC u8_t uds_handle_communication_control( u16_t subfunc, u8_t* data_p, u16_t
 STATIC u8_t uds_handle_control_dtc_setting( u16_t subfunc, u8_t* data_p, u16_t* len_p, UDS_response_code_et* nrc_p );
 STATIC u8_t uds_handle_write_key( u16_t subfunc, u8_t* data_p, u16_t* len_p, UDS_response_code_et* nrc_p );
 STATIC u8_t uds_handle_read_app_sw_id( u16_t subfunc, u8_t* data_p, u16_t* len_p, UDS_response_code_et* nrc_p );
+STATIC u8_t uds_handle_read_dtc_information( u16_t subfunc, u8_t* data_p, u16_t* len_p, UDS_response_code_et* nrc_p );
+STATIC u8_t uds_handle_clear_diagnostic_information( u16_t subfunc, u8_t* data_p, u16_t* len_p, UDS_response_code_et* nrc_p );
 STATIC void uds_handle_programming_session_notify( void );
 
 /***************************************************************************************************
@@ -146,6 +161,21 @@ STATIC UDS_subfunction_table_st read_data_by_identifier_subfuncs_s[] =
     { DID_APP_SOFTWARE_IDENTIFICATION, UDS_SUBFUNC_MASK_EXACT, uds_handle_read_app_sw_id, UDS_SES_ANY, 0u },
 };
 
+/* 0x19/0x14 read and clear FAULT_MGR's DTCs - any session, no security (ISO 14229-1 has both
+   available in the default session so a workshop tester can read and clear faults without
+   unlocking anything). One masked row for 0x19: the handler picks the report type from subfunc,
+   same approach as communication_control_subfuncs_s. 0x14 has no sub-function at all - its 3-byte
+   groupOfDTC is checked by the handler. */
+STATIC UDS_subfunction_table_st read_dtc_information_subfuncs_s[] =
+{
+    { UDS_SUBFUNC_IGNORED, UDS_SUBFUNC_MASK_ANY, uds_handle_read_dtc_information, UDS_SES_ANY, 0u },
+};
+
+STATIC UDS_subfunction_table_st clear_diagnostic_information_subfuncs_s[] =
+{
+    { UDS_SUBFUNC_IGNORED, UDS_SUBFUNC_MASK_ANY, uds_handle_clear_diagnostic_information, UDS_SES_ANY, 0u },
+};
+
 /* APP's 0x10 policy - a whitelist, anything absent is refused with NRC 0x7E. See
    UDS_session_transition_st in UDS.h for the matching rules. Declared ahead of uds_service_table_s
    below since that table's 0x10 row names this array.
@@ -191,6 +221,8 @@ STATIC UDS_service_table_st uds_service_table_s[] =
     { UDS_SID_COMMUNICATION_CONTROL,      communication_control_subfuncs_s,    UDS_TABLE_ROWS( communication_control_subfuncs_s ) },
     { UDS_SID_CONTROL_DTC_SETTING,        control_dtc_setting_subfuncs_s,      UDS_TABLE_ROWS( control_dtc_setting_subfuncs_s ) },
     { UDS_SID_WRITE_DATA_BY_IDENTIFIER,   write_data_by_identifier_subfuncs_s, UDS_TABLE_ROWS( write_data_by_identifier_subfuncs_s ) },
+    { UDS_SID_READ_DTC_INFORMATION,       read_dtc_information_subfuncs_s,     UDS_TABLE_ROWS( read_dtc_information_subfuncs_s ) },
+    { UDS_SID_CLEAR_DIAGNOSTIC_INFORMATION, clear_diagnostic_information_subfuncs_s, UDS_TABLE_ROWS( clear_diagnostic_information_subfuncs_s ) },
 };
 
 /***************************************************************************************************
@@ -256,45 +288,59 @@ STATIC u8_t uds_handle_security_request_seed( u16_t subfunc, u8_t* data_p, u16_t
 *                  observed/validated via uds_key_1/2/3_check_ok_s without risking locking out a
 *                  working flash/diagnostic sequence if the derivation is wrong. Once verified,
 *                  enforce it by returning UDS_RC_INVALID_KEY (and 0u) instead of granting on a
-*                  mismatch.
+*                  mismatch - UDS.c's failed-attempt lockout (APP_SECURITY_MAX_FAILED_ATTEMPTS)
+*                  counts exactly those and starts working with no further change.
 ***************************************************************************************************/
 STATIC u8_t uds_handle_security_send_key( u16_t subfunc, u8_t* data_p, u16_t* len_p, UDS_response_code_et* nrc_p )
 {
-    u32_t received_key = STDC_copy_buffer_msb_first_to_32bit( data_p );
-    u32_t expected_key;
-    u8_t  level;
+    u32_t received_key = 0u;
+    u8_t  level        = 0u;
 
-    switch( subfunc )
+    if( *len_p != APP_SECURITY_KEY_LEN )
     {
-        case 0x02u:  /* Level 1 - gates PROGRAMMING */
-            level                = APP_SECURITY_LEVEL_1;
-            expected_key         = uds_last_seed_s ^ APP_SECURITY_KEY_SECRET_LEVEL_1;
-            uds_key_1_check_ok_s = ( received_key == expected_key ) ? TRUE : FALSE;
-            break;
-
-        case 0x04u:  /* Level 2 - gates writing app_key_1_blk_g */
-            level                = APP_SECURITY_LEVEL_2;
-            expected_key         = uds_last_seed_s ^ APP_SECURITY_KEY_SECRET_LEVEL_2;
-            uds_key_2_check_ok_s = ( received_key == expected_key ) ? TRUE : FALSE;
-            break;
-
-        case 0x06u:  /* Level 3 - gates writing app_key_2_blk_g */
-            level                = APP_SECURITY_LEVEL_3;
-            expected_key         = uds_last_seed_s ^ APP_SECURITY_KEY_SECRET_LEVEL_3;
-            uds_key_3_check_ok_s = ( received_key == expected_key ) ? TRUE : FALSE;
-            break;
-
-        default:
-            /* uds_process_security_access() (UDS.c) only ever calls this handler for an even
-               subfunc (SendKey family) - the specific value could still be something other than
-               0x02/0x04/0x06 if a future level's row exists without a matching case here, so this
-               stays as a defensive fail-closed rather than granting an undefined level. */
-            *nrc_p = UDS_RC_REQUEST_OUT_OF_RANGE;
-            return( 0u );
+        /* Not a guess at all - never compared, so it doesn't count towards UDS.c's lockout */
+        *nrc_p = UDS_RC_INCORRECT_MESSAGE_LENGTH_OR_INVALID_FORMAT;
     }
+    else
+    {
+        received_key = STDC_copy_buffer_msb_first_to_32bit( data_p );
 
-    *len_p = 0u;
-    *nrc_p = UDS_RC_POSITIVE_RESPONSE;
+        switch( subfunc )
+        {
+            case 0x02u:  /* Level 1 - gates PROGRAMMING */
+                level                = APP_SECURITY_LEVEL_1;
+                uds_key_1_check_ok_s = ( received_key == ( uds_last_seed_s ^ APP_SECURITY_KEY_SECRET_LEVEL_1 ) ) ? TRUE : FALSE;
+            break;
+
+            case 0x04u:  /* Level 2 - gates writing app_key_1_blk_g */
+                level                = APP_SECURITY_LEVEL_2;
+                uds_key_2_check_ok_s = ( received_key == ( uds_last_seed_s ^ APP_SECURITY_KEY_SECRET_LEVEL_2 ) ) ? TRUE : FALSE;
+            break;
+
+            case 0x06u:  /* Level 3 - gates writing app_key_2_blk_g */
+                level                = APP_SECURITY_LEVEL_3;
+                uds_key_3_check_ok_s = ( received_key == ( uds_last_seed_s ^ APP_SECURITY_KEY_SECRET_LEVEL_3 ) ) ? TRUE : FALSE;
+            break;
+
+            default:
+                /* uds_process_security_access() (UDS.c) only ever calls this handler for an even
+                   subfunc (SendKey family) - the specific value could still be something other than
+                   0x02/0x04/0x06 if a future level's row exists without a matching case here, so this
+                   stays as a defensive fail-closed rather than granting an undefined level. */
+                level = 0u;
+            break;
+        }
+
+        if( level != 0u )
+        {
+            *len_p = 0u;
+            *nrc_p = UDS_RC_POSITIVE_RESPONSE;
+        }
+        else
+        {
+            *nrc_p = UDS_RC_SUBFUNCTION_NOT_SUPPORTED;
+        }
+    }
 
     return( level );
 }
@@ -452,6 +498,112 @@ STATIC u8_t uds_handle_read_app_sw_id( u16_t subfunc, u8_t* data_p, u16_t* len_p
 
     *len_p = ( written > 0 ) ? (u16_t)written : 0u;
     *nrc_p = UDS_RC_POSITIVE_RESPONSE;
+
+    return( 0u );
+}
+
+/*!
+****************************************************************************************************
+*   \brief         0x19 ReadDTCInformation - 01 count, 02 list by status mask, 0A all supported DTCs
+*   \details       Reads FAULT_MGR directly: every configured fault is one DTC, reported as its
+*                  fault config's dtc_number with FAULT_MGR_get_dtc_status() as the ISO status byte.
+*                  01/02 take one DTCStatusMask byte and match a DTC when any of its status bits is
+*                  in the mask; 0A takes nothing and lists every DTC regardless of status. Responses
+*                  (after 59 + report type):
+*                    01: [availability mask][format 0x01][count hi][count lo]
+*                    02/0A: [availability mask] then [DTC hi][DTC mid][DTC lo][status] per DTC
+*                  At most FAULT_MGR_MAX_FAULTS records (257 bytes), well inside the UDS buffer.
+*                  Any other report type is NRC 0x12, a wrong-length request NRC 0x13.
+***************************************************************************************************/
+STATIC u8_t uds_handle_read_dtc_information( u16_t subfunc, u8_t* data_p, u16_t* len_p, UDS_response_code_et* nrc_p )
+{
+    false_true_et report_all  = ( subfunc == DTC_REPORT_SUPPORTED_DTC ) ? TRUE : FALSE;
+    u16_t         request_len = ( report_all == TRUE ) ? 0u : 1u;   /* 01/02 carry the status mask */
+    u8_t          status_mask = 0u;
+    u16_t         match_count = 0u;
+    u16_t         out_len     = 1u;   /* data_p[0] is the availability mask */
+    u8_t          fault_id;
+    u8_t          status;
+    u32_t         dtc_number;
+
+    if( ( subfunc != DTC_REPORT_NUMBER_BY_STATUS_MASK ) && ( subfunc != DTC_REPORT_BY_STATUS_MASK ) &&
+        ( report_all != TRUE ) )
+    {
+        *nrc_p = UDS_RC_SUBFUNCTION_NOT_SUPPORTED;
+    }
+    else if( *len_p != request_len )
+    {
+        *nrc_p = UDS_RC_INCORRECT_MESSAGE_LENGTH_OR_INVALID_FORMAT;
+    }
+    else
+    {
+        if( report_all != TRUE )
+        {
+            status_mask = data_p[0];   /* read before data_p[0] becomes the availability mask */
+        }
+
+        for( fault_id = 0u; fault_id < FAULT_MGR_get_num_faults(); fault_id++ )
+        {
+            status = FAULT_MGR_get_dtc_status( fault_id );
+
+            if( ( report_all == TRUE ) || ( ( status & status_mask ) != 0u ) )
+            {
+                match_count++;
+
+                if( subfunc != DTC_REPORT_NUMBER_BY_STATUS_MASK )
+                {
+                    dtc_number            = FAULT_MGR_get_dtc_number( fault_id );
+                    data_p[out_len]       = STDC_get_32_bit_msb( dtc_number );
+                    data_p[out_len + 1u]  = STDC_get_32_bit_lsb( dtc_number );
+                    data_p[out_len + 2u]  = STDC_get_32_bit_llsb( dtc_number );
+                    data_p[out_len + 3u]  = status;
+                    out_len              += DTC_RECORD_LEN;
+                }
+            }
+        }
+
+        data_p[0] = DTC_STATUS_AVAILABILITY_MASK;
+
+        if( subfunc == DTC_REPORT_NUMBER_BY_STATUS_MASK )
+        {
+            data_p[1] = DTC_FORMAT_ISO14229_1;
+            STDC_copy_16bit_to_buffer_msb_first( &data_p[2], match_count );
+            out_len = 4u;
+        }
+
+        *len_p = out_len;
+        *nrc_p = UDS_RC_POSITIVE_RESPONSE;
+    }
+
+    return( 0u );
+}
+
+/*!
+****************************************************************************************************
+*   \brief         0x14 ClearDiagnosticInformation - all DTCs (groupOfDTC 0xFFFFFF)
+*   \details       Clears every FAULT_MGR fault's status and stored data (and its NVM copy, if
+*                  FAULT_MGR was given one) - FAULT_MGR_clear_all_dtc_data(). No other groupOfDTC
+*                  is defined for this ECU, so any other value is NRC 0x31; a request that isn't
+*                  exactly the 3-byte group is NRC 0x13. Positive response is the bare 0x54.
+***************************************************************************************************/
+STATIC u8_t uds_handle_clear_diagnostic_information( u16_t subfunc, u8_t* data_p, u16_t* len_p, UDS_response_code_et* nrc_p )
+{
+    (void)subfunc;
+
+    if( *len_p != DTC_GROUP_LEN )
+    {
+        *nrc_p = UDS_RC_INCORRECT_MESSAGE_LENGTH_OR_INVALID_FORMAT;
+    }
+    else if( STDC_make_32_bit( 0u, data_p[0], data_p[1], data_p[2] ) != DTC_GROUP_ALL )
+    {
+        *nrc_p = UDS_RC_REQUEST_OUT_OF_RANGE;
+    }
+    else
+    {
+        FAULT_MGR_clear_all_dtc_data();
+        *len_p = 0u;
+        *nrc_p = UDS_RC_POSITIVE_RESPONSE;
+    }
 
     return( 0u );
 }

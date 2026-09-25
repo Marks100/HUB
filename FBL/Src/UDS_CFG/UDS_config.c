@@ -13,11 +13,10 @@
 *   both mirror the equivalent handler in APP/Src/UDS_CFG/UDS_config.c exactly:
 *     - SecurityAccess's RequestSeed/SendKey pair - the seed/key algorithm itself is project-
 *       specific (mirrors uds_handle_security_request_seed()/uds_handle_security_send_key()).
-*       FBL.c still owns the reusable lockout/failed-attempt tracking behind SendKey - see
-*       FBL_security_report_key_result() in FBL.h. The RequestSeed/SendKey handshake itself (was a
-*       seed actually requested first) is enforced by UDS.c itself now, before this file's SendKey
-*       handler is even called - generic across every project, not FBL-specific at all - see
-*       UDS_security_seed_was_requested()'s comment in UDS.h.
+*       Everything around the algorithm is UDS.c's, generic across every project: the
+*       RequestSeed/SendKey ordering (see UDS_security_seed_was_requested()'s comment in UDS.h) and
+*       the failed-attempt lockout (UDS_init_cfg_st's security_max_attempts/security_lockout_ms, set
+*       from FBL.h's FBL_SECURITY_* values in INT_STUBS/INTEGRATION_STUBS.c).
 *     - WriteDataByIdentifier's fingerprint handler - persistence is project-specific (NVM_GEN2,
 *       Common_Src/FBL_NVM_BLOCKS), mirroring uds_handle_write_key() touching app_key_1/2_blk_g
 *       directly.
@@ -43,6 +42,7 @@
    0x05/0x07/0x09/0x0B), all sharing this one mask - see fbl_uds_handle_send_key()'s comment. */
 #define FBL_SECURITY_SEED_MULTIPLIER (0x12345678ul)
 #define FBL_SECURITY_KEY_XOR_MASK    (0xA5A5A5A5ul)
+#define FBL_SECURITY_KEY_LEN         (4u)  /* SendKey's securityKey, bytes */
 
 /***************************************************************************************************
 **                              Private Function Prototypes                                       **
@@ -216,21 +216,14 @@ STATIC u8_t fbl_uds_handle_request_seed( u16_t subfunc, u8_t* data_p, u16_t* len
 {
     (void)subfunc;
 
-    if( FBL_security_is_locked_out() == TRUE )
-    {
-        *nrc_p = UDS_RC_REQUIRED_TIME_DELAY_NOT_EXPIRED;
-    }
-    else
-    {
-        /* UDS.c arms UDS_security_seed_was_requested() itself once this returns
-           UDS_RC_POSITIVE_RESPONSE (see uds_process_security_access()'s comment in UDS.c) - nothing
-           to record here. */
-        fbl_last_seed_s = TIME_get_cumulative_run_time_ms() * FBL_SECURITY_SEED_MULTIPLIER;
+    /* UDS.c refuses this with NRC 0x37 itself during a lockout, and arms
+       UDS_security_seed_was_requested() once this returns UDS_RC_POSITIVE_RESPONSE (see
+       uds_process_security_access()'s comment in UDS.c) - nothing to check or record here. */
+    fbl_last_seed_s = TIME_get_cumulative_run_time_ms() * FBL_SECURITY_SEED_MULTIPLIER;
 
-        STDC_copy_32bit_to_buffer_msb_first( data_p, fbl_last_seed_s );
-        *len_p = 4u;
-        *nrc_p = UDS_RC_POSITIVE_RESPONSE;
-    }
+    STDC_copy_32bit_to_buffer_msb_first( data_p, fbl_last_seed_s );
+    *len_p = 4u;
+    *nrc_p = UDS_RC_POSITIVE_RESPONSE;
 
     return( 0u );
 }
@@ -242,42 +235,44 @@ STATIC u8_t fbl_uds_handle_request_seed( u16_t subfunc, u8_t* data_p, u16_t* len
 *   \details       subfunc itself picks which of the six levels this is (0x01u/../0x0Bu below,
 *                  matching the odd RequestSeed values FBL's own UDS_config.c exposes) - all six
 *                  share fbl_last_seed_s ^ FBL_SECURITY_KEY_XOR_MASK, so an unrecognised subfunc
-*                  and a wrong key take the same path (is_key_correct stays FALSE). On success,
+*                  and a wrong key take the same path (key_correct stays FALSE). On success,
 *                  returns level 1 unconditionally so UDS.c grants it (see UDS_security_access_
 *                  entry_st's comment in UDS.h) - FBL has no per-level UDS gating the way APP's
-*                  UDS_config.c does. Attempt/lockout bookkeeping is only reported to FBL.c when a
-*                  real check actually happened (a locked-out call doesn't count against the limit)
-*                  - see FBL_security_report_key_result()'s comment. No seed-was-requested check
-*                  needed here - uds_process_security_access() (UDS.c) never calls this handler at
-*                  all without one, answering NRC 0x24 itself instead.
+*                  UDS_config.c does. A wrong key is just NRC 0x35: UDS.c counts those itself and
+*                  turns the one that hits the limit into 0x36 plus a lockout (UDS_init_cfg_st's
+*                  security_max_attempts, set from FBL_SECURITY_MAX_FAILED_ATTEMPTS). No
+*                  seed-was-requested check needed here - uds_process_security_access() (UDS.c)
+*                  never calls this handler at all without one, answering NRC 0x24 itself instead.
 ***************************************************************************************************/
 STATIC u8_t fbl_uds_handle_send_key( u16_t subfunc, u8_t* data_p, u16_t* len_p, UDS_response_code_et* nrc_p )
 {
-    u32_t received_key = STDC_copy_buffer_msb_first_to_32bit( data_p );
-    false_true_et key_correct = FALSE;
+    false_true_et key_correct   = FALSE;
     u8_t          granted_level = 0u;
 
-    if( ( subfunc == 0x02u ) || ( subfunc == 0x04u ) || ( subfunc == 0x06u ) ||
-        ( subfunc == 0x08u ) || ( subfunc == 0x0Au ) || ( subfunc == 0x0Cu ) )
+    if( *len_p != FBL_SECURITY_KEY_LEN )
     {
-        key_correct = ( received_key == ( fbl_last_seed_s ^ FBL_SECURITY_KEY_XOR_MASK ) );
-    }
-
-    FBL_security_report_key_result( key_correct );
-
-    if( key_correct == TRUE )
-    {
-        granted_level = 1u;
-        *len_p        = 0u;
-        *nrc_p        = UDS_RC_POSITIVE_RESPONSE;
-    }
-    else if( FBL_security_is_locked_out() == TRUE )
-    {
-        *nrc_p = UDS_RC_EXCEEDED_NUMBER_OF_ATTEMPTS;
+        /* Not a guess at all - never compared, so it doesn't count towards the lockout either */
+        *nrc_p = UDS_RC_INCORRECT_MESSAGE_LENGTH_OR_INVALID_FORMAT;
     }
     else
     {
-        *nrc_p = UDS_RC_INVALID_KEY;
+        if( ( subfunc == 0x02u ) || ( subfunc == 0x04u ) || ( subfunc == 0x06u ) ||
+            ( subfunc == 0x08u ) || ( subfunc == 0x0Au ) || ( subfunc == 0x0Cu ) )
+        {
+            key_correct = ( STDC_copy_buffer_msb_first_to_32bit( data_p ) ==
+                            ( fbl_last_seed_s ^ FBL_SECURITY_KEY_XOR_MASK ) ) ? TRUE : FALSE;
+        }
+
+        if( key_correct == TRUE )
+        {
+            granted_level = 1u;
+            *len_p        = 0u;
+            *nrc_p        = UDS_RC_POSITIVE_RESPONSE;
+        }
+        else
+        {
+            *nrc_p = UDS_RC_INVALID_KEY;
+        }
     }
 
     return( granted_level );

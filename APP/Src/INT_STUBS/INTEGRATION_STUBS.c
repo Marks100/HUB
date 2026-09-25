@@ -19,9 +19,7 @@
 #include "PDUR.h"
 #include "MSG_SCHED.h"
 #include "WIFI.h"
-#include "GKT_SHIFTER.h"    /* GKT_SHIFTER_STATE_CAN_ID, used directly in pdur_routing_table_s below
-                               (also reachable via VEHICLE_SIM_config.h, but this file uses the
-                               symbol itself so it earns its own include) */
+#include "GKT_SHIFTER.h" 
 #include "HAL_TIM.h"
 #include "HAL_SPI.h"
 #include "HAL_I2C.h"
@@ -112,25 +110,11 @@ BTN_MGR_instance_st btm_mgr_instance_s;
    no standalone ROTARY_MGR instance - two instances polling the same counter would each see every
    detent and both fire. */
 
-/* Press feedback is board policy, not navigation logic - a different board might want an LED
-   flash or nothing at all. Keeping it in this wrapper is what lets MENU_NAV stay unaware that a
-   buzzer exists; it only owns whether the user wants one and for how long, via the Buzzer and
-   Beep Time screens. */
-STATIC void hmi_on_input( HMI_SH1106_input_et input )
-{
-    if( MENU_NAV_buzzer_enabled() == TRUE )
-    {
-        BUZZER_beep( &buzzer_instance_s, (u64_t)MENU_NAV_get_beep_duration_ms() );
-    }
-
-    MENU_NAV_on_input( input );
-}
-
 const HMI_SH1106_cfg_st hmi_sh1106_cfg_s =
 {
     /* Display - HAL_I2C_write_registers matches i2c_write_func_p's signature exactly
        (dev_addr, reg_addr, data_p, len -> pass_fail_et), so no adapter is needed */
-    .i2c_write_func_p           = HAL_I2C_write_registers,
+    .i2c_write_func_p       = HAL_I2C_write_registers,
     .i2c_address            = SH1106_I2C_ADDR_DEFAULT,
     .contrast               = SH1106_DEFAULT_CONTRAST,
     /* Panel is mounted rotated 180 degrees on this board - flipping both axes together rotates
@@ -143,6 +127,7 @@ const HMI_SH1106_cfg_st hmi_sh1106_cfg_s =
        mechanical detent reports as 4 raw counts, not 1. */
     .mode                   = ROTARY_MODE_HARDWARE_TIMER,
     .enc_get_count_func_p   = HAL_TIM_ENC_get_counter,
+    .enc_cnt_max            = 0xFFFFu,              /* TIM4 is 16-bit, ARR = 0xFFFF (HAL_TIM4_init_encoder) */
     .reverse_direction      = FALSE,
     .enc_counts_per_detent  = 4u,
 
@@ -164,9 +149,16 @@ const HMI_SH1106_cfg_st hmi_sh1106_cfg_s =
     .stats_critical_enter_func_p = NVIC_DisableGlobalIRQ,
     .stats_critical_exit_func_p  = NVIC_EnableGlobalIRQ,
 
-    /* Input goes through a local wrapper purely to add the buzzer; drawing goes straight to
-       MENU_NAV, which has nothing board-specific to add. */
-    .on_input_func_p        = hmi_on_input,
+    /* Feedback - the panel beeps this board's buzzer for the gestures enabled below. beep_ms is
+       only the power-on value; MENU_NAV's Buzzer screen changes it at runtime via
+       HMI_SH1106_set_beep_ms(). */
+    .buzzer_p               = &buzzer_instance_s,
+    .beep_on_rotate         = TRUE,
+    .beep_on_press          = TRUE,
+    .beep_ms                = BUZZER_SHORT_BEEP_MS,
+
+    /* Both straight to MENU_NAV - nothing board-specific to add to either */
+    .on_input_func_p        = MENU_NAV_on_input,
     .draw_func_p            = MENU_NAV_draw,
 };
 
@@ -333,6 +325,9 @@ const TJA1051_config_st tja1051_cfg_s =
     .event_callback = NULL_P
 };
 
+/* APP_CAN_CH_MAIN's transceiver - a second bus gets its own instance (and func table for its pins) */
+TJA1051_instance_st tja1051_main_instance_s;
+
 /***************************************************************************************************
 **                              RF_MGR                                                            **
 ***************************************************************************************************/
@@ -345,15 +340,6 @@ const RF_MGR_cfg_st rf_mgr_cfg_s =
 /***************************************************************************************************
 **                              CAN / PDUR / MSG_SCHED                                           **
 ***************************************************************************************************/
-/* HAL_CAN has no async TX-complete notification of its own - unlike CANTP's TP sessions, a raw
-   frame send is a single fire-and-forget submission, so only the immediate accept/reject
-   (HAL_CAN_send_frame's own pass_fail_et) is meaningful here; there is no txConfirmation adapter to
-   wire up for these routes. */
-STATIC pass_fail_et pdur_hal_can_tx( u32_t id, PDUR_medium_et medium, u8_t* data_p, u16_t len )
-{
-    return( HAL_CAN_send_frame( id, (u8_t)medium, data_p, (u8_t)len ) );
-}
-
 /* Base CAN ID for sensor telemetry frames — slot N uses ID (base + N) */
 #define CAN_SENSOR_BASE_ID  ( 0x100u )
 
@@ -378,14 +364,14 @@ STATIC pass_fail_et pdur_hal_can_tx( u32_t id, PDUR_medium_et medium, u8_t* data
    on the matching app_pdu_id_et slot (below) regardless of macro invocation order. Trailing comma
    in the macro body (not between invocations) since APP_SENSOR_SLOTS expands these back-to-back. */
 #define CAN_SENSOR_PDUR_ENTRY( n ) \
-    [APP_PDU_SENSOR_BASE + (n)] = { .tx_id = ( CAN_SENSOR_BASE_ID + (u32_t)(n) ), .lower_layer_tx_func = pdur_hal_can_tx },
+    [APP_PDU_SENSOR_BASE + (n)] = { .tx_id = ( CAN_SENSOR_BASE_ID + (u32_t)(n) ), .lower_layer_tx_func = CANIF_pdur_normal_tx },
 
 /* One TX-only PDUR route per MQB_CLUSTER frame - designated array-index initializer, so each lands on
    the slot MQB_CLUSTER_tx_msg_et says it belongs to (APP_PDU_MQB_TX_BASE + enumerator, exactly what
    MQB_CLUSTER sends to via mqb_cluster_cfg_s.tx_pdu_id_base). Trailing comma in the macro body, same as
    CAN_SENSOR_PDUR_ENTRY, since MQB_CLUSTER_TX_MSG_LIST expands these back-to-back. */
 #define APP_MQB_PDUR_ENTRY( msg, can_id ) \
-    [APP_PDU_MQB_TX_BASE + (msg)] = { .tx_id = (can_id), .lower_layer_tx_func = pdur_hal_can_tx },
+    [APP_PDU_MQB_TX_BASE + (msg)] = { .tx_id = (can_id), .lower_layer_tx_func = CANIF_pdur_normal_tx },
 
 /* UDS diagnostics over CAN-TP - functional (0x700/0x600) and physical (0x7E0/0x7E8) request/
    response pair, same IDs FBL uses (FBL/Src/UDS_CFG/UDS_config.h) - safe to reuse rather than
@@ -398,68 +384,22 @@ STATIC pass_fail_et pdur_hal_can_tx( u32_t id, PDUR_medium_et medium, u8_t* data
 
 /* APP's logical PDU IDs (app_pdu_id_et) live in APP_PDU_IDS.h - see there. */
 
-/* Not STATIC - passed to HAL_CAN_set_rx_callback() from main.c, the same way MODE_MGR_tick
-   (MODE_MGR.h) is referenced by name from systick_cfg_s below, just in the opposite direction. */
-void app_can_rx_wrapper( u32_t id, u8_t id_type, u8_t* data_p, u8_t dlc )
-{
-    CANTP_rx_frame_received( &app_cantp_instance_s, id, (CANTP_id_type_et)id_type, data_p, (u16_t)dlc );
-}
+/* No adapter functions between the CAN layers - every signature lines up:
+   - HAL_CAN RX ISR -> CANIF_rx_indication() directly (HAL_CAN_set_rx_callback() in main.c, with this
+     controller's channel), CANIF -> the channel's CANTP instance.
+   - CANTP -> PDUR: each instance's rx_indication_func_p is PDUR_rx_indication_physical() (every
+     reassembled TP message AND every non-TP frame on the bus - one whose id isn't in
+     pdur_routing_table_s on that channel is a silent no-op, the normal case for most traffic).
+   - PDUR -> CANTP: CAN routes point at CANIF_pdur_tp_tx (UDS request/response - ISO-TP, completion
+     back through PDUR_tx_confirmation_physical() to the route's txConfirmation) or
+     CANIF_pdur_normal_tx (every plain frame - CANTP's NORMAL queue, so nothing in APP sends to the
+     3 bxCAN mailboxes directly and a burst can't lose what doesn't fit).
+   - CANTP -> driver: can_tx_func_p is CANIF_transmit. */
 
-/* CANTP_tx_request()'s message_sent_noti_p shape - fires once a queued transfer genuinely finishes
-   (PASS) or times out waiting for Flow Control (FAIL), asynchronously from CANTP_tick(), not from
-   the PDUR_tx() call that queued it. Only tells us the physical id back, so PDUR_lookup_tx_pdu_id()
-   resolves which route that was before forwarding to PDUR_tx_confirmation() - see PDUR_pdu_id_t's
-   comment in PDUR.h for why PDUR itself never sees a physical id directly. */
-STATIC void app_cantp_tx_confirmation( u32_t id, pass_fail_et status )
+/* UDS_init_cfg_st.is_functional_route_fp, assigned in main.c's app_uds_init_cfg_s - see there */
+false_true_et app_uds_is_functional_route( UDS_route_id_t route_id )
 {
-    PDUR_pdu_id_t pdu_id = PDUR_lookup_tx_pdu_id( id, PDUR_MEDIUM_CAN_STD );
-    PDUR_tx_confirmation( pdu_id, status );
-}
-
-/* PDUR's lower_layer_tx_func_t shape - routes UDS responses through CANTP so multi-frame
-   responses get segmented, matching FBL's fbl_cantp_tx_request. Always requests TP (ISO-TP)
-   framing: both routes that use this function are UDS request/response pairs - see
-   PDUR_lower_layer_tx_func_t's comment in PDUR.h for why that's a per-route function choice
-   instead of a runtime parameter. Returns CANTP_tx_request()'s own accept/reject instead of
-   discarding it, and wires app_cantp_tx_confirmation as the completion notify CANTP already
-   supported but nothing previously registered. */
-STATIC pass_fail_et app_cantp_tx_request_wrapper( u32_t id, PDUR_medium_et medium, u8_t* data_p, u16_t len )
-{
-    return( CANTP_tx_request( &app_cantp_instance_s, id, (CANTP_id_type_et)medium, TP, data_p, len, app_cantp_tx_confirmation ) );
-}
-
-/* PDUR's lower_layer_tx_func_t shape for plain, single-frame CAN messages (the shifter's LED/backlight
-   commands, TCU's broadcasts): posts them to CANTP's NORMAL TX queue instead of straight to the CAN
-   hardware like pdur_hal_can_tx does. The hardware has only 3 TX mailboxes and no queue of its own, so
-   a burst bigger than that (every module sending at the top of the same tick) loses whatever doesn't
-   fit. CANTP_tick() (MODE_MGR_tick, every 10 ms) drains this queue, and retries a frame the hardware
-   refused on the next tick instead of dropping it - see CANTP_tx_request()'s note. The payload is
-   copied at once, so data_p need not outlive this call. PASS only means "queued" (FAIL = queue full or
-   the frame is oversize), not "on the wire"; no completion callback - nothing here needs one. Costs up
-   to one CANTP_tick() of latency (10 ms) versus a direct send.
-   Not for UDS: those routes need TP framing (app_cantp_tx_request_wrapper above). */
-STATIC pass_fail_et app_cantp_tx_normal_wrapper( u32_t id, PDUR_medium_et medium, u8_t* data_p, u16_t len )
-{
-    return( CANTP_tx_request( &app_cantp_instance_s, id, (CANTP_id_type_et)medium, NORMAL, data_p, len, NULL_P ) );
-}
-
-/* Adapter: CANTP_message_rx_func_p hands PDUR a physical CAN ID - PDUR_rx_indication() no longer
-   accepts one (see PDUR_pdu_id_t's comment in PDUR.h), so this resolves it to a logical route via
-   PDUR_lookup_rx_pdu_id() first. STANDARD_ID/EXTENDED_ID (0/1) line up numerically with
-   PDUR_MEDIUM_CAN_STD/_CAN_EXT (0/1), so the cast carries the right value without a translation
-   table.
-   CANTP calls this for every reassembled TP session AND, via cantp_handle_rx_normal_frame(), for
-   every other received frame that isn't part of a TP session at all (CANTP.c) - so this genuinely
-   sees the whole bus, not just the two UDS routes. A frame whose id isn't in pdur_routing_table_s
-   makes PDUR_lookup_rx_pdu_id() return PDUR_INVALID_PDU_ID, and PDUR_rx_indication() bounds-checks
-   and no-ops rather than misbehaving - that's the normal case for most bus traffic, not a fallback
-   for something that "can't genuinely happen". */
-STATIC void app_cantp_rx_indication_wrapper( u32_t id, CANTP_id_type_et id_type, u8_t* data_p, u16_t len )
-{
-    PDUR_pdu_id_t pdu_id;
-
-    pdu_id = PDUR_lookup_rx_pdu_id( id, (PDUR_medium_et)id_type );
-    (void)PDUR_rx_indication( pdu_id, data_p, len );
+    return( ( route_id == (UDS_route_id_t)APP_PDU_UDS_FUNCTIONAL ) ? TRUE : FALSE );
 }
 
 /* UDS_init_cfg_st.tp_send_func_p is assigned PDUR_tx directly in main.c's app_uds_init_cfg_s -
@@ -478,21 +418,45 @@ STATIC void app_cantp_rx_indication_wrapper( u32_t id, CANTP_id_type_et id_type,
    CANTP_init(). .fd_enable (FALSE) needs no explicit assignment - already zero from .bss. */
 CANTP_instance_st app_cantp_instance_s;
 
+/* The one message buffer CANTP reassembles requests into and UDS builds responses in - see
+   APP_UDS_BUFFER_SIZE in INTEGRATION_STUBS.h for what it is sized for */
+u8_t app_uds_buffer_g[ APP_UDS_BUFFER_SIZE ];
+
 void app_cantp_instance_init( void )
 {
-    app_cantp_instance_s.CANTP_message_rx_func_p = app_cantp_rx_indication_wrapper;
-    app_cantp_instance_s.tx_func_p               = HAL_CAN_send_frame;
-    app_cantp_instance_s.tp_buffer               = pdur_buffer_s;
-    app_cantp_instance_s.tp_ids[0].req_id        = APP_UDS_REQUEST_ID;
-    app_cantp_instance_s.tp_ids[0].resp_id       = APP_UDS_RESPONSE_ID;
-    app_cantp_instance_s.tp_ids[1].req_id        = APP_CAN_RX_ID;
-    app_cantp_instance_s.tp_ids[1].resp_id       = APP_CAN_TX_ID;
-    app_cantp_instance_s.st_min                  = 10u;
-    app_cantp_instance_s.rx_block_size           = 10u;
-    app_cantp_instance_s.N_Cr                    = CANTP_DEFAULT_N_CR;
-    app_cantp_instance_s.N_Bs                    = CANTP_DEFAULT_N_BS;
-    app_cantp_instance_s.N_Ar                    = CANTP_DEFAULT_N_AR;
+    app_cantp_instance_s.channel              = APP_CAN_CH_MAIN;
+    app_cantp_instance_s.rx_indication_func_p = PDUR_rx_indication_physical;
+    app_cantp_instance_s.can_tx_func_p        = CANIF_transmit;
+    app_cantp_instance_s.rx_buffer_p          = app_uds_buffer_g;
+    app_cantp_instance_s.rx_buffer_size       = APP_UDS_BUFFER_SIZE;
+    app_cantp_instance_s.tp_ids[0].req_id     = APP_UDS_REQUEST_ID;
+    app_cantp_instance_s.tp_ids[0].resp_id    = APP_UDS_RESPONSE_ID;
+    app_cantp_instance_s.tp_ids[1].req_id     = APP_CAN_RX_ID;
+    app_cantp_instance_s.tp_ids[1].resp_id    = APP_CAN_TX_ID;
+    app_cantp_instance_s.st_min               = 10u;
+    app_cantp_instance_s.rx_block_size        = 10u;
+    app_cantp_instance_s.N_Cr                 = CANTP_DEFAULT_N_CR;
+    app_cantp_instance_s.N_Bs                 = CANTP_DEFAULT_N_BS;
 }
+
+/***************************************************************************************************
+**                              CANIF                                                             **
+**  What each CAN channel is made of - pure configuration. Every driver implements CANIF's generic  **
+**  interface (CANIF_types.h) and does its own chip-specific mode mapping, so there are no adapters.**
+***************************************************************************************************/
+/* Row index = channel number (app_can_channel_et, APP_PDU_IDS.h) - also each route's PDUR .channel
+   and each CANTP instance's .channel, which CANIF_init() checks. A second bus is one more row: its
+   controller driver's three functions (e.g. an MCP2515's), its transceiver's set-mode + instance,
+   and its own CANTP instance. */
+const CANIF_channel_cfg_st canif_channels_s[APP_CAN_NUM_CHANNELS] =
+{
+    [APP_CAN_CH_MAIN] = { .send_frame      = HAL_CAN_send_frame,
+                          .ctrl_set_mode   = HAL_CAN_set_mode,
+                          .ctrl_get_status = HAL_CAN_get_status,
+                          .trcv_set_mode   = TJA1051_canif_set_mode,
+                          .trcv_inst_p     = &tja1051_main_instance_s,
+                          .cantp_p         = &app_cantp_instance_s },
+};
 
 /* SessionControl (0x10), SecurityAccess (0x27), ECU Reset (0x11) and TesterPresent (0x3E) are all
    rows in APP's service table now (APP/Src/UDS_CFG/UDS_config.c, see UDS_service_table_st's
@@ -505,6 +469,8 @@ void app_cantp_instance_init( void )
    (message_received_notify) are now assigned directly in main.c's app_uds_init_cfg_s instead of a
    UDS_func_p_st wrapper object - see UDS_init_cfg_st's comment in UDS.h. */
 
+/* Every route below is on APP_CAN_CH_MAIN by leaving .channel at its zero default. A route for
+   another bus sets .channel = APP_CAN_CH_<bus>; the adapters it points at are already channel-aware. */
 const PDUR_route_st pdur_routing_table_s[] =
 {
     //APP_SENSOR_SLOTS( CAN_SENSOR_PDUR_ENTRY )
@@ -515,23 +481,26 @@ const PDUR_route_st pdur_routing_table_s[] =
     [APP_PDU_GKT_LEVER_RX] = { .rx_id = GKT_SHIFTER_STATE_CAN_ID, .upperLayerRxIndication = app_pdur_gkt_lever_rx },
     [APP_PDU_GKT_HEARTBEAT_RX] = { .rx_id = GKT_SHIFTER_HEARTBEAT_CAN_ID, .upperLayerRxIndication = app_pdur_gkt_heartbeat_rx },
     /* Functional (0x700->0x600) and physical (0x7E0->0x7E8) UDS request/response routes - TX goes
-       via app_cantp_tx_request_wrapper, which always requests TP (ISO-TP) framing. */
+       via CANIF_pdur_tp_tx, which always requests TP (ISO-TP) framing.
+       UDS_tx_confirmation tells UDS each response has actually gone out - it holds the shared
+       buffer and any scheduled reset/FBL entry until then. */
     [APP_PDU_UDS_FUNCTIONAL] = { .rx_id = APP_UDS_REQUEST_ID, .tx_id = APP_UDS_RESPONSE_ID,
-      .upperLayerRxIndication = UDS_rx_indication, .lower_layer_tx_func = app_cantp_tx_request_wrapper },
+      .upperLayerRxIndication = UDS_rx_indication, .lower_layer_tx_func = CANIF_pdur_tp_tx,
+      .txConfirmation = UDS_tx_confirmation },
     [APP_PDU_UDS_PHYSICAL] = { .rx_id = APP_CAN_RX_ID, .tx_id = APP_CAN_TX_ID,
-      .upperLayerRxIndication = UDS_rx_indication, .lower_layer_tx_func = app_cantp_tx_request_wrapper },
+      .upperLayerRxIndication = UDS_rx_indication, .lower_layer_tx_func = CANIF_pdur_tp_tx,
+      .txConfirmation = UDS_tx_confirmation },
     /* TX-only routes (no upperLayerRxIndication) for every frame TCU/GKT_SHIFTER/MQB_CLUSTER send.
        Each of those modules keeps its own period/encoder in its own tick() - unlike the sensor
        frames above, which MSG_SCHED schedules - but hands every finished frame to PDUR_tx() with the
        route id from its cfg (VEHICLE_SIM_config.c), so this table is the one place a CAN ID or
-       medium is chosen. These go through CANTP's NORMAL TX queue (app_cantp_tx_normal_wrapper), not
-       straight to the hardware (pdur_hal_can_tx) - together they send more frames per tick than the
-       CAN controller has TX mailboxes. Anything re-enabled below (the sensor slots, MQB_CLUSTER) still
-       uses pdur_hal_can_tx and will need the same treatment if it sends in bursts. */
-    [APP_PDU_GKT_LED_TX]        = { .tx_id = GKT_SHIFTER_LED_CAN_ID,       .lower_layer_tx_func = app_cantp_tx_normal_wrapper },
-    [APP_PDU_GKT_BACKLIGHT_TX]  = { .tx_id = GKT_SHIFTER_BACKLIGHT_CAN_ID, .lower_layer_tx_func = app_cantp_tx_normal_wrapper },
-    [APP_PDU_TCU_GEAR_STATE_TX] = { .tx_id = TCU_GEAR_STATE_CAN_ID,        .lower_layer_tx_func = app_cantp_tx_normal_wrapper },
-    [APP_PDU_TCU_DYNAMICS_TX]   = { .tx_id = TCU_DYNAMICS_CAN_ID,          .lower_layer_tx_func = app_cantp_tx_normal_wrapper },
+       medium is chosen. These go through CANTP's NORMAL TX queue (CANIF_pdur_normal_tx), not
+       straight to the hardware - together they send more frames per tick than the CAN controller has
+       TX mailboxes. The sensor slot and MQB_CLUSTER routes (disabled below) use the same queue. */
+    [APP_PDU_GKT_LED_TX]        = { .tx_id = GKT_SHIFTER_LED_CAN_ID,       .lower_layer_tx_func = CANIF_pdur_normal_tx },
+    [APP_PDU_GKT_BACKLIGHT_TX]  = { .tx_id = GKT_SHIFTER_BACKLIGHT_CAN_ID, .lower_layer_tx_func = CANIF_pdur_normal_tx },
+    [APP_PDU_TCU_GEAR_STATE_TX] = { .tx_id = TCU_GEAR_STATE_CAN_ID,        .lower_layer_tx_func = CANIF_pdur_normal_tx },
+    [APP_PDU_TCU_DYNAMICS_TX]   = { .tx_id = TCU_DYNAMICS_CAN_ID,          .lower_layer_tx_func = CANIF_pdur_normal_tx },
     /* MQB_CLUSTER's routes are generated from the same list the module builds its own enum from
        (MQB_CLUSTER_TX_MSG_LIST, MQB_CLUSTER.h), so a message added there gets its route here with no
        edit to this table - and the CAN ID can't disagree with the module's. */
@@ -574,7 +543,6 @@ const MSG_SCHED_cfg_st msg_sched_cfg_s =
 {
     .msg_table      = can_msg_table_s,
     .num_msgs       = (u8_t)( sizeof(can_msg_table_s) / sizeof(can_msg_table_s[0u]) ),
-    .get_time_ms_fn = TIME_get_cumulative_run_time_ms_64,
 };
 
 /****************************** END OF FILE *******************************************************/

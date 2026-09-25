@@ -223,7 +223,6 @@ STATIC const TCU_periodic_output_cfg_st tcu_periodic_outputs_s[] =
 
 const TCU_cfg_st tcu_cfg_s =
 {
-    .get_time_ms_func_p         = TIME_get_cumulative_run_time_ms_64,
     .num_gears                  = (u8_t)( sizeof(tcu_gear_ratios_s) / sizeof(tcu_gear_ratios_s[0u]) ),
     .lever_sources              = tcu_lever_sources_s,
     .num_lever_sources          = (u8_t)( sizeof(tcu_lever_sources_s) / sizeof(tcu_lever_sources_s[0u]) ),
@@ -253,7 +252,6 @@ const GKT_SHIFTER_cfg_st gkt_shifter_cfg_s =
 const MQB_CLUSTER_cfg_st mqb_cluster_cfg_s =
 {
     .tx_pdu_id_base     = APP_PDU_MQB_TX_BASE,
-    .get_time_ms_func_p = TIME_get_cumulative_run_time_ms_64,
 };
 
 /***************************************************************************************************
@@ -346,10 +344,9 @@ const ENGINE_SIM_cfg_st engine_sim_cfg_s =
     .vehicle_mass_kg             = VEHICLE_MASS_KG,
     .peak_torque_nm              = ENGINE_PEAK_TORQUE_NM,
     .shift_duration_ms           = ENGINE_SHIFT_DURATION_MS,
-    .get_throttle_percent_func_p    = app_read_throttle_percent,  
-    .get_gear_func_p                = TCU_get_current_gear, 
-    .get_time_ms_func_p             = TIME_get_cumulative_run_time_ms_64,
-    .get_gear_ratio_func_p          = TCU_get_gear_combined_ratio, 
+    .get_throttle_percent_func_p    = app_read_throttle_percent,
+    .get_gear_func_p                = TCU_get_current_gear,
+    .get_gear_ratio_func_p          = TCU_get_gear_combined_ratio,
     .get_wheel_circumference_func_p = TCU_get_wheel_circumference_m,  
     .get_shift_matched_rpm_func_p   = TCU_get_shift_matched_rpm,  
 };
@@ -357,10 +354,9 @@ const ENGINE_SIM_cfg_st engine_sim_cfg_s =
 /***************************************************************************************************
 **                              Application Adapter Functions                                       **
 **  Small no-argument/fixed-signature wrappers binding a specific instance to a generic driver's     **
-**  function-pointer config above - the "adapter closes over a fixed instance pointer" pattern       **
-**  used throughout this project (see e.g. INTEGRATION_STUBS.c's pdur_hal_can_tx). Grouped here,     **
-**  after all the tuning data/cfg structs above, rather than interleaved next to whichever struct    **
-**  references each one.                                                                             **
+**  function-pointer config above - the "adapter closes over a fixed instance pointer" pattern.     **
+**  Grouped here, after all the tuning data/cfg structs above, rather than interleaved next to      **
+**  whichever struct references each one.                                                            **
 ***************************************************************************************************/
 STATIC u16_t app_read_engine_rpm( void )
 {

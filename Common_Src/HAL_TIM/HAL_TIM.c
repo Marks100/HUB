@@ -758,9 +758,9 @@ void HAL_TIM4_init_encoder( void )
 	TIM_Cmd( TIM4, ENABLE );
 }
 
-u16_t HAL_TIM_ENC_get_counter( void )
+u32_t HAL_TIM_ENC_get_counter( void )
 {
-	return (u16_t)TIM_GetCounter( TIM4 );
+	return (u32_t)TIM_GetCounter( TIM4 );
 }
 
 /* Returns HIGH if TIM4 is counting down (CW), LOW if counting up (CCW) */

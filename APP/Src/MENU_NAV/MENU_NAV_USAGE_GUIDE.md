@@ -80,18 +80,19 @@ cannot be intercepted by any screen (see Gotchas).
 
 ## Quick Start - Wiring the Panel
 
-The board layer builds one `HMI_SH1106_cfg_st` and points its two callbacks at `MENU_NAV`:
+The board layer builds one `HMI_SH1106_cfg_st` and points its two callbacks straight at
+`MENU_NAV`. Press feedback (a beep) is wired into the panel itself, not a wrapper around
+`MENU_NAV_on_input()`:
 
 ```c
-STATIC void my_on_input( HMI_SH1106_input_et input )
-{
-    MENU_NAV_on_input( input );   /* add board policy here first if you want it - a beep, an LED */
-}
-
 const HMI_SH1106_cfg_st panel_cfg_s =
 {
     /* ... transport, pins, timing - see HMI_SH1106_cfg_st for the full list ... */
-    .on_input_func_p = my_on_input,
+    .buzzer_p        = &buzzer_instance_s,    /* optional - NULL_P for a silent panel */
+    .beep_on_rotate  = FALSE,                 /* which gestures beep is the panel's call */
+    .beep_on_press   = TRUE,
+    .beep_ms         = BUZZER_SHORT_BEEP_MS,  /* power-on value - HMI_SH1106_set_beep_ms() changes it */
+    .on_input_func_p = MENU_NAV_on_input,
     .draw_func_p     = MENU_NAV_draw,
 };
 
@@ -174,9 +175,7 @@ knob edits a value in place, SELECT/CONFIRM commit it, BACK reverts to what it w
 ```
 BTN_MGR/ROTARY_MGR detect the press
         |
-HMI_SH1106 counts it, calls cfg->on_input_func_p( input )
-        |
-board wrapper (adds board policy - a beep, ...), calls MENU_NAV_on_input( input )
+HMI_SH1106 counts it, beeps if cfg says this gesture should, calls cfg->on_input_func_p( input )
         |
 MENU_NAV_on_input():
     input == BACK_LONG?  -->  MENU_NAV_goto( root screen )         [always, no screen can stop this]
@@ -271,7 +270,7 @@ one becomes real, only that row's `target` changes.
 
 ### HMI_SH1106 (`xCOMMON_MODULES/Src/HMI/HMI_SH1106.h`)
 - `HMI_SH1106_init( cfg_p )` / `HMI_SH1106_tick()` - lifecycle, call `_tick()` at `cfg->tick_rate_ms`
-- `HMI_SH1106_gpio_interrupt()` - software GPIO encoder mode only, call from the pin A ISR
+- `HMI_SH1106_gpio_interrupt()` - software GPIO encoder mode only, call from the pin A and pin B ISRs (both edges of each)
 - `HMI_SH1106_request_redraw()` - ask for a repaint on the next tick, test-and-clear
 - `HMI_SH1106_get_stats( stats_p )` - lifetime counts, indexed by `HMI_SH1106_input_et`
 - `HMI_SH1106_set_brightness_pct( pct )` - hardware contrast, independent of the framebuffer

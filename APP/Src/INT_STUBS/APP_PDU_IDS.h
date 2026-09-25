@@ -18,6 +18,16 @@
 /***************************************************************************************************
 **                              Data Types and Enums                                              **
 ***************************************************************************************************/
+/* APP's CAN buses - the value a route's PDUR .channel and its CANTP instance's .channel both carry.
+   The main bus is 0 so every route that doesn't name a channel lands on it by default. Adding a bus:
+   a new enumerator here, a CANTP instance + driver for it (INTEGRATION_STUBS.c, app_cantp_instance_for()),
+   and .channel = <it> on each of its routes. */
+typedef enum
+{
+    APP_CAN_CH_MAIN = 0u,        /* bxCAN1 via TJA1051, 500 kbit/s */
+    APP_CAN_NUM_CHANNELS
+} app_can_channel_et;
+
 /* APP's own logical PDU IDs - these, not raw CAN IDs, are what pdur_routing_table_s's array position
    means and what PDUR_tx() dispatches on (see PDUR.h). Values double as array indices (designated-
    index initializers in INTEGRATION_STUBS.c pin each route to its enum value explicitly, so

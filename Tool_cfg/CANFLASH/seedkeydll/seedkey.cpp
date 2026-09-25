@@ -25,8 +25,8 @@
 *
 *                  0xA5A5A5A5 is FBL_SECURITY_KEY_XOR_MASK (FBL/Src/UDS_CFG/UDS_config.c) - the
 *                  exact formula fbl_uds_handle_send_key() (same file) checks against, and FBL does
-*                  enforce it (wrong key registers a failed attempt / lockout via FBL_security_
-*                  report_key_result(), xCOMMON_MODULES/Src/FBL/FBL.c). APP's own SendKey handler
+*                  enforce it (wrong key registers a failed attempt / lockout in
+*                  uds_record_key_result(), xCOMMON_MODULES/Src/UDS/UDS.c). APP's own SendKey handler
 *                  (APP/Src/UDS_CFG/UDS_config.c) computes and
 *                  records a real per-level check too (its own distinct secret per level, not this
 *                  shared mask) but does not yet enforce it - a mismatch is still granted, see that

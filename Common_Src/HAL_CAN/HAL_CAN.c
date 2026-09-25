@@ -16,6 +16,7 @@
 **                              Data                                                              **
 ***************************************************************************************************/
 STATIC HAL_CAN_rx_callback_ft hal_can_rx_callback_s = NULL_P;
+STATIC u8_t                   hal_can_channel_s     = 0u;
 
 /***************************************************************************************************
 **                              Public Functions                                                  **
@@ -102,12 +103,15 @@ void HAL_CAN_init( void )
 *
 *   \brief         Register (or clear) the RX callback, independent of HAL_CAN_init().
 *
-*   \param         rx_callback_p  Called from the RX ISR with (id, data, dlc). Pass NULL_P to
-*                                 stop receiving.
+*   \param         channel        Handed back to rx_callback_p with every frame - the board's
+*                                 channel number for this controller.
+*   \param         rx_callback_p  Called from the RX ISR with (channel, id, id_type, data, dlc).
+*                                 Pass NULL_P to stop receiving.
 *
 ***************************************************************************************************/
-void HAL_CAN_set_rx_callback( HAL_CAN_rx_callback_ft rx_callback_p )
+void HAL_CAN_set_rx_callback( u8_t channel, HAL_CAN_rx_callback_ft rx_callback_p )
 {
+    hal_can_channel_s     = channel;
     hal_can_rx_callback_s = rx_callback_p;
 }
 
@@ -159,6 +163,69 @@ pass_fail_et HAL_CAN_send_frame( u32_t id, u8_t id_type, const u8_t* data_p, u8_
     return( result );
 }
 
+/*!
+****************************************************************************************************
+*
+*   \brief         Request a bxCAN operating mode.
+*
+*   \param         mode  CANIF_CTRL_STARTED (bxCAN Normal), _STOPPED (bxCAN Initialization) or
+*                        _SLEEP (bxCAN Sleep)
+*
+*   \return        PASS once the hardware has acknowledged the new mode, FAIL if it didn't within
+*                  the SPL's own timeout (e.g. leaving INIT needs 11 recessive bits on the bus) or
+*                  the mode is unknown.
+*
+***************************************************************************************************/
+pass_fail_et HAL_CAN_set_mode( CANIF_ctrl_mode_et mode )
+{
+    pass_fail_et result  = FAIL;
+    uint8_t      spl_mode = CAN_OperatingMode_Normal;
+    bool_et      known    = TRUE;
+
+    switch( mode )
+    {
+        case CANIF_CTRL_STARTED: spl_mode = CAN_OperatingMode_Normal;         break;
+        case CANIF_CTRL_STOPPED: spl_mode = CAN_OperatingMode_Initialization; break;
+        case CANIF_CTRL_SLEEP:   spl_mode = CAN_OperatingMode_Sleep;          break;
+        default:                 known    = FALSE;                            break;
+    }
+
+    if( ( known == TRUE ) && ( CAN_OperatingModeRequest( CAN1, spl_mode ) == CAN_ModeStatus_Success ) )
+    {
+        result = PASS;
+    }
+
+    return( result );
+}
+
+/*!
+****************************************************************************************************
+*
+*   \brief         Read the bxCAN error state (CAN_ESR).
+*
+*   \param         status_p  Populated with the bus-off / error-passive / error-warning flags and
+*                            both error counters.
+*
+*   \return        PASS, FAIL if status_p is NULL_P
+*
+***************************************************************************************************/
+pass_fail_et HAL_CAN_get_status( CANIF_ctrl_status_st* status_p )
+{
+    pass_fail_et result = FAIL;
+
+    if( status_p != NULL_P )
+    {
+        status_p->bus_off       = ( CAN_GetFlagStatus( CAN1, CAN_FLAG_BOF ) == SET ) ? TRUE : FALSE;
+        status_p->error_passive = ( CAN_GetFlagStatus( CAN1, CAN_FLAG_EPV ) == SET ) ? TRUE : FALSE;
+        status_p->error_warning = ( CAN_GetFlagStatus( CAN1, CAN_FLAG_EWG ) == SET ) ? TRUE : FALSE;
+        status_p->tec           = CAN_GetLSBTransmitErrorCounter( CAN1 );
+        status_p->rec           = CAN_GetReceiveErrorCounter( CAN1 );
+        result                  = PASS;
+    }
+
+    return( result );
+}
+
 /***************************************************************************************************
 **                              ISR                                                               **
 ***************************************************************************************************/
@@ -183,7 +250,7 @@ void USB_LP_CAN1_RX0_IRQHandler( void )
 
     if( hal_can_rx_callback_s != NULL_P )
     {
-        hal_can_rx_callback_s( rx_id, rx_id_type, rx_msg.Data, (u8_t)rx_msg.DLC );
+        hal_can_rx_callback_s( hal_can_channel_s, rx_id, rx_id_type, rx_msg.Data, (u8_t)rx_msg.DLC );
     }
 }
 

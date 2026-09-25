@@ -60,7 +60,7 @@ void HAL_TIM3_register_callback( HAL_TIM_func_type HAL_TIM_func_p );
 
 /* Quadrature encoder interface on TIM4 */
 void        HAL_TIM4_init_encoder( void );
-u16_t       HAL_TIM_ENC_get_counter( void );
+u32_t       HAL_TIM_ENC_get_counter( void );
 low_high_et HAL_TIM_ENC_get_dir( void );
 
 /* Generic input capture — any free channel on TIM2 or TIM3 (TIM3 CH4 is reserved for the

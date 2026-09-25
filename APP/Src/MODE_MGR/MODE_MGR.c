@@ -1,31 +1,74 @@
 /*! \file
 *               Author: mstewart
-*   \brief      Mode MGR module
+*   \brief      Mode MGR module - the application's periodic tick and slot scheduler
+*
+*   \details    MODE_MGR_tick() runs from the SysTick interrupt every MODE_MGR_TICK_RATE_MSECS.
+*               Timing-critical services (TIME, CANTP, UDS) run every tick; everything else runs
+*               in fixed-interval slots from mode_mgr_action_schedule_normal(). A slot is due when
+*               the cycle counter is a multiple of its interval, so every slot interval must be a
+*               multiple of the tick rate and divide MODE_MGR_CYCLE_MS exactly - both are checked
+*               at compile time below.
 */
 /***************************************************************************************************
 **                              Includes                                                          **
 ***************************************************************************************************/
 #include "MODE_MGR.h"
 #include "INTEGRATION_STUBS.h"
+#include "TIME.h"
+#include "WDG.h"
+#include "BTN_MGR.h"
+#include "BUZZER.h"
+#include "WS2811.h"
+#include "NRF24.h"
+#include "RF_MGR.h"
 #include "MSG_SCHED.h"
 #include "HMI_SH1106.h"   /* This module owns the panel's tick slot - see mode_mgr_action_schedule_normal() */
-#include "CANTP.h"
+#include "CANIF.h"
 #include "UDS.h"
 #include "CPS.h"
 #include "VEHICLE_SIM_config.h"
 
 /***************************************************************************************************
+**                              Defines                                                           **
+***************************************************************************************************/
+/* Length of one full schedule cycle - the cycle counter wraps at this, so it must be a common
+   multiple of every slot interval */
+#define MODE_MGR_CYCLE_MS           ( 1000u )
+
+/* Slot intervals */
+#define MODE_MGR_SLOT_10MS          ( 10u )
+#define MODE_MGR_SLOT_20MS          ( 20u )
+#define MODE_MGR_SLOT_50MS          ( 50u )
+#define MODE_MGR_SLOT_100MS         ( 100u )
+
+/* Compile-time check that a slot interval can actually be honoured - a multiple of the tick rate
+   (otherwise it is never, or only sometimes, due) that divides the cycle exactly (otherwise its
+   period jitters every time the cycle counter wraps). Fails the build with a negative array size. */
+#define MODE_MGR_CHECK_SLOT( name, ms )                                                       \
+	typedef char mode_mgr_slot_check_##name[ ( ( ( (ms) % MODE_MGR_TICK_RATE_MSECS ) == 0u ) &&  \
+	                                           ( ( MODE_MGR_CYCLE_MS % (ms) ) == 0u ) ) ? 1 : -1 ]
+
+MODE_MGR_CHECK_SLOT( 10ms,  MODE_MGR_SLOT_10MS );
+MODE_MGR_CHECK_SLOT( 20ms,  MODE_MGR_SLOT_20MS );
+MODE_MGR_CHECK_SLOT( 50ms,  MODE_MGR_SLOT_50MS );
+MODE_MGR_CHECK_SLOT( 100ms, MODE_MGR_SLOT_100MS );
+
+/***************************************************************************************************
+**                              Private Function Prototypes                                       **
+***************************************************************************************************/
+STATIC false_true_et mode_mgr_slot_due( u16_t interval_ms );
+STATIC void          mode_mgr_action_schedule_normal( void );
+
+/***************************************************************************************************
 **                              Data declarations and definitions                                 **
 ***************************************************************************************************/
-STATIC MODE_MGR_timer_st mode_mgr_timer_s;
-STATIC MODE_MGR_mode_et  mode_mgr_mode_s;
+STATIC u16_t            mode_mgr_cycle_ms_s;   /*!< Position in the schedule cycle, 0 .. MODE_MGR_CYCLE_MS - tick */
+STATIC MODE_MGR_mode_et mode_mgr_mode_s;
 
-extern NRF24_instance_st     nrf24_instance_s;
-extern BUZZER_instance_st    buzzer_instance_s;
-extern CPS_instance_st       cps_crank_instance_s;
-extern WS2811_instance_st    ws2811_instance_s;
-extern CTRL_AXIS_instance_st steering_axis_s;
-extern CTRL_AXIS_instance_st throttle_axis_s;
+extern NRF24_instance_st  nrf24_instance_s;
+extern BUZZER_instance_st buzzer_instance_s;
+extern CPS_instance_st    cps_crank_instance_s;
+extern WS2811_instance_st ws2811_instance_s;
 
 /***************************************************************************************************
 **                              Public Functions                                                  **
@@ -39,14 +82,14 @@ extern CTRL_AXIS_instance_st throttle_axis_s;
 *
 *   \return        none
 *
-*   \note
+*   \note          Starts in MODE_MGR_MODE_STARTUP - the first tick moves to NORMAL
 *
 ***************************************************************************************************/
 void MODE_MGR_init( void )
 {
-	mode_mgr_mode_s = MODE_MGR_MODE_NORMAL;
+	mode_mgr_mode_s     = MODE_MGR_MODE_STARTUP;
+	mode_mgr_cycle_ms_s = 0u;
 
-	STDC_memset( &mode_mgr_timer_s, 0x00, sizeof( mode_mgr_timer_s ) );
 	WS2811_set_all_led_color( &ws2811_instance_s, WS2811_WHITE );
 }
 
@@ -59,55 +102,50 @@ void MODE_MGR_init( void )
 *
 *   \return        none
 *
-*   \note
+*   \note          Runs from the SysTick interrupt (lowest priority) every MODE_MGR_TICK_RATE_MSECS
+*   \note          The watchdog is kicked last, so a kick means a whole pass completed - a module
+*                  that hangs part-way through stops the kicks
 *
 ***************************************************************************************************/
 void MODE_MGR_tick( void )
 {
 	//DBG_MGR_start_cpu_load_timer();
-    TIME_increment_time();
+	TIME_increment_time();
 
-	/* CAN-TP/UDS timing (ST_min, N_Cr/N_Bs/N_Ar, S3 session timeout) is budgeted in real
+	/* CAN-TP/UDS timing (ST_min, N_Cr/N_Bs, S3 session timeout) is budgeted in real
 	   milliseconds, so these need the base 1ms-class tick, not one of
 	   mode_mgr_action_schedule_normal()'s slower interval slots - same reasoning FBL_tick() ticks
 	   CANTP every cycle instead of on a slower schedule. Note this runs at APP_TIMER_TICK_RATE_MS
 	   (10ms), coarser than FBL's genuine 1ms SysTick loop - fine for CANTP.h's default timing
-	   budgets (N_Ar=25ms etc., still several ticks of headroom), just worth knowing if a tester
-	   ever needs tighter timing than that. */
-	CANTP_tick( &app_cantp_instance_s );
+	   budgets (N_Bs=250ms, N_Cr=500ms), but it caps multi-frame TX at one Consecutive Frame per
+	   10ms, and is worth knowing if a tester ever needs tighter timing than that.
+	   CANIF_tick() ticks every CAN channel's CANTP instance, so a new bus needs no change here. */
+	CANIF_tick();
 	UDS_tick();
-
-	WDG_kick();
 
 	switch( mode_mgr_mode_s )
 	{
 		case MODE_MGR_MODE_STARTUP:
 		{
-			mode_mgr_change_mode( MODE_MGR_MODE_NORMAL );
+			mode_mgr_mode_s = MODE_MGR_MODE_NORMAL;
 		}
 		break;
 
+		/* Every running mode shares the one schedule for now - give a mode its own
+		   mode_mgr_action_schedule_*() here when it needs to behave differently */
 		case MODE_MGR_MODE_NORMAL:
+		case MODE_MGR_MODE_SETTINGS:
+		case MODE_MGR_MODE_EXPERT:
 		{
 			mode_mgr_action_schedule_normal();
-		}	
-		break;
-
-		case MODE_MGR_SETTINGS_MODE:
-		{
-			mode_mgr_action_schedule_normal();
-		}	
-		break;
-
-        case MODE_MGR_EXPERT_MODE:
-		{
-			mode_mgr_action_schedule_normal();
-		}	
+		}
 		break;
 
 		default:
 		break;
 	}
+
+	(void)WDG_kick();
 
 	//DBG_MGR_stop_cpu_load_timer();
 }
@@ -115,123 +153,33 @@ void MODE_MGR_tick( void )
 /*!
 ****************************************************************************************************
 *
-*   \brief         power button Callback
+*   \brief         Change mode
 *
 *   \author        MS
 *
+*   \param[in]     mode - Mode to switch to, takes effect from the next tick
+*
 *   \return        none
 *
-*   \note
-*
 ***************************************************************************************************/
-void MODE_MGR_power_cbk( void )
+void MODE_MGR_change_mode( MODE_MGR_mode_et mode )
 {
+	mode_mgr_mode_s = mode;
 }
 
 /*!
 ****************************************************************************************************
 *
-*   \brief         enter button Callback
+*   \brief         Get the current mode
 *
 *   \author        MS
 *
-*   \return        none
-*
-*   \note
+*   \return        Current mode
 *
 ***************************************************************************************************/
-void MODE_MGR_enter_pressed_cbk( void )
+MODE_MGR_mode_et MODE_MGR_get_mode( void )
 {
-	BUZZER_short_beep( &buzzer_instance_s );
-}
-
-/*!
-****************************************************************************************************
-*
-*   \brief         LCD Reset button Callback
-*
-*   \author        MS
-*
-*   \return        none
-*
-*   \note
-*
-***************************************************************************************************/
-void MODE_MGR_reset_pressed_cbk( void )
-{
-	BUZZER_long_beep( &buzzer_instance_s );
-
-	static u8_t color = 0;
-
-	switch( color )
-	{
-		case 0: WS2811_set_all_led_color( &ws2811_instance_s, WS2811_RED );    break;
-		case 1: WS2811_set_all_led_color( &ws2811_instance_s, WS2811_GREEN );  break;
-		case 2: WS2811_set_all_led_color( &ws2811_instance_s, WS2811_BLUE );   break;
-		case 3: WS2811_set_all_led_color( &ws2811_instance_s, WS2811_YELLOW ); break;
-		case 4: WS2811_set_all_led_color( &ws2811_instance_s, WS2811_ORANGE ); break;
-		case 5: WS2811_set_all_led_color( &ws2811_instance_s, WS2811_WHITE );  break;
-		default: break;
-	}
-	
-	if( color >= 5 )
-	{
-		color = 0u;
-	}
-	else
-	{
-		color++;
-	}
-	
-}
-
-/*!
-****************************************************************************************************
-*
-*   \brief         long press enter Callback
-*
-*   \author        MS
-*
-*   \return        none
-*
-*   \note
-*
-***************************************************************************************************/
-void MODE_MGR_enter_long_pressed_cbk( void )
-{
-}
-
-/*!
-****************************************************************************************************
-*
-*   \brief         
-*
-*   \author        MS
-*
-*   \return        none
-*
-*   \note
-*
-***************************************************************************************************/
-void MODE_MGR_expert_mode_entered_cbk( void )
-{
-    switch( mode_mgr_mode_s )
-    {
-        case MODE_MGR_MODE_NORMAL:
-        {
-            mode_mgr_change_mode( MODE_MGR_EXPERT_MODE );
-        }
-        break;
-
-        case MODE_MGR_EXPERT_MODE:
-        {
-            mode_mgr_change_mode( MODE_MGR_MODE_NORMAL );
-        }
-        break;
-
-        default:
-        break;
-    }
+	return( mode_mgr_mode_s );
 }
 
 /***************************************************************************************************
@@ -240,37 +188,20 @@ void MODE_MGR_expert_mode_entered_cbk( void )
 /*!
 ****************************************************************************************************
 *
-*   \brief         Check if thetime interval is correct
+*   \brief         Is a slot of the given interval due on this tick
 *
 *   \author        MS
 *
-*   \return        none
+*   \param[in]     interval_ms - Slot interval, one of the MODE_MGR_SLOT_* values
 *
-*   \note
-*
-***************************************************************************************************/
-void mode_mgr_change_mode( MODE_MGR_mode_et mode )
-{
-    mode_mgr_mode_s = mode;
-}
-
-/*!
-****************************************************************************************************
-*
-*   \brief         Check if thetime interval is correct
-*
-*   \author        MS
-*
-*   \return        none
-*
-*   \note
+*   \return        TRUE if due
 *
 ***************************************************************************************************/
-false_true_et mode_mgr_check_time_interval( u16_t interval )
+STATIC false_true_et mode_mgr_slot_due( u16_t interval_ms )
 {
 	false_true_et status = FALSE;
 
-	if( ( mode_mgr_timer_s.msecs % interval ) == 0u )
+	if( ( mode_mgr_cycle_ms_s % interval_ms ) == 0u )
 	{
 		status = TRUE;
 	}
@@ -281,64 +212,27 @@ false_true_et mode_mgr_check_time_interval( u16_t interval )
 /*!
 ****************************************************************************************************
 *
-*   \brief         Change Mode
+*   \brief         Run whichever slots are due on this tick, then advance the cycle
 *
 *   \author        MS
 *
 *   \return        none
 *
-*   \note
-*
 ***************************************************************************************************/
-void MODE_MGR_change_mode( MODE_MGR_mode_et mode )
+STATIC void mode_mgr_action_schedule_normal( void )
 {
-	(void)mode;
-}
-
-/*!
-****************************************************************************************************
-*
-*   \brief         Get the Mode
-*
-*   \author        MS
-*
-*   \return        none
-*
-*   \note
-*
-***************************************************************************************************/
-MODE_MGR_mode_et MODE_MGR_get_mode( void )
-{
-    return( mode_mgr_mode_s );
-}
-
-/*!
-****************************************************************************************************
-*
-*   \brief         Handle normal mode schedulling
-*   \author        MS
-*
-*   \return        none
-*
-*   \note
-*
-***************************************************************************************************/
-void mode_mgr_action_schedule_normal( void )
-{
-	u16_t wheel_rpms[2];
-
-	if( mode_mgr_check_time_interval( 10u ) == TRUE )
+	if( mode_mgr_slot_due( MODE_MGR_SLOT_10MS ) == TRUE )
 	{
 		ESP01_tick();
-        //WIFI_tick();
-        TB_tick();
+		//WIFI_tick();
+		TB_tick();
 
-    	/* Drives the panel's encoder, buttons and OLED refresh in one call. Its tick_rate_ms is
-    	   configured as 10 to match this slot - change one and you must change the other. */
-    	HMI_SH1106_tick();
+		/* Drives the panel's encoder, buttons and OLED refresh in one call. Its tick_rate_ms is
+		   configured as 10 to match this slot - change one and you must change the other. */
+		HMI_SH1106_tick();
 	}
 
-	if( mode_mgr_check_time_interval( 20u ) == TRUE )
+	if( mode_mgr_slot_due( MODE_MGR_SLOT_20MS ) == TRUE )
 	{
 		BUZZER_tick( &buzzer_instance_s );
 		BTN_MGR_tick( &btm_mgr_instance_s );
@@ -363,7 +257,7 @@ void mode_mgr_action_schedule_normal( void )
 		MQB_CLUSTER_tick();
 	}
 
-	if( mode_mgr_check_time_interval( 50u ) == TRUE )
+	if( mode_mgr_slot_due( MODE_MGR_SLOT_50MS ) == TRUE )
 	{
 		/* Commits any block whose RAM mirror has been marked dirty. A plain append is a short
 		   flash write; only a partition switch erases a page, and that costs ~20-40 ms in this
@@ -371,27 +265,12 @@ void mode_mgr_action_schedule_normal( void )
 		NVM_GEN2_tick();
 	}
 
-	if( mode_mgr_check_time_interval( 100u ) == TRUE )
+	if( mode_mgr_slot_due( MODE_MGR_SLOT_100MS ) == TRUE )
 	{
 		//WS2811_tick( &ws2811_instance_s );
 	}
 
-	if( mode_mgr_check_time_interval( 200u ) == TRUE )
-	{
-    }
-
-	if( mode_mgr_timer_s.msecs >= MODE_MGR_MAX_TICK_CYCLE_VALUE )
-	{
-		mode_mgr_timer_s.msecs = MODE_MGR_TICK_RATE_MSECS;
-	}
-	else
-	{
-		mode_mgr_timer_s.msecs += MODE_MGR_TICK_RATE_MSECS;
-	}
+	mode_mgr_cycle_ms_s = (u16_t)( ( mode_mgr_cycle_ms_s + MODE_MGR_TICK_RATE_MSECS ) % MODE_MGR_CYCLE_MS );
 }
 
 /****************************** END OF FILE *******************************************************/
-
-
-
-

@@ -41,6 +41,10 @@ extern u32_t __isr_vector_start;   /* Linker symbol - APP/linker_script/STM32F10
 
 void app_main( void )
 {
+    pass_fail_et pdur_ok;
+    pass_fail_et systick_ok;
+    pass_fail_et canif_ok;
+
     /* Points VTOR at APP's own vector table, read from the linker symbol. */
     MCU_JUMP_set_vector_table( (u32_t)&__isr_vector_start );
 
@@ -68,7 +72,6 @@ void app_main( void )
 
     HAL_BRD_init();
     HAL_CAN_init();
-    HAL_CAN_set_rx_callback( app_can_rx_wrapper );
     HAL_ADC_init();
     HAL_TIM3_init();
     HAL_TIM4_init_encoder();
@@ -98,8 +101,10 @@ void app_main( void )
     //WIFI_init( &wifi_cfg_s );
     TB_CBK_init( &tb_cfg_s );
     TB_init( &tb_cfg_s );
-    TJA1051_init( &tja1051_func_s, &tja1051_cfg_s );
-    PDUR_init( pdur_routing_table_s, pdur_num_routes_s );
+    TJA1051_init( &tja1051_main_instance_s, &tja1051_func_s, &tja1051_cfg_s );
+    /* FAIL means a route with neither direction configured - a table typo, caught at boot */
+    pdur_ok = PDUR_init( pdur_routing_table_s, pdur_num_routes_s );
+    STDC_assert( pdur_ok == PASS );
     MSG_SCHED_init( &msg_sched_cfg_s );
 
     TCU_init( &tcu_cfg_s );
@@ -109,20 +114,35 @@ void app_main( void )
     app_cantp_instance_init();
     CANTP_init( &app_cantp_instance_s );
 
+    /* FAIL means a channel row missing its driver/CANTP instance, or a CANTP instance whose
+       .channel doesn't match its row - a wiring mistake, caught at boot */
+    canif_ok = CANIF_init( canif_channels_s, (u8_t)APP_CAN_NUM_CHANNELS );
+    STDC_assert( canif_ok == PASS );
+
+    /* Only once CANTP's queues and CANIF's table are in place - a frame delivered mid-init could be lost */
+    HAL_CAN_set_rx_callback( APP_CAN_CH_MAIN, CANIF_rx_indication );
+
     const UDS_init_cfg_st app_uds_init_cfg_s =
     {
         .tp_send_func_p          = PDUR_tx,
         .message_received_notify = NULL_P,
         .service_table_p         = UDS_get_service_table(),
         .service_table_size      = UDS_get_service_table_size(),
-        .buffer_p                = pdur_buffer_s,
-        .buffer_size             = PDUR_BUFFER_SIZE
+        .buffer_p                = app_uds_buffer_g,
+        .buffer_size             = APP_UDS_BUFFER_SIZE,
+        .tick_period_ms          = MODE_MGR_TICK_RATE_MSECS,   /* UDS_tick() runs from MODE_MGR_tick() */
+        .is_functional_route_fp  = app_uds_is_functional_route,
+        /* Only counts NRC 0x35 - inert until uds_handle_security_send_key() enforces its check */
+        .security_max_attempts   = APP_SECURITY_MAX_FAILED_ATTEMPTS,
+        .security_lockout_ms     = APP_SECURITY_LOCKOUT_TIME_MS
     };
     UDS_init( &app_uds_init_cfg_s );
 
     MODE_MGR_init();
 
-    SYSTICK_init( &systick_cfg_s, SystemCoreClock );
+    /* FAIL means timeout_ms doesn't fit SysTick's 24-bit counter at this clock - nothing would run */
+    systick_ok = SYSTICK_init( &systick_cfg_s, SystemCoreClock );
+    STDC_assert( systick_ok == PASS );
     NVIC_EnableGlobalIRQ();
 
     /* Init WDG at the end */

@@ -173,6 +173,7 @@ STATIC void menu_nav_enter_fan_speed( void );
 STATIC void menu_nav_draw_buzzer( void );
 STATIC void menu_nav_handle_buzzer( HMI_SH1106_input_et input );
 STATIC void menu_nav_enter_buzzer( void );
+STATIC void menu_nav_apply_buzzer( void );
 STATIC void menu_nav_value_edit_handle( const menu_nav_value_edit_st* cfg_p, HMI_SH1106_input_et input );
 STATIC void menu_nav_gauge_draw( const menu_nav_gauge_cfg_st* cfg_p );
 STATIC void menu_nav_gauge_handle( const menu_nav_gauge_cfg_st* cfg_p, HMI_SH1106_input_et input );
@@ -483,7 +484,10 @@ STATIC const GFX_fan_cfg_st menu_nav_fan_speed_icon_s =
 };
 
 /* ===== Buzzer - one screen, two fields: whether a press beeps, and for how long. Both revert
-   together if BACK cancels; the knob edits whichever field is currently selected. ===== */
+   together if BACK cancels; the knob edits whichever field is currently selected.
+   The live value belongs to HMI_SH1106 (HMI_SH1106_set_beep_ms(), 0 = off) - these are only this
+   screen's working copy, split into on/off plus a time so turning it off and back on again comes
+   back at the same length. Resynced from the panel on every entry. ===== */
 STATIC false_true_et menu_nav_buzzer_enabled_s = TRUE;
 STATIC false_true_et menu_nav_buzzer_saved_s   = TRUE;
 
@@ -1950,6 +1954,19 @@ STATIC void menu_nav_handle_fan_speed( HMI_SH1106_input_et input )
 ***************************************************************************************************/
 STATIC void menu_nav_enter_buzzer( void )
 {
+    u16_t live_ms = HMI_SH1106_get_beep_ms();
+
+    /* Off keeps whatever time this screen last had, so switching back on returns to it */
+    if( live_ms != 0u )
+    {
+        menu_nav_buzzer_enabled_s = TRUE;
+        menu_nav_beep_time_ms_s   = live_ms;
+    }
+    else
+    {
+        menu_nav_buzzer_enabled_s = FALSE;
+    }
+
     menu_nav_buzzer_saved_s    = menu_nav_buzzer_enabled_s;
     menu_nav_beep_time_saved_s = menu_nav_beep_time_ms_s;
     menu_nav_buzzer_field_s    = MENU_NAV_BUZZER_FIELD_STATE;
@@ -2020,6 +2037,7 @@ STATIC void menu_nav_handle_buzzer( HMI_SH1106_input_et input )
             {
                 /* Already at MENU_NAV_BEEP_TIME_MAX_MS - nothing to step */
             }
+            menu_nav_apply_buzzer();
             HMI_SH1106_request_redraw();
         break;
 
@@ -2036,6 +2054,7 @@ STATIC void menu_nav_handle_buzzer( HMI_SH1106_input_et input )
             {
                 /* Already at MENU_NAV_BEEP_TIME_MIN_MS - nothing to step */
             }
+            menu_nav_apply_buzzer();
             HMI_SH1106_request_redraw();
         break;
 
@@ -2053,6 +2072,7 @@ STATIC void menu_nav_handle_buzzer( HMI_SH1106_input_et input )
         case HMI_SH1106_INPUT_BACK:
             menu_nav_buzzer_enabled_s = menu_nav_buzzer_saved_s;
             menu_nav_beep_time_ms_s   = menu_nav_beep_time_saved_s;
+            menu_nav_apply_buzzer();
             MENU_NAV_goto( menu_nav_screens_s[MENU_NAV_SCREEN_BUZZER].back_screen );
         break;
 
@@ -2060,6 +2080,7 @@ STATIC void menu_nav_handle_buzzer( HMI_SH1106_input_et input )
             /* MENU_NAV_on_input() navigates home right after this returns - just revert */
             menu_nav_buzzer_enabled_s = menu_nav_buzzer_saved_s;
             menu_nav_beep_time_ms_s   = menu_nav_beep_time_saved_s;
+            menu_nav_apply_buzzer();
         break;
 
         default:
@@ -2071,31 +2092,16 @@ STATIC void menu_nav_handle_buzzer( HMI_SH1106_input_et input )
 /*!
 ****************************************************************************************************
 *
-*   \brief         Whether the panel should beep on a press
+*   \brief         Buzzer - push the working copy to the panel, so edits are heard as they are made
 *
 *   \author        MS
 *
-*   \return        Current Buzzer screen value
+*   \return        none
 *
 ***************************************************************************************************/
-false_true_et MENU_NAV_buzzer_enabled( void )
+STATIC void menu_nav_apply_buzzer( void )
 {
-    return( menu_nav_buzzer_enabled_s );
-}
-
-/*!
-****************************************************************************************************
-*
-*   \brief         How long that beep should last
-*
-*   \author        MS
-*
-*   \return        Current Beep Time screen value, in milliseconds
-*
-***************************************************************************************************/
-u16_t MENU_NAV_get_beep_duration_ms( void )
-{
-    return( menu_nav_beep_time_ms_s );
+    HMI_SH1106_set_beep_ms( ( menu_nav_buzzer_enabled_s == TRUE ) ? menu_nav_beep_time_ms_s : 0u );
 }
 
 /*!

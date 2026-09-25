@@ -45,6 +45,11 @@
 #define APP_SECURITY_LEVEL_2       ( 0x02u )
 #define APP_SECURITY_LEVEL_3       ( 0x03u )
 
+/* SecurityAccess lockout - enforced by UDS.c (UDS_init_cfg_st's security_max_attempts/
+   security_lockout_ms, set in main.c), same values as FBL's FBL_SECURITY_* */
+#define APP_SECURITY_MAX_FAILED_ATTEMPTS  ( 3u )
+#define APP_SECURITY_LOCKOUT_TIME_MS      ( 10000u )
+
 /* 0x31 RoutineControl routine identifiers - matches Vector SLP3 spec's ID exactly */
 #define ROUTINE_ID_CHECK_PROGRAMMING_PRECONDITIONS ( 0x0203u )
 

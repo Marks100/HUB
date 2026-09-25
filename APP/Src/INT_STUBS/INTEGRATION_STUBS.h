@@ -24,7 +24,9 @@
 #include "PDUR.h"
 #include "MSG_SCHED.h"
 #include "CANTP.h"
+#include "CANIF.h"
 #include "UDS.h"
+#include "APP_PDU_IDS.h"
 
 extern const SYSTICK_cfg_st          systick_cfg_s;
 extern const hw_crc_config_st        hw_crc_cfg_s;
@@ -45,12 +47,20 @@ extern const WIFI_config_st          wifi_cfg_s;
 extern       TB_config_st            tb_cfg_s;
 extern const TJA1051_func_st         tja1051_func_s;
 extern const TJA1051_config_st       tja1051_cfg_s;
+extern       TJA1051_instance_st      tja1051_main_instance_s;
 extern const RF_MGR_cfg_st           rf_mgr_cfg_s;
 extern const PDUR_route_st           pdur_routing_table_s[];
 extern const u16_t                   pdur_num_routes_s;
 extern       CANTP_instance_st        app_cantp_instance_s;
+extern const CANIF_channel_cfg_st     canif_channels_s[APP_CAN_NUM_CHANNELS];
+
+/* CANTP's reassembly buffer and UDS's working buffer, shared. Sized for APP's largest message: a
+   0x19 ReadDTCInformation report of every fault (2 + 1 + 4 x FAULT_MGR_MAX_FAULTS = 259 bytes) - the
+   largest request, a 0x2E key write, is 3 + APP_KEY_LEN = 131 bytes. Rounded up for headroom. */
+#define APP_UDS_BUFFER_SIZE                  ( 512u )
+extern       u8_t                     app_uds_buffer_g[ APP_UDS_BUFFER_SIZE ];
 void app_cantp_instance_init( void );
-void app_can_rx_wrapper( u32_t id, u8_t id_type, u8_t* data_p, u8_t dlc );
+false_true_et app_uds_is_functional_route( UDS_route_id_t route_id );
 extern const MSG_SCHED_cfg_st        msg_sched_cfg_s;
 
 #endif /* INTEGRATION_STUBS_H */
