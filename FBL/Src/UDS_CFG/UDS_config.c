@@ -50,6 +50,7 @@
 STATIC u8_t fbl_uds_handle_request_seed( u16_t subfunc, u8_t* data_p, u16_t* len_p, UDS_response_code_et* nrc_p );
 STATIC u8_t fbl_uds_handle_send_key( u16_t subfunc, u8_t* data_p, u16_t* len_p, UDS_response_code_et* nrc_p );
 STATIC u8_t fbl_uds_handle_write_fingerprint( u16_t subfunc, u8_t* data_p, u16_t* len_p, UDS_response_code_et* nrc_p );
+STATIC u8_t fbl_uds_handle_pre_programming_ack( u16_t subfunc, u8_t* data_p, u16_t* len_p, UDS_response_code_et* nrc_p );
 
 /***************************************************************************************************
 **                              Sub-function Tables                                               **
@@ -105,8 +106,27 @@ STATIC UDS_subfunction_table_st routine_control_subfuncs_s[] =
     { ROUTINE_ID_STAY_IN_BOOT, UDS_SUBFUNC_MASK_EXACT, FBL_uds_handle_stay_in_boot, UDS_SES_PROGRAMMING, 0u },
     { ROUTINE_ID_CHECK_PROGRAMMING_DEPENDENCIES, UDS_SUBFUNC_MASK_EXACT,
       FBL_uds_handle_check_programming_dependencies, UDS_SES_PROGRAMMING, 0u },
+    /* UDS_SES_ANY, not PROGRAMMING: the tester runs this in EXTENDED, before its 0x10 0x02 - the
+       same recovery case as security_access_cfg_s above. Gated on PROGRAMMING it drew NRC 0x7E,
+       which UDS.c suppresses on the functional route, so the tester just timed out. */
     { ROUTINE_ID_CHECK_PROGRAMMING_PRECONDITIONS, UDS_SUBFUNC_MASK_EXACT,
-      FBL_uds_handle_check_programming_preconditions, UDS_SES_PROGRAMMING, 0u },
+      FBL_uds_handle_check_programming_preconditions, UDS_SES_ANY, 0u },
+};
+
+/* CommunicationControl (0x28) and ControlDTCSetting (0x85) - the tester's pre-programming steps,
+   which it sends before 0x10 0x02 whether the ECU is in APP or already sitting in FBL. APP acts on
+   them (APP/Src/UDS_CFG/UDS_config.c); FBL has no cyclic TX and no DTC storage to gate, so it only
+   needs to acknowledge them. Without these rows the request drew NRC 0x11, which UDS.c suppresses
+   on the functional route (0x700 - the ID the tester uses), so a flash started from FBL timed out.
+   One masked row per SID, sharing one handler - same shape as APP's tables. */
+STATIC UDS_subfunction_table_st communication_control_subfuncs_s[] =
+{
+    { UDS_SUBFUNC_IGNORED, UDS_SUBFUNC_MASK_ANY, fbl_uds_handle_pre_programming_ack, UDS_SES_ANY, 0u },
+};
+
+STATIC UDS_subfunction_table_st control_dtc_setting_subfuncs_s[] =
+{
+    { UDS_SUBFUNC_IGNORED, UDS_SUBFUNC_MASK_ANY, fbl_uds_handle_pre_programming_ack, UDS_SES_ANY, 0u },
 };
 
 STATIC UDS_subfunction_table_st request_download_subfuncs_s[] =
@@ -150,12 +170,13 @@ STATIC UDS_subfunction_table_st read_data_by_identifier_subfuncs_s[] =
    partition pre-unlocked on the strength of that, so re-gating the sessions would only ask the same
    tester to prove itself twice.
 
-   Reaching DEFAULT is the tester saying "done programming" and resets the ECU so BM re-validates
-   APP and boots it. The row is keyed only on to_session, so this fires the same way whether the
-   tester got here via PROGRAMMING -> EXTENDED -> DEFAULT or a direct PROGRAMMING -> DEFAULT, and it
-   also gives the S3 timeout a route home if the tester simply vanishes mid-session (see
-   uds_handle_s3_timeout - PROGRAMMING itself is exempt there, so FBL's own boot delay still owns
-   the "no tester ever showed up" case). */
+   Reaching DEFAULT does NOT reset: the tester's flash sequence opens with 0x10 0x01 to normalise
+   the session, so when the ECU is already sitting in FBL a reset there rebooted it out from under
+   the very next request (the 0x10 0x03 went unACKed while BM was still running) and the download
+   failed. Ending programming is 0x11 ECUReset's job (ecu_reset_cfg_s above); a tester that only
+   drops back to DEFAULT, or simply vanishes, is still covered by FBL's own auto-boot timer
+   (fbl_run_auto_boot_timer(), FBL.c), which runs regardless of session - just FBL_BOOT_DELAY_S
+   later rather than immediately. */
 /* No row needs an on_transition callback - FBL has nothing project-specific to do on any
    transition itself (see UDS_session_transition_st's comment in UDS.h for what that field is). */
 STATIC const UDS_session_transition_st uds_session_table_s[] =
@@ -163,7 +184,7 @@ STATIC const UDS_session_transition_st uds_session_table_s[] =
     /* to               sec  action                    on_transition */
     { UDS_SES_PROGRAMMING, 0u,  UDS_PENDING_ACTION_NONE,       NULL_P },
     { UDS_SES_EXTENDED,    0u,  UDS_PENDING_ACTION_NONE,       NULL_P },
-    { UDS_SES_DEFAULT,     0u,  UDS_PENDING_ACTION_SOFT_RESET, NULL_P },
+    { UDS_SES_DEFAULT,     0u,  UDS_PENDING_ACTION_NONE,       NULL_P },
 };
 
 /***************************************************************************************************
@@ -186,16 +207,43 @@ STATIC UDS_service_table_st uds_service_table_s[] =
     { UDS_SID_REQUEST_TRANSFER_EXIT,      request_transfer_exit_subfuncs_s,    UDS_TABLE_ROWS( request_transfer_exit_subfuncs_s ) },
     { UDS_SID_WRITE_DATA_BY_IDENTIFIER,   write_data_by_identifier_subfuncs_s, UDS_TABLE_ROWS( write_data_by_identifier_subfuncs_s ) },
     { UDS_SID_READ_DATA_BY_IDENTIFIER,    read_data_by_identifier_subfuncs_s,  UDS_TABLE_ROWS( read_data_by_identifier_subfuncs_s ) },
+    { UDS_SID_COMMUNICATION_CONTROL,      communication_control_subfuncs_s,    UDS_TABLE_ROWS( communication_control_subfuncs_s ) },
+    { UDS_SID_CONTROL_DTC_SETTING,        control_dtc_setting_subfuncs_s,      UDS_TABLE_ROWS( control_dtc_setting_subfuncs_s ) },
 };
 
 /***************************************************************************************************
 **                              Public Functions                                                  **
 ***************************************************************************************************/
+/*!
+****************************************************************************************************
+*
+*   \brief         Get FBL's UDS service table
+*
+*   \author        mstewart
+*
+*   \return        Pointer to uds_service_table_s
+*
+*   \note          Passed to UDS_init() as service_table_p (fbl_comms_init(), INT_STUBS/
+*                  INTEGRATION_STUBS.c)
+*
+*****************************************************************************************************/
 const UDS_service_table_st* UDS_get_service_table( void )
 {
     return( uds_service_table_s );
 }
 
+/*!
+****************************************************************************************************
+*
+*   \brief         Get the number of rows in FBL's UDS service table
+*
+*   \author        mstewart
+*
+*   \return        Row count of uds_service_table_s
+*
+*   \note          Passed to UDS_init() as service_table_size, alongside UDS_get_service_table()
+*
+*****************************************************************************************************/
 u8_t UDS_get_service_table_size( void )
 {
     return( UDS_TABLE_ROWS( uds_service_table_s ) );
@@ -207,11 +255,23 @@ u8_t UDS_get_service_table_size( void )
 
 /*!
 ****************************************************************************************************
+*
 *   \brief         0x27 0x01/0x03/0x05/0x07/0x09/0x0B - SecurityAccess RequestSeed, shared across
 *                  every level
-*   \details       Hands back a fresh tick-based seed every call (see file header note on why this
+*
+*   \author        mstewart
+*
+*   \param[in]     subfunc - RequestSeed subfunction (unused - every level shares one seed)
+*   \param[out]    data_p - Response buffer, receives the 4-byte seed MSB first
+*   \param[out]    len_p - Response length, set to 4
+*   \param[out]    nrc_p - Response code, always UDS_RC_POSITIVE_RESPONSE
+*
+*   \return        0 - RequestSeed grants no security level
+*
+*   \note          Hands back a fresh tick-based seed every call (see file header note on why this
 *                  isn't real randomness) - two RequestSeeds in a row don't see the same bytes.
-***************************************************************************************************/
+*
+*****************************************************************************************************/
 STATIC u8_t fbl_uds_handle_request_seed( u16_t subfunc, u8_t* data_p, u16_t* len_p, UDS_response_code_et* nrc_p )
 {
     (void)subfunc;
@@ -230,20 +290,33 @@ STATIC u8_t fbl_uds_handle_request_seed( u16_t subfunc, u8_t* data_p, u16_t* len
 
 /*!
 ****************************************************************************************************
+*
 *   \brief         0x27 0x02/0x04/0x06/0x08/0x0A/0x0C - SecurityAccess SendKey, shared across
 *                  every level
-*   \details       subfunc itself picks which of the six levels this is (0x01u/../0x0Bu below,
+*
+*   \author        mstewart
+*
+*   \param[in]     subfunc - SendKey subfunction (0x02/0x04/0x06/0x08/0x0A/0x0C accepted)
+*   \param[in]     data_p - Request data, the 4-byte key MSB first
+*   \param[in,out] len_p - In: key length received. Out: 0 on success
+*   \param[out]    nrc_p - Response code
+*
+*   \return        1 if the key is correct (the level UDS.c grants), otherwise 0
+*
+*   \note          subfunc itself picks which of the six levels this is (0x01u/../0x0Bu below,
 *                  matching the odd RequestSeed values FBL's own UDS_config.c exposes) - all six
 *                  share fbl_last_seed_s ^ FBL_SECURITY_KEY_XOR_MASK, so an unrecognised subfunc
-*                  and a wrong key take the same path (key_correct stays FALSE). On success,
-*                  returns level 1 unconditionally so UDS.c grants it (see UDS_security_access_
-*                  entry_st's comment in UDS.h) - FBL has no per-level UDS gating the way APP's
-*                  UDS_config.c does. A wrong key is just NRC 0x35: UDS.c counts those itself and
-*                  turns the one that hits the limit into 0x36 plus a lockout (UDS_init_cfg_st's
-*                  security_max_attempts, set from FBL_SECURITY_MAX_FAILED_ATTEMPTS). No
-*                  seed-was-requested check needed here - uds_process_security_access() (UDS.c)
+*                  and a wrong key take the same path (key_correct stays FALSE).
+*   \note          On success, returns level 1 unconditionally so UDS.c grants it (see
+*                  UDS_security_access_entry_st's comment in UDS.h) - FBL has no per-level UDS
+*                  gating the way APP's UDS_config.c does.
+*   \note          A wrong key is just NRC 0x35: UDS.c counts those itself and turns the one that
+*                  hits the limit into 0x36 plus a lockout (UDS_init_cfg_st's
+*                  security_max_attempts, set from FBL_SECURITY_MAX_FAILED_ATTEMPTS).
+*   \note          No seed-was-requested check needed here - uds_process_security_access() (UDS.c)
 *                  never calls this handler at all without one, answering NRC 0x24 itself instead.
-***************************************************************************************************/
+*
+*****************************************************************************************************/
 STATIC u8_t fbl_uds_handle_send_key( u16_t subfunc, u8_t* data_p, u16_t* len_p, UDS_response_code_et* nrc_p )
 {
     false_true_et key_correct   = FALSE;
@@ -280,16 +353,29 @@ STATIC u8_t fbl_uds_handle_send_key( u16_t subfunc, u8_t* data_p, u16_t* len_p, 
 
 /*!
 ****************************************************************************************************
+*
 *   \brief         0x2E WriteDataByIdentifier - applicationSoftwareFingerprint handler
 *                  (DID 0xF184)
-*   \details       Response is just the echoed DID (data_p[0..1] untouched) - no payload beyond
-*                  that, per WriteDataByIdentifier's format. *len_p on entry is however many bytes
-*                  of fingerprint data the tester actually sent; anything over
-*                  FBL_FINGERPRINT_MAX_LEN is rejected rather than silently truncated. Flushed
-*                  synchronously (NVM_GEN2_flush_block(), not left for a periodic tick FBL doesn't
-*                  run) so the write is durable on flash before the positive response goes out -
-*                  same reasoning as APP's uds_handle_write_key() (APP/Src/UDS_CFG/UDS_config.c).
-***************************************************************************************************/
+*
+*   \author        mstewart
+*
+*   \param[in]     subfunc - The DID (unused - this handler serves only 0xF184)
+*   \param[in]     data_p - Request data, the fingerprint bytes
+*   \param[in,out] len_p - In: fingerprint length received. Out: 0 on success
+*   \param[out]    nrc_p - Response code
+*
+*   \return        0 - grants no security level
+*
+*   \note          Response is just the echoed DID (data_p[0..1] untouched) - no payload beyond
+*                  that, per WriteDataByIdentifier's format.
+*   \note          Anything over FBL_FINGERPRINT_MAX_LEN is rejected rather than silently
+*                  truncated.
+*   \note          Flushed synchronously (NVM_GEN2_flush_block(), not left for a periodic tick FBL
+*                  doesn't run) so the write is durable on flash before the positive response goes
+*                  out - same reasoning as APP's uds_handle_write_key() (APP/Src/UDS_CFG/
+*                  UDS_config.c).
+*
+*****************************************************************************************************/
 STATIC u8_t fbl_uds_handle_write_fingerprint( u16_t subfunc, u8_t* data_p, u16_t* len_p, UDS_response_code_et* nrc_p )
 {
     u16_t fingerprint_len = *len_p;
@@ -313,6 +399,38 @@ STATIC u8_t fbl_uds_handle_write_fingerprint( u16_t subfunc, u8_t* data_p, u16_t
         *len_p = 0u;
         *nrc_p = UDS_RC_POSITIVE_RESPONSE;
     }
+
+    return( 0u );
+}
+
+/*!
+****************************************************************************************************
+*
+*   \brief         0x28 CommunicationControl / 0x85 ControlDTCSetting - acknowledge only
+*
+*   \author        mstewart
+*
+*   \param[in]     subfunc - Control type / DTC setting type (unused - every value is accepted)
+*   \param[in]     data_p - Request data (unused)
+*   \param[out]    len_p - Response length, set to 0
+*   \param[out]    nrc_p - Response code, always UDS_RC_POSITIVE_RESPONSE
+*
+*   \return        0 - grants no security level
+*
+*   \note          FBL has nothing either service would gate (see the comment on
+*                  communication_control_subfuncs_s), so every subfunction gets a bare positive
+*                  response.
+*   \note          subfunc arrives already stripped of suppressPosRspMsgIndicationBit, and UDS.c
+*                  echoes it into the response itself.
+*
+*****************************************************************************************************/
+STATIC u8_t fbl_uds_handle_pre_programming_ack( u16_t subfunc, u8_t* data_p, u16_t* len_p, UDS_response_code_et* nrc_p )
+{
+    (void)subfunc;
+    (void)data_p;
+
+    *len_p = 0u;
+    *nrc_p = UDS_RC_POSITIVE_RESPONSE;
 
     return( 0u );
 }

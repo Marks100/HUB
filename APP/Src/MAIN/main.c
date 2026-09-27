@@ -36,6 +36,7 @@
 #include "VER.h"
 #include "UDS_config.h"
 #include "SHARED_RAM.h"
+#include "TYRE_DATA.h"
 
 extern u32_t __isr_vector_start;   /* Linker symbol - APP/linker_script/STM32F103C8_flash.ld */
 
@@ -56,6 +57,9 @@ void app_main( void )
        (fbl_board_init(), FBL/Src/INT_STUBS/INTEGRATION_STUBS.c) - APP was the one stage skipping
        it, silently trusting shared_ram_g.magic was already valid before this point. */
     SHARED_RAM_init();
+
+    /* Reads BM's dataset result from shared RAM, so after SHARED_RAM_init() and before the menu */
+    TYRE_DATA_init();
 
     NVM_GEN2_init( &nvm_gen2_hw_interface_s );
     NVM_GEN2_register_block( APP_GENERIC_BLOCK_ID, &app_nvm_gen2_generic_block_s );
@@ -110,6 +114,7 @@ void app_main( void )
     TCU_init( &tcu_cfg_s );
     GKT_SHIFTER_init( &gkt_shifter_cfg_s );
     MQB_CLUSTER_init( &mqb_cluster_cfg_s );
+    MRA_CLUSTER_init( &mra_cluster_cfg_s );
 
     app_cantp_instance_init();
     CANTP_init( &app_cantp_instance_s );
@@ -121,6 +126,9 @@ void app_main( void )
 
     /* Only once CANTP's queues and CANIF's table are in place - a frame delivered mid-init could be lost */
     HAL_CAN_set_rx_callback( APP_CAN_CH_MAIN, CANIF_rx_indication );
+    /* Refill the TX mailboxes as they empty, not just 3 per CANIF_tick(). Safe because everything
+       that queues CAN frames runs from SysTick, and this ISR shares SysTick's priority. */
+    HAL_CAN_set_tx_ready_callback( APP_CAN_CH_MAIN, CANIF_tx_ready );
 
     const UDS_init_cfg_st app_uds_init_cfg_s =
     {
@@ -144,6 +152,10 @@ void app_main( void )
     systick_ok = SYSTICK_init( &systick_cfg_s, SystemCoreClock );
     STDC_assert( systick_ok == PASS );
     NVIC_EnableGlobalIRQ();
+
+    /* Every init above completed without an assert, so this image is good - tell BM (clears
+       shared_ram_st.boot_failure_count, see BM_MAX_BOOT_FAILURES in BM.h). */
+    SHARED_RAM_set_boot_failure_count( 0u );
 
     /* Init WDG at the end */
     //WDG_init( &wdg_cfg_s );

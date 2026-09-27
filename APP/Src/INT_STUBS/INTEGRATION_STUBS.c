@@ -501,6 +501,20 @@ const PDUR_route_st pdur_routing_table_s[] =
     [APP_PDU_GKT_BACKLIGHT_TX]  = { .tx_id = GKT_SHIFTER_BACKLIGHT_CAN_ID, .lower_layer_tx_func = CANIF_pdur_normal_tx },
     [APP_PDU_TCU_GEAR_STATE_TX] = { .tx_id = TCU_GEAR_STATE_CAN_ID,        .lower_layer_tx_func = CANIF_pdur_normal_tx },
     [APP_PDU_TCU_DYNAMICS_TX]   = { .tx_id = TCU_DYNAMICS_CAN_ID,          .lower_layer_tx_func = CANIF_pdur_normal_tx },
+    /* MRA_CLUSTER (W204 facelift dash) - one route per MRA_CLUSTER_tx_msg_et, at APP_PDU_MRA_TX_BASE + entry */
+    [APP_PDU_MRA_TX_BASE + MRA_CLUSTER_MSG_EIS_WAKE]       = { .tx_id = MRA_CLUSTER_EIS_WAKE_CAN_ID,       .lower_layer_tx_func = CANIF_pdur_normal_tx },
+    [APP_PDU_MRA_TX_BASE + MRA_CLUSTER_MSG_EIS_IGNITION]   = { .tx_id = MRA_CLUSTER_EIS_IGNITION_CAN_ID,   .lower_layer_tx_func = CANIF_pdur_normal_tx },
+    [APP_PDU_MRA_TX_BASE + MRA_CLUSTER_MSG_GW_KEEPALIVE]   = { .tx_id = MRA_CLUSTER_GW_KEEPALIVE_CAN_ID,   .lower_layer_tx_func = CANIF_pdur_normal_tx },
+    [APP_PDU_MRA_TX_BASE + MRA_CLUSTER_MSG_ENGINE_RPM]     = { .tx_id = MRA_CLUSTER_ENGINE_RPM_CAN_ID,     .lower_layer_tx_func = CANIF_pdur_normal_tx },
+    [APP_PDU_MRA_TX_BASE + MRA_CLUSTER_MSG_SPEED]          = { .tx_id = MRA_CLUSTER_SPEED_CAN_ID,          .lower_layer_tx_func = CANIF_pdur_normal_tx },
+    [APP_PDU_MRA_TX_BASE + MRA_CLUSTER_MSG_DIMMER]         = { .tx_id = MRA_CLUSTER_DIMMER_CAN_ID,         .lower_layer_tx_func = CANIF_pdur_normal_tx },
+    [APP_PDU_MRA_TX_BASE + MRA_CLUSTER_MSG_ABS_STATUS]     = { .tx_id = MRA_CLUSTER_ABS_STATUS_CAN_ID,     .lower_layer_tx_func = CANIF_pdur_normal_tx },
+    [APP_PDU_MRA_TX_BASE + MRA_CLUSTER_MSG_SRS_STATUS]     = { .tx_id = MRA_CLUSTER_SRS_STATUS_CAN_ID,     .lower_layer_tx_func = CANIF_pdur_normal_tx },
+    [APP_PDU_MRA_TX_BASE + MRA_CLUSTER_MSG_PARK_BRAKE]     = { .tx_id = MRA_CLUSTER_PARK_BRAKE_CAN_ID,     .lower_layer_tx_func = CANIF_pdur_normal_tx },
+    [APP_PDU_MRA_TX_BASE + MRA_CLUSTER_MSG_COOLANT_TEMP]   = { .tx_id = MRA_CLUSTER_COOLANT_TEMP_CAN_ID,   .lower_layer_tx_func = CANIF_pdur_normal_tx },
+    [APP_PDU_MRA_TX_BASE + MRA_CLUSTER_MSG_FUEL_LEVEL]     = { .tx_id = MRA_CLUSTER_FUEL_LEVEL_CAN_ID,     .lower_layer_tx_func = CANIF_pdur_normal_tx },
+    [APP_PDU_MRA_TX_BASE + MRA_CLUSTER_MSG_LIGHTING]       = { .tx_id = MRA_CLUSTER_LIGHTING_CAN_ID,       .lower_layer_tx_func = CANIF_pdur_normal_tx },
+    [APP_PDU_MRA_TX_BASE + MRA_CLUSTER_MSG_GEAR_INDICATOR] = { .tx_id = MRA_CLUSTER_GEAR_INDICATOR_CAN_ID, .lower_layer_tx_func = CANIF_pdur_normal_tx },
     /* MQB_CLUSTER's routes are generated from the same list the module builds its own enum from
        (MQB_CLUSTER_TX_MSG_LIST, MQB_CLUSTER.h), so a message added there gets its route here with no
        edit to this table - and the CAN ID can't disagree with the module's. */

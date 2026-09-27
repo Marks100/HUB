@@ -4,49 +4,23 @@
 ** Flash layout (128 KB total - confirmed via live F_SIZE register read at 0x1FFFF7E0; this part
 ** is a "C8" (64 KB nominal) that's physically 128 KB silicon, a known STM32F103 binning quirk):
 **   BM   : 0x08000000 - 0x080023FF    9 KB
-**   FBL  : 0x08002400 - 0x08007FFF   23 KB  (grown four times from 17 KB - twice to fit the NVM
-**                                            driver, once (21->22 KB) to fit a UDS boot-version
-**                                            DID and once (22->23 KB) to move onto CANIF, those
-**                                            last two KB coming out of BM's free space rather
-**                                            than APP's. See that image's own linker script
-**                                            for the full history. If FBL needs more still, this
-**                                            image has slack to fund it.)
-**   APP  : 0x08008000 - 0x0801EFFF   92 KB  <- this image (shrunk from 99 KB across three FBL/NVM
-**                                             growths, then a further 2 KB to make room for
-**                                             DATASET0/1 below; this project had the most flash
-**                                             slack of any partition, so the room kept coming
-**                                             from here)
-**   DATASET0 : 0x0801F000 - 0x0801F3FF   1 KB  (independently field-downloadable via FBL - see
-**                                               FBL_download_request() in xCOMMON_MODULES/Src/
-**                                               FBL/FBL.c. Same header/CRC/signature FIELDS as
-**                                               this image but a smaller 96 B header (76 B of
-**                                               actual content + 20 B reserved for future fields)
-**                                               - no vector table lives here, so none of APP's
-**                                               own 256-byte VTOR-alignment requirement applies
-**                                               (see BM's linker script and HEADER.h) - validated
-**                                               by BM the same 3-stage way but informationally
-**                                               only - see BM_run()'s dataset step in BM.c. Read
-**                                               SHARED_RAM_get_dataset0_valid() after boot before
-**                                               trusting its contents.)
-**     .app_header : 0x0801F000 - 0x0801F05F  96 B
-**     payload     : 0x0801F060 - 0x0801F3FF  928 B
-**   DATASET1 : 0x0801F400 - 0x0801F7FF   1 KB  (same as DATASET0, a second independent slot -
-**                                               see SHARED_RAM_get_dataset1_valid())
-**     .app_header : 0x0801F400 - 0x0801F45F  96 B
-**     payload     : 0x0801F460 - 0x0801F7FF  928 B
-**   NVM  : 0x0801F800 - 0x0801FFFF    2 KB  (reserved, not a linker section here; fixed by
+**   FBL  : 0x08002400 - 0x08007FFF   23 KB
+**   APP  : 0x08008000 - 0x0801E7FF   90 KB  <- this image
+**   DATASET0 : 0x0801E800 - 0x0801F7FF   4 KB  (field-downloadable via FBL_download_request().
+**                                               Same header fields as APP but a 96 B header - no
+**                                               vector table, so no 256 B VTOR alignment. BM
+**                                               validates it informationally only - check bit 0
+**                                               of SHARED_RAM_get_dataset_valid_mask() before
+**                                               trusting its contents. Holds the tyre pressure
+**                                               table - see TYRE_DATA.h.)
+**     .app_header : 0x0801E800 - 0x0801E85F    96 B
+**     payload     : 0x0801E860 - 0x0801F7FF  4000 B
+**   NVM  : 0x0801F800 - 0x0801FFFF    2 KB  (reserved, not a linker section; fixed by
 **                                             NVM_BASE_ADDRESS/NVM_TOTAL_SIZE in
-**                                             Common_Src/PROJ_CONFIG/PROJ_config.h - keep this
-**                                             comment in sync with those if either changes. This
-**                                             image must not grow into it. Both pages belong to
-**                                             NVM_GEN2 as its two flip-flop partitions, and BOTH
-**                                             images share both - FBL and APP no longer take a
-**                                             page each. Blocks are packed into an append-only
-**                                             log keyed by block ID, the images own separate ID
-**                                             ranges, and compaction copies records it has no
-**                                             config for across verbatim, so neither image can
-**                                             overwrite the other. See xCOMMON_MODULES/Src/
-**                                             NVM_GEN2/README.md.)
+**                                             Common_Src/PROJ_CONFIG/PROJ_config.h - keep in
+**                                             sync. NVM_GEN2's two flip-flop partitions, shared
+**                                             by FBL and APP via separate block ID ranges - see
+**                                             xCOMMON_MODULES/Src/NVM_GEN2/README.md.)
 **
 ** APP internal layout:
 **   .app_header : 0x08008000 - 0x080080FF  256 B  (presence pattern + CRC)
@@ -64,9 +38,14 @@ _estack = 0x20005000;   /* top of 20 KB SRAM - same as BM/FBL, see SHARED_RAM.h'
 _Min_Heap_Size  = 0x200;   /* 512 B */
 _Min_Stack_Size = 0x400;   /* 1 KB  */
 
+/* DATASET0's payload - APP reads it (TYRE_DATA.c), it does not occupy it. Same names and values as
+   BM's/FBL's linker scripts. *_code_end__ is inclusive (last valid byte). */
+__dataset0_code_start__   = 0x0801E860;
+__dataset0_code_end__     = 0x0801F7FF;
+
 MEMORY
 {
-    FLASH          (rx)  : ORIGIN = 0x08008000, LENGTH = 92K
+    FLASH          (rx)  : ORIGIN = 0x08008000, LENGTH = 90K
     m_data_shared  (xrw) : ORIGIN = 0x20000000, LENGTH = 0x20
     RAM            (xrw) : ORIGIN = 0x20000020, LENGTH = 0x4FE0
 }
@@ -148,8 +127,7 @@ SECTIONS
     } >FLASH
 
     /* BM/FBL/APP handoff - NOLOAD, must survive a soft reset, so it is deliberately not zeroed
-       by startup the way .bss is - see SHARED_RAM.h. Not previously present in this script;
-       added so APP can call SHARED_RAM_set_fbl_request() to request FBL entry on next boot. */
+       by startup the way .bss is - see SHARED_RAM.h. */
     .noinit_shared (NOLOAD) :
     {
         . = ALIGN(4);

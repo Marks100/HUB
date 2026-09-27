@@ -59,8 +59,9 @@
    INTEGRATION_STUBS.c and bm_dataset_table_s in BM/Src/bm_main.c) - NVM_GEN2 blocks are a fixed
    compile-time shape, so this can't track the table size dynamically the way FBL.c/BM.c's own
    dataset_table_size does. Bump this (and both table's entries) together if a dataset is ever
-   added or removed. */
-#define FBL_DATASET_DOWNLOAD_COUNT_MAX       ( 2u )
+   added or removed - the block's length changes with it, so NVM_GEN2 resets the stored counts to
+   their defaults (zero) on the first boot after. */
+#define FBL_DATASET_DOWNLOAD_COUNT_MAX       ( 1u )
 
 /***************************************************************************************************
 **                              Data Types and Enums                                              **

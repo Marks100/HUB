@@ -1,0 +1,196 @@
+#!/usr/bin/env ruby
+
+#===================================================================================
+# Tyre Dataset Generator
+#===================================================================================
+# Purpose: Turn a tyre pressure CSV into the DATASET0 image APP's TYRE_DATA module
+#          reads - an Intel HEX covering the whole dataset region (96 B header +
+#          payload), ready for app_crc_injector and app_signer.
+#
+# The payload layout MUST match APP/Src/TYRE_DATA/TYRE_DATA.h exactly (format 2,
+# packed, 16-bit fields little-endian):
+#
+#   header          'T' 'P' version make_count model_total(u16) variant_total(u16)   8 B
+#   model_counts    u8 per make   - models in that make
+#   variant_counts  u8 per model  - year ranges in that model
+#   names           every make name, then every model name, NUL-terminated
+#   variants        year_from year_to front_dbar rear_dbar                    4 B each
+#
+# Years are stored as (year - 1900); pressures in 0.1 bar. Makes are sorted by
+# name, models by name within their make, and variants by year within their model
+# - so each menu level is a contiguous run and no start index needs storing.
+#
+# The header's presence pattern is written here; its CRC, code_size and
+# signature are left erased (0xFF) for app_crc_injector/app_signer to fill in.
+# The rest of the region is 0xFF-filled so the hex defines every byte BM's CRC
+# and signature cover - same reasoning as the APP hex padding in APP/Makefile.
+#
+# CSV columns (header row required, '#' lines ignored):
+#   make,model,year_from,year_to,front_bar,rear_bar
+#===================================================================================
+
+require 'csv'
+
+FORMAT_VERSION    = 2
+NAME_MAX_LEN      = 20           # TYRE_DATA_NAME_MAX_LEN
+MAX_PER_PARENT    = 255          # a make's models / a model's year ranges are u8 counts
+MAX_TOTAL         = 0xFFFF       # header totals are u16
+YEAR_BASE         = 1900
+PRESENCE_PATTERN  = 0xDEADBEEF   # APP_HEADER_PRESENCE_PATTERN, HEADER.h
+
+def usage
+  puts <<~USAGE
+    Usage:
+      #{File.basename(__FILE__)} <csv> --header-addr=ADDR --code-start=ADDR --code-end=ADDR --output=FILE
+
+      --header-addr ADDR   Dataset header address in hex (DATASET0_FLASH_START)
+      --code-start ADDR    First payload byte in hex (header + 0x60)
+      --code-end ADDR      LAST payload byte in hex, inclusive (DATASET0_FLASH_END)
+      --output FILE        Intel HEX to write
+  USAGE
+  exit 1
+end
+
+def fail!( msg )
+  warn "tyre_dataset_gen: ERROR: #{msg}"
+  exit 1
+end
+
+def parse_args( argv )
+  opts = {}
+  csv  = nil
+
+  argv.each do |arg|
+    if arg =~ /\A--([a-z-]+)=(.+)\z/
+      opts[$1] = $2
+    elsif csv.nil?
+      csv = arg
+    else
+      usage
+    end
+  end
+
+  usage if csv.nil? || %w[header-addr code-start code-end output].any? { |k| opts[k].nil? }
+  [csv, opts]
+end
+
+def parse_bar( text, where )
+  value = Float( text ) rescue fail!( "#{where}: pressure '#{text}' is not a number" )
+  dbar  = ( value * 10.0 ).round
+  fail!( "#{where}: pressure #{text} bar is outside 0.0-25.5" ) unless dbar.between?( 0, 255 )
+  dbar
+end
+
+def parse_year( text, where )
+  year = Integer( text, 10 ) rescue fail!( "#{where}: year '#{text}' is not a whole number" )
+  fail!( "#{where}: year #{year} is outside #{YEAR_BASE}-#{YEAR_BASE + 255}" ) unless ( year - YEAR_BASE ).between?( 0, 255 )
+  year
+end
+
+def check_name( name, where )
+  fail!( "#{where}: empty name" ) if name.empty?
+  fail!( "#{where}: '#{name}' is longer than #{NAME_MAX_LEN} characters" ) if name.bytesize > NAME_MAX_LEN
+  fail!( "#{where}: '#{name}' is not plain ASCII" ) unless name.ascii_only?
+  name
+end
+
+def load_rows( path )
+  lines = File.readlines( path ).reject { |l| l.strip.empty? || l.lstrip.start_with?( '#' ) }
+  table = CSV.parse( lines.join, headers: true, strip: true )
+
+  table.each_with_index.map do |row, i|
+    where = "#{path} data row #{i + 1}"
+    {
+      make:      check_name( row['make'].to_s,  where ),
+      model:     check_name( row['model'].to_s, where ),
+      year_from: parse_year( row['year_from'],  where ),
+      year_to:   parse_year( row['year_to'],    where ),
+      front:     parse_bar( row['front_bar'],   where ),
+      rear:      parse_bar( row['rear_bar'],    where ),
+    }.tap do |r|
+      fail!( "#{where}: year_from #{r[:year_from]} is after year_to #{r[:year_to]}" ) if r[:year_from] > r[:year_to]
+    end
+  end
+end
+
+def build_payload( rows )
+  make_names     = []
+  model_names    = []
+  model_counts   = []   # per make
+  variant_counts = []   # per model
+  variants       = []
+
+  rows.group_by { |r| r[:make] }.sort_by { |make, _| make.downcase }.each do |make, make_rows|
+    models = make_rows.group_by { |r| r[:model] }.sort_by { |model, _| model.downcase }
+    fail!( "#{make}: #{models.size} models - a make holds at most #{MAX_PER_PARENT}" ) if models.size > MAX_PER_PARENT
+
+    make_names   << make
+    model_counts << models.size
+
+    models.each do |model, model_rows|
+      fail!( "#{make} #{model}: #{model_rows.size} year ranges - a model holds at most #{MAX_PER_PARENT}" ) if model_rows.size > MAX_PER_PARENT
+
+      model_names    << model
+      variant_counts << model_rows.size
+
+      model_rows.sort_by { |r| r[:year_from] }.each do |r|
+        variants << [r[:year_from] - YEAR_BASE, r[:year_to] - YEAR_BASE, r[:front], r[:rear]]
+      end
+    end
+  end
+
+  fail!( "#{make_names.size} makes - the table holds at most #{MAX_PER_PARENT}" ) if make_names.size > MAX_PER_PARENT
+  fail!( "#{variants.size} year ranges - the table holds at most #{MAX_TOTAL}" ) if variants.size > MAX_TOTAL
+
+  header = ['T'.ord, 'P'.ord, FORMAT_VERSION, make_names.size] +
+           [model_names.size].pack( 'v' ).bytes + [variants.size].pack( 'v' ).bytes
+  names  = ( make_names + model_names ).flat_map { |n| n.bytes + [0] }
+  bytes  = header + model_counts + variant_counts + names + variants.flatten
+
+  [bytes, make_names.size, model_names.size, variants.size]
+end
+
+def ihex_record( type, offset, data )
+  body = [data.size, ( offset >> 8 ) & 0xFF, offset & 0xFF, type] + data
+  sum  = ( -body.sum ) & 0xFF
+  ':' + ( body + [sum] ).map { |b| format( '%02X', b ) }.join
+end
+
+def write_ihex( path, base, image )
+  lines     = []
+  upper     = nil
+  address   = base
+
+  image.each_slice( 16 ) do |chunk|
+    if ( address >> 16 ) != upper
+      upper = address >> 16
+      lines << ihex_record( 4, 0, [( upper >> 8 ) & 0xFF, upper & 0xFF] )
+    end
+    lines << ihex_record( 0, address & 0xFFFF, chunk )
+    address += chunk.size
+  end
+
+  lines << ':00000001FF'
+  File.write( path, lines.join( "\n" ) + "\n" )
+end
+
+csv_path, opts = parse_args( ARGV )
+header_addr    = Integer( opts['header-addr'] )
+code_start     = Integer( opts['code-start'] )
+code_end       = Integer( opts['code-end'] )
+
+fail!( 'code-start must be after header-addr' ) unless code_start > header_addr
+fail!( 'code-end must not be before code-start' ) unless code_end >= code_start
+
+payload, n_makes, n_models, n_variants = build_payload( load_rows( csv_path ) )
+payload_room = code_end - code_start + 1
+fail!( "table is #{payload.size} B but the dataset payload holds #{payload_room} B" ) if payload.size > payload_room
+
+image = Array.new( code_end - header_addr + 1, 0xFF )
+image[0, 4] = [PRESENCE_PATTERN].pack( 'V' ).bytes
+image[( code_start - header_addr ), payload.size] = payload
+
+write_ihex( opts['output'], header_addr, image )
+
+puts "tyre_dataset_gen: #{n_makes} makes, #{n_models} models, #{n_variants} year ranges - " \
+     "#{payload.size} of #{payload_room} B used -> #{opts['output']}"

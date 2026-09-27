@@ -68,6 +68,11 @@ typedef enum
     MENU_NAV_SCREEN_REV_COUNTER,
     MENU_NAV_SCREEN_REV_COUNTER_BAR,
 
+    MENU_NAV_SCREEN_TYRE_MAKE,          /*!< Tyre Pressures: make -> model -> year -> pressures, */
+    MENU_NAV_SCREEN_TYRE_MODEL,         /*!< all read from DATASET0 - see TYRE_DATA.h           */
+    MENU_NAV_SCREEN_TYRE_YEAR,
+    MENU_NAV_SCREEN_TYRE_PRESSURE,
+
     MENU_NAV_SCREEN_ABOUT,
     MENU_NAV_SCREEN_BOOTLOADER,
     MENU_NAV_SCREEN_NOT_IMPLEMENTED,

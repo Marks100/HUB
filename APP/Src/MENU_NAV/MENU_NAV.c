@@ -1,4 +1,4 @@
-﻿/*! \file
+/*! \file
 *               Author: mstewart
 *   \brief      MENU_NAV - this project's screens and how you move between them
 *
@@ -21,6 +21,7 @@
 #include "printf.h"
 #include "SHARED_RAM.h"
 #include "MCU_JUMP.h"
+#include "TYRE_DATA.h"
 
 /***************************************************************************************************
 **                              Defines                                                           **
@@ -136,15 +137,32 @@ typedef struct
     u8_t pressure_psi;
 } menu_nav_tire_reading_st;
 
+/*!
+ * \brief A list whose rows come from data at runtime instead of a static table (Tyre Pressures)
+ *
+ * Same cursor, scrolling and marker as a MENU_NAV_list_st - it shares menu_nav_move_cursor() - but
+ * the count and labels come from functions, and SELECT records the chosen index in *selected_p
+ * before opening next_screen, rather than each row naming its own target.
+ */
+typedef struct
+{
+    const char*          title_p;
+    u8_t               (*count_func_p)( void );
+    const char*        (*label_func_p)( u8_t index );
+    u8_t*                selected_p;     /*!< SELECT writes the cursor here */
+    MENU_NAV_screen_et   next_screen;    /*!< ...then opens this, with its cursor back at the top */
+    MENU_NAV_screen_et   screen;         /*!< This list's own screen - looked up for back_screen */
+} menu_nav_dyn_list_st;
+
 /***************************************************************************************************
 **                              Private Function Prototypes                                       **
 ***************************************************************************************************/
 STATIC void        menu_nav_draw_list( const MENU_NAV_list_st* list_p );
 STATIC void        menu_nav_handle_list( const MENU_NAV_screen_st* screen_p, HMI_SH1106_input_et input );
 STATIC void        menu_nav_handle_static( const MENU_NAV_screen_st* screen_p, HMI_SH1106_input_et input );
-STATIC void        menu_nav_move_cursor( const MENU_NAV_list_st* list_p, false_true_et down );
-STATIC void        menu_nav_update_scroll( const MENU_NAV_list_st* list_p );
-STATIC u8_t        menu_nav_visible_rows( const MENU_NAV_list_st* list_p );
+STATIC void        menu_nav_move_cursor( u8_t item_count, const char* title_p, false_true_et down );
+STATIC void        menu_nav_update_scroll( const char* title_p );
+STATIC u8_t        menu_nav_visible_rows( const char* title_p );
 STATIC const char* menu_nav_get_label( u8_t index );
 
 STATIC void menu_nav_draw_home( void );
@@ -182,6 +200,22 @@ STATIC void menu_nav_draw_rev_counter( void );
 STATIC void menu_nav_bar_gauge_draw( const menu_nav_bar_gauge_cfg_st* cfg_p );
 STATIC void menu_nav_bar_gauge_handle( const menu_nav_bar_gauge_cfg_st* cfg_p, HMI_SH1106_input_et input );
 STATIC void menu_nav_draw_rev_counter_bar( void );
+STATIC void        menu_nav_dyn_list_draw( const menu_nav_dyn_list_st* cfg_p );
+STATIC void        menu_nav_dyn_list_handle( const menu_nav_dyn_list_st* cfg_p, HMI_SH1106_input_et input );
+STATIC u8_t        menu_nav_tyre_make_count( void );
+STATIC u8_t        menu_nav_tyre_model_count( void );
+STATIC u8_t        menu_nav_tyre_year_count( void );
+STATIC const char* menu_nav_tyre_make_label( u8_t index );
+STATIC const char* menu_nav_tyre_model_label( u8_t index );
+STATIC const char* menu_nav_tyre_year_label( u8_t index );
+STATIC void        menu_nav_draw_tyre_make( void );
+STATIC void        menu_nav_handle_tyre_make( HMI_SH1106_input_et input );
+STATIC void        menu_nav_draw_tyre_model( void );
+STATIC void        menu_nav_handle_tyre_model( HMI_SH1106_input_et input );
+STATIC void        menu_nav_draw_tyre_year( void );
+STATIC void        menu_nav_handle_tyre_year( HMI_SH1106_input_et input );
+STATIC void        menu_nav_draw_tyre_pressure( void );
+STATIC void        menu_nav_draw_tyre_axle( u8_t row, const char* label_p, u8_t dbar );
 
 /***************************************************************************************************
 **                              Screen contents                                                   **
@@ -202,6 +236,7 @@ STATIC const MENU_NAV_item_st menu_nav_main_items_s[] =
     { "Vehicle",             MENU_NAV_SCREEN_VEHICLE         },
     { "Rev Counter",         MENU_NAV_SCREEN_REV_COUNTER     },
     { "Rev Counter (Bar)",   MENU_NAV_SCREEN_REV_COUNTER_BAR },
+    { "Tyre Pressures",      MENU_NAV_SCREEN_TYRE_MAKE       },
     { "About",               MENU_NAV_SCREEN_ABOUT           },
     { "Bootloader",          MENU_NAV_SCREEN_BOOTLOADER      },
 };
@@ -510,6 +545,47 @@ STATIC menu_nav_buzzer_field_et menu_nav_buzzer_field_s = MENU_NAV_BUZZER_FIELD_
 /* ===== Sensors - which sensor slot the knob is currently showing ===== */
 STATIC u8_t menu_nav_sensor_index_s = 0u;
 
+/* ===== Tyre Pressures - make -> model -> year range -> pressures, all read from DATASET0 via
+   TYRE_DATA, so changing the cars means downloading a new dataset, not rebuilding APP. Each list
+   records its SELECT here for the next level down to read. ===== */
+STATIC u8_t menu_nav_tyre_make_s    = 0u;
+STATIC u8_t menu_nav_tyre_model_s   = 0u;
+STATIC u8_t menu_nav_tyre_variant_s = 0u;
+
+/* The label getters' return buffer - shared, since HMI_SH1106_draw_list() draws each label before
+   asking for the next */
+STATIC char menu_nav_tyre_label_s[MENU_NAV_LINE_CHARS];
+
+STATIC const menu_nav_dyn_list_st menu_nav_tyre_make_list_s =
+{
+    .title_p      = "SELECT MAKE",
+    .count_func_p = menu_nav_tyre_make_count,
+    .label_func_p = menu_nav_tyre_make_label,
+    .selected_p   = &menu_nav_tyre_make_s,
+    .next_screen  = MENU_NAV_SCREEN_TYRE_MODEL,
+    .screen       = MENU_NAV_SCREEN_TYRE_MAKE,
+};
+
+STATIC const menu_nav_dyn_list_st menu_nav_tyre_model_list_s =
+{
+    .title_p      = "SELECT MODEL",
+    .count_func_p = menu_nav_tyre_model_count,
+    .label_func_p = menu_nav_tyre_model_label,
+    .selected_p   = &menu_nav_tyre_model_s,
+    .next_screen  = MENU_NAV_SCREEN_TYRE_YEAR,
+    .screen       = MENU_NAV_SCREEN_TYRE_MODEL,
+};
+
+STATIC const menu_nav_dyn_list_st menu_nav_tyre_year_list_s =
+{
+    .title_p      = "SELECT YEAR",
+    .count_func_p = menu_nav_tyre_year_count,
+    .label_func_p = menu_nav_tyre_year_label,
+    .selected_p   = &menu_nav_tyre_variant_s,
+    .next_screen  = MENU_NAV_SCREEN_TYRE_PRESSURE,
+    .screen       = MENU_NAV_SCREEN_TYRE_YEAR,
+};
+
 /***************************************************************************************************
 **                              Screen table                                                      **
 **  One row per screen - see MENU_NAV_screen_st. Indexed by MENU_NAV_screen_et, so the designated **
@@ -600,6 +676,33 @@ STATIC const MENU_NAV_screen_st menu_nav_screens_s[MENU_NAV_NUM_SCREENS] =
         /* handle_func_p left NULL_P - live reading now, not knob-edited. Falls through to
            menu_nav_handle_static() for plain BACK navigation. */
         .back_screen   = MENU_NAV_SCREEN_MAIN_MENU,
+    },
+
+    [MENU_NAV_SCREEN_TYRE_MAKE] =
+    {
+        .draw_func_p   = menu_nav_draw_tyre_make,
+        .handle_func_p = menu_nav_handle_tyre_make,     /* Dataset-backed list - see menu_nav_dyn_list_st */
+        .back_screen   = MENU_NAV_SCREEN_MAIN_MENU,
+    },
+
+    [MENU_NAV_SCREEN_TYRE_MODEL] =
+    {
+        .draw_func_p   = menu_nav_draw_tyre_model,
+        .handle_func_p = menu_nav_handle_tyre_model,
+        .back_screen   = MENU_NAV_SCREEN_TYRE_MAKE,
+    },
+
+    [MENU_NAV_SCREEN_TYRE_YEAR] =
+    {
+        .draw_func_p   = menu_nav_draw_tyre_year,
+        .handle_func_p = menu_nav_handle_tyre_year,
+        .back_screen   = MENU_NAV_SCREEN_TYRE_MODEL,
+    },
+
+    [MENU_NAV_SCREEN_TYRE_PRESSURE] =
+    {
+        .draw_func_p   = menu_nav_draw_tyre_pressure,
+        .back_screen   = MENU_NAV_SCREEN_TYRE_YEAR,
     },
 
     [MENU_NAV_SCREEN_ABOUT] =
@@ -792,10 +895,10 @@ void MENU_NAV_on_input( HMI_SH1106_input_et input )
 *   \return        Number of items that fit on screen at once
 *
 ***************************************************************************************************/
-STATIC u8_t menu_nav_visible_rows( const MENU_NAV_list_st* list_p )
+STATIC u8_t menu_nav_visible_rows( const char* title_p )
 {
-    return( ( list_p->title_p != NULL_P ) ? (u8_t)( HMI_SH1106_MAX_VISIBLE_LINES - 1u )
-                                          : (u8_t)( HMI_SH1106_MAX_VISIBLE_LINES ) );
+    return( ( title_p != NULL_P ) ? (u8_t)( HMI_SH1106_MAX_VISIBLE_LINES - 1u )
+                                  : (u8_t)( HMI_SH1106_MAX_VISIBLE_LINES ) );
 }
 
 /*!
@@ -811,10 +914,10 @@ STATIC u8_t menu_nav_visible_rows( const MENU_NAV_list_st* list_p )
 *                  outside it, so a list that fits on screen never scrolls at all.
 *
 ***************************************************************************************************/
-STATIC void menu_nav_update_scroll( const MENU_NAV_list_st* list_p )
+STATIC void menu_nav_update_scroll( const char* title_p )
 {
     menu_nav_pos_st* pos_p   = &menu_nav_pos_s[menu_nav_screen_s];
-    u8_t             visible = menu_nav_visible_rows( list_p );
+    u8_t             visible = menu_nav_visible_rows( title_p );
 
     if( pos_p->cursor < pos_p->scroll )
     {
@@ -837,20 +940,23 @@ STATIC void menu_nav_update_scroll( const MENU_NAV_list_st* list_p )
 *
 *   \author        MS
 *
-*   \param         down - TRUE towards the last item, FALSE towards the first
+*   \param         item_count - Items in the current list
+*   \param         title_p    - The list's title, NULL_P for none (it costs a row)
+*   \param         down       - TRUE towards the last item, FALSE towards the first
 *
 *   \return        none
 *
 *   \note          Wrapping suits a knob with no end stops of its own - keep turning and the list
-*                  comes back round rather than silently doing nothing.
+*                  comes back round rather than silently doing nothing. Takes a count rather than a
+*                  MENU_NAV_list_st so dataset-backed lists (Tyre Pressures) share it.
 *
 ***************************************************************************************************/
-STATIC void menu_nav_move_cursor( const MENU_NAV_list_st* list_p, false_true_et down )
+STATIC void menu_nav_move_cursor( u8_t item_count, const char* title_p, false_true_et down )
 {
-    if( list_p->item_count != 0u )
+    if( item_count != 0u )
     {
         menu_nav_pos_st* pos_p     = &menu_nav_pos_s[menu_nav_screen_s];
-        u8_t             last_item = (u8_t)( list_p->item_count - 1u );
+        u8_t             last_item = (u8_t)( item_count - 1u );
 
         if( down == TRUE )
         {
@@ -861,7 +967,7 @@ STATIC void menu_nav_move_cursor( const MENU_NAV_list_st* list_p, false_true_et 
             pos_p->cursor = ( pos_p->cursor == 0u ) ? last_item : (u8_t)( pos_p->cursor - 1u );
         }
 
-        menu_nav_update_scroll( list_p );
+        menu_nav_update_scroll( title_p );
         HMI_SH1106_request_redraw();
     }
 }
@@ -932,11 +1038,11 @@ STATIC void menu_nav_handle_list( const MENU_NAV_screen_st* screen_p, HMI_SH1106
     switch( input )
     {
         case HMI_SH1106_INPUT_CW:
-            menu_nav_move_cursor( list_p, TRUE );
+            menu_nav_move_cursor( list_p->item_count, list_p->title_p, TRUE );
         break;
 
         case HMI_SH1106_INPUT_CCW:
-            menu_nav_move_cursor( list_p, FALSE );
+            menu_nav_move_cursor( list_p->item_count, list_p->title_p, FALSE );
         break;
 
         case HMI_SH1106_INPUT_SELECT:
@@ -1371,6 +1477,238 @@ STATIC void menu_nav_draw_tire( u8_t tire_x, u8_t tire_y, u8_t label_col, u8_t l
 /*!
 ****************************************************************************************************
 *
+*   \brief         Paint a dataset-backed list, or say there's no data
+*
+*   \author        MS
+*
+*   \param         cfg_p - The list - see menu_nav_dyn_list_st
+*
+*   \return        none
+*
+***************************************************************************************************/
+STATIC void menu_nav_dyn_list_draw( const menu_nav_dyn_list_st* cfg_p )
+{
+    const menu_nav_pos_st* pos_p = &menu_nav_pos_s[menu_nav_screen_s];
+    u8_t                   count = cfg_p->count_func_p();
+    HMI_SH1106_list_st     draw_list;
+
+    if( count == 0u )
+    {
+        HMI_SH1106_draw_text( 0u, 0u, cfg_p->title_p, FALSE );
+        HMI_SH1106_draw_text( 2u, 0u, "No tyre data", FALSE );
+        HMI_SH1106_draw_text( 3u, 0u, "Download DATASET0", FALSE );
+    }
+    else
+    {
+        draw_list.title_p          = cfg_p->title_p;
+        draw_list.item_count       = count;
+        draw_list.first_item       = pos_p->scroll;
+        draw_list.cursor           = pos_p->cursor;
+        draw_list.get_label_func_p = cfg_p->label_func_p;
+
+        HMI_SH1106_draw_list( &draw_list );
+    }
+}
+
+/*!
+****************************************************************************************************
+*
+*   \brief         Input for a dataset-backed list - the knob moves, SELECT records and descends
+*
+*   \author        MS
+*
+*   \param         cfg_p - The list - see menu_nav_dyn_list_st
+*   \param         input - What the panel reported
+*
+*   \return        none
+*
+*   \note          The next level's cursor goes back to the top on the way down, since it is about
+*                  to list a different parent's children than whatever it showed last time.
+*
+***************************************************************************************************/
+STATIC void menu_nav_dyn_list_handle( const menu_nav_dyn_list_st* cfg_p, HMI_SH1106_input_et input )
+{
+    const menu_nav_pos_st* pos_p = &menu_nav_pos_s[menu_nav_screen_s];
+    u8_t                   count = cfg_p->count_func_p();
+
+    switch( input )
+    {
+        case HMI_SH1106_INPUT_CW:
+            menu_nav_move_cursor( count, cfg_p->title_p, TRUE );
+        break;
+
+        case HMI_SH1106_INPUT_CCW:
+            menu_nav_move_cursor( count, cfg_p->title_p, FALSE );
+        break;
+
+        case HMI_SH1106_INPUT_SELECT:
+        case HMI_SH1106_INPUT_CONFIRM:
+            if( pos_p->cursor < count )
+            {
+                *cfg_p->selected_p                        = pos_p->cursor;
+                menu_nav_pos_s[cfg_p->next_screen].cursor = 0u;
+                menu_nav_pos_s[cfg_p->next_screen].scroll = 0u;
+                MENU_NAV_goto( cfg_p->next_screen );
+            }
+        break;
+
+        case HMI_SH1106_INPUT_BACK:
+            MENU_NAV_goto( menu_nav_screens_s[cfg_p->screen].back_screen );
+        break;
+
+        default:
+            /* Long select/confirm mean nothing on a list */
+        break;
+    }
+}
+
+/* Tyre Pressures - counts and labels for the three dataset-backed lists. Each level reads the index
+   the level above recorded; TYRE_DATA returns NULL_P for anything out of range, which reads as an
+   empty list. */
+STATIC u8_t menu_nav_tyre_make_count( void )
+{
+    return( TYRE_DATA_get_make_count() );
+}
+
+STATIC u8_t menu_nav_tyre_model_count( void )
+{
+    return( TYRE_DATA_get_model_count( menu_nav_tyre_make_s ) );
+}
+
+STATIC u8_t menu_nav_tyre_year_count( void )
+{
+    return( TYRE_DATA_get_variant_count( menu_nav_tyre_make_s, menu_nav_tyre_model_s ) );
+}
+
+STATIC const char* menu_nav_tyre_make_label( u8_t index )
+{
+    return( ( TYRE_DATA_get_make_name( index, menu_nav_tyre_label_s, (u8_t)sizeof( menu_nav_tyre_label_s ) ) == TRUE ) ?
+            menu_nav_tyre_label_s : NULL_P );
+}
+
+STATIC const char* menu_nav_tyre_model_label( u8_t index )
+{
+    return( ( TYRE_DATA_get_model_name( menu_nav_tyre_make_s, index, menu_nav_tyre_label_s,
+                                        (u8_t)sizeof( menu_nav_tyre_label_s ) ) == TRUE ) ?
+            menu_nav_tyre_label_s : NULL_P );
+}
+
+STATIC const char* menu_nav_tyre_year_label( u8_t index )
+{
+    const TYRE_DATA_variant_st* variant_p = TYRE_DATA_get_variant( menu_nav_tyre_make_s, menu_nav_tyre_model_s, index );
+    const char*                 label_p   = NULL_P;
+
+    if( variant_p != NULL_P )
+    {
+        (void)PRINTF_snprintf( (u8_t*)menu_nav_tyre_label_s, (u16_t)sizeof( menu_nav_tyre_label_s ), "%u - %u",
+                               (unsigned int)( TYRE_DATA_YEAR_BASE + variant_p->year_from ),
+                               (unsigned int)( TYRE_DATA_YEAR_BASE + variant_p->year_to ) );
+        label_p = menu_nav_tyre_label_s;
+    }
+
+    return( label_p );
+}
+
+STATIC void menu_nav_draw_tyre_make( void )
+{
+    menu_nav_dyn_list_draw( &menu_nav_tyre_make_list_s );
+}
+
+STATIC void menu_nav_handle_tyre_make( HMI_SH1106_input_et input )
+{
+    menu_nav_dyn_list_handle( &menu_nav_tyre_make_list_s, input );
+}
+
+STATIC void menu_nav_draw_tyre_model( void )
+{
+    menu_nav_dyn_list_draw( &menu_nav_tyre_model_list_s );
+}
+
+STATIC void menu_nav_handle_tyre_model( HMI_SH1106_input_et input )
+{
+    menu_nav_dyn_list_handle( &menu_nav_tyre_model_list_s, input );
+}
+
+STATIC void menu_nav_draw_tyre_year( void )
+{
+    menu_nav_dyn_list_draw( &menu_nav_tyre_year_list_s );
+}
+
+STATIC void menu_nav_handle_tyre_year( HMI_SH1106_input_et input )
+{
+    menu_nav_dyn_list_handle( &menu_nav_tyre_year_list_s, input );
+}
+
+/*!
+****************************************************************************************************
+*
+*   \brief         Tyre Pressures - one axle's line, in bar and psi
+*
+*   \author        MS
+*
+*   \param         row     - Text row to draw on
+*   \param         label_p - "Front"/"Rear "
+*   \param         dbar    - Pressure in 0.1 bar, as TYRE_DATA stores it
+*
+*   \return        none
+*
+***************************************************************************************************/
+STATIC void menu_nav_draw_tyre_axle( u8_t row, const char* label_p, u8_t dbar )
+{
+    char line[MENU_NAV_LINE_CHARS];
+    u16_t psi = PRESS_CONV_mbar_to_psi( (u16_t)( (u16_t)dbar * 100u ) );
+
+    (void)PRINTF_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "%s %u.%u bar %u psi", label_p,
+                           (unsigned int)( dbar / 10u ), (unsigned int)( dbar % 10u ), (unsigned int)psi );
+    HMI_SH1106_draw_text( row, 0u, line, FALSE );
+}
+
+/*!
+****************************************************************************************************
+*
+*   \brief         Tyre Pressures - the chosen car and its front/rear pressures
+*
+*   \author        MS
+*
+*   \return        none
+*
+*   \note          Read-only, so any button goes back to the year list (default free-form handling).
+*
+***************************************************************************************************/
+STATIC void menu_nav_draw_tyre_pressure( void )
+{
+    char                        line[MENU_NAV_LINE_CHARS];
+    const TYRE_DATA_variant_st* variant_p = TYRE_DATA_get_variant( menu_nav_tyre_make_s, menu_nav_tyre_model_s,
+                                                                   menu_nav_tyre_variant_s );
+
+    HMI_SH1106_draw_text( 0u, 0u, "TYRE PRESSURES", FALSE );
+
+    /* A variant can only be found through its make and model, so both names exist too */
+    if( variant_p != NULL_P )
+    {
+        (void)TYRE_DATA_get_make_name( menu_nav_tyre_make_s, line, (u8_t)sizeof( line ) );
+        HMI_SH1106_draw_text( 2u, 0u, line, FALSE );
+
+        (void)TYRE_DATA_get_model_name( menu_nav_tyre_make_s, menu_nav_tyre_model_s, line, (u8_t)sizeof( line ) );
+        HMI_SH1106_draw_text( 3u, 0u, line, FALSE );
+
+        (void)PRINTF_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "%u - %u",
+                               (unsigned int)( TYRE_DATA_YEAR_BASE + variant_p->year_from ),
+                               (unsigned int)( TYRE_DATA_YEAR_BASE + variant_p->year_to ) );
+        HMI_SH1106_draw_text( 4u, 0u, line, FALSE );
+
+        menu_nav_draw_tyre_axle( 6u, "Front", variant_p->front_dbar );
+        menu_nav_draw_tyre_axle( 7u, "Rear ", variant_p->rear_dbar );
+    }
+    else
+    {
+        HMI_SH1106_draw_text( 2u, 0u, "No tyre data", FALSE );
+    }
+}
+
+/*!
+****************************************************************************************************
+*
 *   \brief         Vehicle - four tires laid out like they sit on a real car, seen from above
 *
 *   \author        MS
@@ -1672,7 +2010,7 @@ STATIC void menu_nav_draw_bootloader( void )
 *   \return        none
 *
 *   \note          SHARED_RAM_set_fbl_request(TRUE) followed by a reset is the same explicit-request
-*                  path BM_run() checks on every boot (see BM.c's BM_check_for_reprog_flag()) - BM
+*                  path BM_run() checks on every boot (see BM.c's bm_check_for_reprog_flag()) - BM
 *                  still validates FBL's presence/CRC/signature before actually jumping to it, the
 *                  same as every other path into FBL, so a corrupt/missing FBL image fails safe
 *                  rather than this screen being able to strand the device. SHARED_RAM's magic is

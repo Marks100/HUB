@@ -254,6 +254,12 @@ const MQB_CLUSTER_cfg_st mqb_cluster_cfg_s =
     .tx_pdu_id_base     = APP_PDU_MQB_TX_BASE,
 };
 
+/* W204 facelift dash - same RPM/speed/gear feeds as MQB_CLUSTER (see the relays at the end of file) */
+const MRA_CLUSTER_cfg_st mra_cluster_cfg_s =
+{
+    .tx_pdu_id_base     = APP_PDU_MRA_TX_BASE,
+};
+
 /***************************************************************************************************
 **                              CPS — Crank Position Sensor                                        **
 **  Bench-test input: a plain square wave, 60 pulses = 1 revolution (CPS_GAP_NONE/total_teeth=60) - **
@@ -401,6 +407,7 @@ void app_tcu_gear_state_local_relay( void )
 
     GKT_SHIFTER_process_rx_frame( TCU_GEAR_STATE_CAN_ID, buf, TCU_GEAR_STATE_DLC );
     MQB_CLUSTER_process_rx_frame( TCU_GEAR_STATE_CAN_ID, buf, TCU_GEAR_STATE_DLC );
+    MRA_CLUSTER_process_rx_frame( TCU_GEAR_STATE_CAN_ID, buf, TCU_GEAR_STATE_DLC );
 }
 
 /* ENGINE_SIM's get_throttle_percent_func_p - a no-argument adapter binding aps_pedal_instance_s
@@ -423,6 +430,8 @@ void app_engine_sim_cluster_relay( void )
 {
     MQB_CLUSTER_set_rpm( ENGINE_SIM_get_rpm( &engine_sim_instance_s ) );
     MQB_CLUSTER_set_vehicle_speed_kmh( (f32_t)TCU_get_speed_kmh() );
+    MRA_CLUSTER_set_rpm( ENGINE_SIM_get_rpm( &engine_sim_instance_s ) );
+    MRA_CLUSTER_set_vehicle_speed_kmh( (f32_t)TCU_get_speed_kmh() );
 }
 
 /****************************** END OF FILE *******************************************************/

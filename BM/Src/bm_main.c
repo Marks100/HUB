@@ -32,9 +32,6 @@ extern u32_t __app_code_end__;
 extern u32_t __dataset0_header_start__;
 extern u32_t __dataset0_code_start__;
 extern u32_t __dataset0_code_end__;
-extern u32_t __dataset1_header_start__;
-extern u32_t __dataset1_code_start__;
-extern u32_t __dataset1_code_end__;
 
 /***************************************************************************************************
 **                              CRC Configuration                                                **
@@ -94,15 +91,15 @@ STATIC false_true_et signature_verify_ecdsa_p256( const u8_t* data_p, u32_t data
 /***************************************************************************************************
 **                              Dataset Table                                                    **
 ***************************************************************************************************/
-/* Two independently field-downloadable 1KB data blocks, carved out of APP's own flash budget (see
-   APP/linker_script/STM32F103C8_flash.ld's comment). Not validated automatically anywhere - see
-   BM_dataset_*() in BM.c for on-demand presence/CRC/signature checks. Add/remove entries here
-   (and the matching extern symbols above, defined in this project's own linker script) to change
-   how many datasets this platform has - BM.c itself has no hardcoded count. */
+/* One field-downloadable 4KB data block (the tyre pressure table - see APP's TYRE_DATA.h), right
+   after APP (see APP/linker_script/STM32F103C8_flash.ld's comment). BM_run() validates it on every
+   boot and records the result in shared RAM (SHARED_RAM_get_dataset_valid_mask()) - informational
+   only, never a reason not to boot. Add/remove entries here (and the matching extern symbols above,
+   defined in this project's own linker script) to change how many datasets this platform has -
+   BM.c itself has no hardcoded count. Must match fbl_dataset_table_s entry-for-entry. */
 STATIC const bm_dataset_region_st bm_dataset_table_s[] =
 {
    { .header_address = (u32_t)&__dataset0_header_start__, .code_start_address = (u32_t)&__dataset0_code_start__, .code_end_address = (u32_t)&__dataset0_code_end__ },
-   { .header_address = (u32_t)&__dataset1_header_start__, .code_start_address = (u32_t)&__dataset1_code_start__, .code_end_address = (u32_t)&__dataset1_code_end__ },
 };
 
 /***************************************************************************************************
@@ -127,11 +124,15 @@ STATIC const bm_config_st bm_config_s =
 
    /* Shared RAM interface */
    .shared_ram_init               = SHARED_RAM_init,
-   .shared_ram_set_fbl_request    = SHARED_RAM_set_fbl_request,
    .shared_ram_get_fbl_request    = SHARED_RAM_get_fbl_request,
    .shared_ram_set_failure_reason = SHARED_RAM_set_last_failure_reason,
    .shared_ram_get_failure_reason = SHARED_RAM_get_last_failure_reason,
    .shared_ram_is_valid           = SHARED_RAM_is_valid,
+
+   /* Boot-failure counter (APP clears it once up - see MODE_MGR.c) and dataset results */
+   .shared_ram_get_boot_failure_count = SHARED_RAM_get_boot_failure_count,
+   .shared_ram_set_boot_failure_count = SHARED_RAM_set_boot_failure_count,
+   .shared_ram_set_dataset_valid_mask = SHARED_RAM_set_dataset_valid_mask,
 
    /* Memory addresses from the linker script */
    .app_header_address      = (u32_t)&__app_header_start__,
@@ -157,7 +158,7 @@ STATIC const bm_config_st bm_config_s =
    /* Feature flags - FIRMWARE_HMAC_SECRET is now a real generated secret (see
       secure_boot_hmac_secret.h), so both checks are live. Every APP build must be signed with
       app_signer --algorithm=hmac-sha256 using the matching Tool_cfg/SigningKeys/hmac_secret.txt,
-      or BM_run() traps rather than jumping to an unsigned/wrongly-signed image. */
+      or BM_run() goes to FBL rather than jumping to an unsigned/wrongly-signed image. */
    .crc_enabled             = TRUE,
    .signature_enabled       = TRUE,
    .bypass_validity_checks  = FALSE,

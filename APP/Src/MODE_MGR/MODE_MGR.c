@@ -255,6 +255,7 @@ STATIC void mode_mgr_action_schedule_normal( void )
 		ENGINE_SIM_tick( &engine_sim_instance_s );
 		app_engine_sim_cluster_relay();
 		MQB_CLUSTER_tick();
+		MRA_CLUSTER_tick();
 	}
 
 	if( mode_mgr_slot_due( MODE_MGR_SLOT_50MS ) == TRUE )

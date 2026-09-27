@@ -11,6 +11,7 @@
 #include "TCU.h"
 #include "GKT_SHIFTER.h"
 #include "MQB_CLUSTER.h"
+#include "MRA_CLUSTER.h"
 #include "ENGINE_SIM.h"
 
 /***************************************************************************************************
@@ -23,6 +24,7 @@ extern const CPS_cfg_st             cps_crank_cfg_s;
 extern const TCU_cfg_st             tcu_cfg_s;
 extern const GKT_SHIFTER_cfg_st     gkt_shifter_cfg_s;
 extern const MQB_CLUSTER_cfg_st     mqb_cluster_cfg_s;
+extern const MRA_CLUSTER_cfg_st     mra_cluster_cfg_s;
 extern       ENGINE_SIM_instance_st engine_sim_instance_s;
 extern const ENGINE_SIM_cfg_st      engine_sim_cfg_s;
 

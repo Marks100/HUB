@@ -44,9 +44,8 @@
 extern u32_t __app_header_start__;
 extern u32_t __app_code_end__;
 extern u32_t __dataset0_header_start__;
+extern u32_t __dataset0_code_start__;
 extern u32_t __dataset0_code_end__;
-extern u32_t __dataset1_header_start__;
-extern u32_t __dataset1_code_end__;
 
 /***************************************************************************************************
 **                              Timekeeping                                                       **
@@ -120,6 +119,11 @@ STATIC void fbl_download_attempt_notify( void )
 {
     fbl_download_attempt_count_g.count++;
     NVM_GEN2_flush_block( FBL_DOWNLOAD_ATTEMPT_COUNT_BLOCK_ID );
+
+    /* New flash contents are coming, so the old APP's unconfirmed launches no longer count against
+       whatever boots next - otherwise BM would refuse a freshly downloaded APP straight away (see
+       BM_MAX_BOOT_FAILURES, BM.h) until a power cycle. */
+    SHARED_RAM_set_boot_failure_count( 0u );
 }
 
 /* fbl_config_st's dataset_download_notify_func_p - called once per accepted 0x34 RequestDownload
@@ -459,14 +463,14 @@ STATIC void fbl_comms_init( void )
 /* Caller-owned staging buffer for sector writes - STM32F103 medium-density page size (1KB). */
 STATIC u8_t fbl_transfer_sector_buffer_s[ FLS_STM32F1_PAGE_SIZE ];
 
-/* Two independently downloadable/erasable 1KB data blocks - see fbl_is_region_valid() in FBL.c.
-   Add/remove entries here (and the matching extern symbols above, defined in this project's own
-   linker script) to change how many datasets this platform has - FBL.c itself has no hardcoded
-   count. Must match bm_dataset_table_s in BM/Src/bm_main.c entry-for-entry. */
+/* One downloadable/erasable 4KB data block (the tyre pressure table) - see fbl_is_region_valid() in
+   FBL.c. Add/remove entries here (and the matching extern symbols above, defined in this project's
+   own linker script) to change how many datasets this platform has - FBL.c itself has no hardcoded
+   count. Must match bm_dataset_table_s in BM/Src/bm_main.c entry-for-entry, and
+   FBL_DATASET_DOWNLOAD_COUNT_MAX (FBL_NVM_BLOCKS.h). */
 STATIC const FBL_dataset_region_st fbl_dataset_table_s[] =
 {
-    { .header_address = (u32_t)&__dataset0_header_start__, .code_end_address = (u32_t)&__dataset0_code_end__ },
-    { .header_address = (u32_t)&__dataset1_header_start__, .code_end_address = (u32_t)&__dataset1_code_end__ },
+    { .header_address = (u32_t)&__dataset0_header_start__, .code_start_address = (u32_t)&__dataset0_code_start__, .code_end_address = (u32_t)&__dataset0_code_end__ },
 };
 
 const fbl_config_st fbl_config_s =

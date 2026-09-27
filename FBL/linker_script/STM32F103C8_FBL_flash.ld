@@ -4,43 +4,22 @@
 ** Flash layout (128 KB total - confirmed via live F_SIZE register read at 0x1FFFF7E0; this part
 ** is a "C8" (64 KB nominal) that's physically 128 KB silicon, a known STM32F103 binning quirk):
 **   BM   : 0x08000000 - 0x080023FF    9 KB
-**   FBL  : 0x08002400 - 0x08007FFF   23 KB  <- this image (grown four times from 17 KB - the
-**                                             first two to fit the NVM driver - FBL persists a
-**                                             WriteDataByIdentifier fingerprint, see
-**                                             fbl_nvm_gen2_hw_interface_s in this project's own
-**                                             INT_STUBS/INTEGRATION_STUBS.c. 17->19 KB was NVM.c's
-**                                             fixed page; 19->21 KB was NVM_GEN2, which had filled
-**                                             the -Og debug build to 100%. Both taken from APP's
-**                                             flash budget, not BM's. The third growth, 21->22 KB,
-**                                             came out of BM's own free space instead (see
-**                                             BM's own linker script) once a UDS 0x22
-**                                             ReadDataByIdentifier boot-version DID left this
-**                                             build with none of its own margin left. The fourth,
-**                                             22->23 KB, also came out of BM, when FBL moved onto
-**                                             CANIF for its hardware RX ID filter.)
+**   FBL  : 0x08002400 - 0x08007FFF   23 KB  <- this image
 **     .app_header : 0x08002400 - 0x080024FF  256 B  (presence pattern + CRC, see HEADER.h -
 **                                                     BM validates this before jumping here,
 **                                                     same tooling/layout as APP's header)
 **     .isr_vector : 0x08002500 ...            code start
-**   APP  : 0x08008000 - 0x0801EFFF   92 KB  (shrunk from 94 KB to make room for DATASET0/1 below)
-**   DATASET0 : 0x0801F000 - 0x0801F3FF   1 KB  (independently field-downloadable via FBL_download_
-**                                               request() - same header/CRC/signature layout as
-**                                               APP, validated by BM the same 3-stage way but
-**                                               informationally only - see BM_run()'s dataset step)
-**   DATASET1 : 0x0801F400 - 0x0801F7FF   1 KB  (same as DATASET0, a second independent slot)
-**   NVM  : 0x0801F800 - 0x0801FFFF    2 KB  (reserved, not a linker section here; fixed by
+**   APP  : 0x08008000 - 0x0801E7FF   90 KB
+**   DATASET0 : 0x0801E800 - 0x0801F7FF   4 KB  (field-downloadable via FBL_download_request() -
+**                                               same header fields as APP, 96 B header. BM
+**                                               validates it informationally only - see
+**                                               BM_run()'s dataset step.)
+**   NVM  : 0x0801F800 - 0x0801FFFF    2 KB  (reserved, not a linker section; fixed by
 **                                             NVM_BASE_ADDRESS/NVM_TOTAL_SIZE in
-**                                             Common_Src/PROJ_CONFIG/PROJ_config.h - keep this
-**                                             comment in sync with those if either changes. Nothing
-**                                             above may claim these pages. Both pages belong to
-**                                             NVM_GEN2 as its two flip-flop partitions, and BOTH
-**                                             images share both - FBL and APP no longer take a
-**                                             page each. Blocks are packed into an append-only
-**                                             log keyed by block ID, the images own separate ID
-**                                             ranges, and compaction copies records it has no
-**                                             config for across verbatim, so neither image can
-**                                             overwrite the other. See xCOMMON_MODULES/Src/
-**                                             NVM_GEN2/README.md.)
+**                                             Common_Src/PROJ_CONFIG/PROJ_config.h - keep in
+**                                             sync. NVM_GEN2's two flip-flop partitions, shared
+**                                             by FBL and APP via separate block ID ranges - see
+**                                             xCOMMON_MODULES/Src/NVM_GEN2/README.md.)
 **
 ** RAM layout (20 KB total - fixed regardless of the 64/128 KB flash bin on this part family):
 **   .noinit_shared : 0x20000000 - 0x2000001F   32 B  (BM/FBL/APP handoff - see SHARED_RAM.h)
@@ -48,8 +27,8 @@
 **
 ** Must stay numerically consistent with BM/linker_script/STM32F103C8_BM_flash.ld and
 ** APP/linker_script/STM32F103C8_flash.ld / APP/Makefile's FBL_FLASH_START/SIZE (and, for
-** DATASET0/1, APP/Makefile's DATASET0_FLASH_START/DATASET1_FLASH_START) - all three linker
-** scripts encode the same partition map.
+** DATASET0, APP/Makefile's DATASET0_FLASH_START/SIZE) - all three linker scripts encode the same
+** partition map.
 */
 
 ENTRY(Reset_Handler)
@@ -60,17 +39,16 @@ _estack = 0x20005000;   /* top of 20 KB SRAM - same as BM/APP, so a soft reset b
 _Min_Heap_Size  = 0x0;
 _Min_Stack_Size = 0x400;   /* 1 KB */
 
-/* APP/DATASET0/DATASET1 regions FBL writes into - not occupied by any section here, just
-   constants INTEGRATION_STUBS.c's fbl_config_s is built from. Must match BM's own
-   __app_header_start__/__app_code_end__/__dataset0_*__/__dataset1_*__ (BM/linker_script/
+/* APP/DATASET0 regions FBL writes into - not occupied by any section here, just constants
+   INTEGRATION_STUBS.c's fbl_config_s is built from. Must match BM's own
+   __app_header_start__/__app_code_end__/__dataset0_*__ (BM/linker_script/
    STM32F103C8_BM_flash.ld) - same names, same values, both describing the identical physical
    addresses. Every *_code_end__ is inclusive (last valid byte). */
 __app_header_start__  = 0x08008000;
-__app_code_end__      = 0x0801EFFF;
-__dataset0_header_start__ = 0x0801F000;
-__dataset0_code_end__     = 0x0801F3FF;
-__dataset1_header_start__ = 0x0801F400;
-__dataset1_code_end__     = 0x0801F7FF;
+__app_code_end__      = 0x0801E7FF;
+__dataset0_header_start__ = 0x0801E800;
+__dataset0_code_start__   = 0x0801E860;
+__dataset0_code_end__     = 0x0801F7FF;
 
 MEMORY
 {

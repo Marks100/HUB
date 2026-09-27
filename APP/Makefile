@@ -37,6 +37,11 @@ APP_HEX_PADDED_FILE          := $(OUTPUT_NAME)_padded.hex
 APP_HEX_WITH_CRC_FILE        := $(OUTPUT_NAME)_with_CRC.hex
 APP_HEX_SIGNED_FILE          := $(OUTPUT_NAME)_signed.hex
 APP_S19_SIGNED_FILE          := $(OUTPUT_NAME)_signed.s19
+DATASET0_CSV                 := ../Tool_cfg/TYRE_DATA/tyre_pressures.csv
+DATASET0_GEN                 := ../scripts/tyre_dataset_gen
+DATASET0_HEX_FILE            := $(BUILD_OUT_DIR)/DATASET0.hex
+DATASET0_HEX_WITH_CRC_FILE   := $(BUILD_OUT_DIR)/DATASET0_with_CRC.hex
+DATASET0_HEX_SIGNED_FILE     := $(BUILD_OUT_DIR)/DATASET0_signed.hex
 OBJECT_SIZE_FILE             := $(BUILD_OUT_DIR)/object_sizes.txt
 APP_COMPILER_OUTPUT          := $(BUILD_OUT_DIR)/compiler_warnings.txt
 APP_MEM_OUTPUT_FILE          := $(BUILD_OUT_DIR)/memory_analysis.txt
@@ -55,26 +60,10 @@ RELEASE_PACKAGE_NAME         := $(RELEASE_PACKAGE_BASE_DIR)/$(PROJECT_TYPE)_$(VE
 # ID ranges (NVM_GEN2_BLOCK_ID_FBL_* / _APP_*), and compaction copies any record it has no config
 # for across verbatim, so neither image can overwrite the other's data.
 # See xCOMMON_MODULES/Src/NVM_GEN2/README.md.
-# BM=9KB  FBL=23KB  APP=92KB  DATASET0=1KB  DATASET1=1KB (+ 2KB reserved for NVM) — adjust sizes
-# and update linker scripts accordingly, and keep APP_FLASH_END below the reserved NVM pages.
-# BM was sized at 12KB (up from 8KB), then gave back 1KB to FBL, which had run out of its own
-# margin entirely, since BM still has ~7KB free either way (see BM/linker_script/
-# STM32F103C8_BM_flash.ld). FBL later grew a further 2KB (17KB -> 19KB) to fit the NVM driver for
-# its own WriteDataByIdentifier fingerprint block; that 2KB plus the extra 1KB of reserved NVM
-# space came out of APP's budget instead (99KB -> 96KB), since APP had ~54KB of slack. FBL's 19KB
-# then went effectively full once NVM_GEN2 landed (~2.3KB, -Og debug build at 100%), so FBL grew a
-# further 2KB (19KB -> 21KB) - again out of APP's budget (96KB -> 94KB), APP being the side with
-# slack to spare. FBL then gained a UDS 0x22 ReadDataByIdentifier boot-version DID (VER module +
-# sVersion-generated autoversion.h), which left its -Og debug build at 96.9% with no further
-# margin of its own; this time the extra 1KB (21KB -> 22KB) came out of BM's own free space
-# instead (11KB -> 10KB), since BM still has ~6KB free either way. DATASET0/1 (1KB each) then
-# carved a further 2KB out of APP's budget (94KB -> 92KB) - two independently field-downloadable
-# data blocks via FBL, sized to exactly one flash sector each so an erase never touches more than
-# one dataset at a time - see FBL_download_request() in xCOMMON_MODULES/Src/FBL/FBL.c and
-# BM_run()'s dataset step in xCOMMON_MODULES/Src/BM/BM.c. FBL then moved onto CANIF (so its
-# channel row could program a hardware RX ID filter - other traffic on the bus was costing
-# Consecutive Frames mid-download), which overflowed 22KB; the extra 1KB (22KB -> 23KB) came out of
-# BM again (10KB -> 9KB), BM still having ~5KB free.
+# BM=9KB  FBL=23KB  APP=90KB  DATASET0=4KB (+ 2KB reserved for NVM) — adjust sizes and update all
+# three linker scripts accordingly, and keep DATASET0_FLASH_END below the reserved NVM pages.
+# DATASET0 is field-downloadable via FBL (FBL_download_request() in xCOMMON_MODULES/Src/FBL/FBL.c)
+# and validated by BM at boot (BM_run()'s dataset step in xCOMMON_MODULES/Src/BM/BM.c).
 BM_FLASH_START               := 0x08000000
 BM_FLASH_SIZE                := 0x2400
 BM_FLASH_END                 := $(shell printf '0x%08X' $$(( $(BM_FLASH_START) + $(BM_FLASH_SIZE) - 1 )))
@@ -84,29 +73,27 @@ FBL_FLASH_SIZE                := 0x5C00
 FBL_FLASH_END                 := $(shell printf '0x%08X' $$(( $(BM_FLASH_START) + $(BM_FLASH_SIZE) + $(FBL_FLASH_SIZE) - 1 )))
 
 APP_FLASH_START               := $(shell printf '0x%08X' $$(( $(BM_FLASH_START) + $(BM_FLASH_SIZE) + $(FBL_FLASH_SIZE) )))
-APP_FLASH_SIZE                := 0x17000
+APP_FLASH_SIZE                := 0x16800
 APP_FLASH_END                 := $(shell printf '0x%08X' $$(( $(BM_FLASH_START) + $(BM_FLASH_SIZE) + $(FBL_FLASH_SIZE) + $(APP_FLASH_SIZE) - 1 )))
 
 # One past APP_FLASH_END - the exclusive upper bound srec_cat's -fill wants. See the padding step in
 # $(APP_ELF_FILE)'s recipe below for why the built hex is padded to the whole region.
 APP_FLASH_LIMIT               := $(shell printf '0x%08X' $$(( $(APP_FLASH_START) + $(APP_FLASH_SIZE) )))
 
-# DATASET0/1 - two independent 1KB slots immediately after APP, before the reserved NVM pages.
-# Each is header(96B)+payload(928B) - same APP_header_st fields/tooling as APP/FBL/BM's own
-# headers (see xCOMMON_MODULES/Src/HEADER/HEADER.h) but a smaller header, since a dataset owns no
-# vector table and so none of APP/FBL's 256-byte VTOR-alignment requirement applies to it (see
-# BM/linker_script/STM32F103C8_BM_flash.ld's __dataset0_code_start__ comment - 76B is every byte
-# app_crc_injector/app_signer actually read or write, +20B reserved for future fields) - not a
-# separate build here, just the address range FBL writes into and BM validates; must match BM's/
-# FBL's own linker script constants (__dataset0_header_start__/__dataset0_code_end__ etc.)
-# exactly, same contract as __fbl_code_end__/FBL_CODE_END above.
+# DATASET0 - one 4KB slot immediately after APP, before the reserved NVM pages. Header(96B) +
+# payload(4000B) - same APP_header_st fields/tooling as APP/FBL/BM's own headers (see
+# xCOMMON_MODULES/Src/HEADER/HEADER.h) but a smaller header, since a dataset owns no vector table
+# and so none of APP/FBL's 256-byte VTOR-alignment requirement applies to it (see
+# BM/linker_script/STM32F103C8_BM_flash.ld's region constants comment - 76B is every byte
+# app_crc_injector/app_signer actually read or write, +20B reserved for future fields). Built by the
+# `dataset` target below, not the APP build; must match BM's/FBL's/APP's own linker script
+# constants (__dataset0_header_start__/__dataset0_code_end__ etc.) exactly, same contract as
+# __fbl_code_end__/FBL_CODE_END above.
 DATASET0_FLASH_START          := $(shell printf '0x%08X' $$(( $(BM_FLASH_START) + $(BM_FLASH_SIZE) + $(FBL_FLASH_SIZE) + $(APP_FLASH_SIZE) )))
-DATASET0_FLASH_SIZE           := 0x400
+DATASET0_FLASH_SIZE           := 0x1000
 DATASET0_FLASH_END            := $(shell printf '0x%08X' $$(( $(DATASET0_FLASH_START) + $(DATASET0_FLASH_SIZE) - 1 )))
-
-DATASET1_FLASH_START          := $(shell printf '0x%08X' $$(( $(DATASET0_FLASH_START) + $(DATASET0_FLASH_SIZE) )))
-DATASET1_FLASH_SIZE           := 0x400
-DATASET1_FLASH_END            := $(shell printf '0x%08X' $$(( $(DATASET1_FLASH_START) + $(DATASET1_FLASH_SIZE) - 1 )))
+DATASET0_HEADER_SIZE          := 0x60
+DATASET0_CODE_START           := $(shell printf '0x%08X' $$(( $(DATASET0_FLASH_START) + $(DATASET0_HEADER_SIZE) )))
 
 # TODO: Set APP_HEADER_ADDR and APP_CODE_START to match your linker script APP section layout
 APP_HEADER_ADDR              := $(APP_FLASH_START)
@@ -263,7 +250,7 @@ LDFLAGS := \
 .PHONY: doc_functions doc_functions_clean
 .PHONY: no_targets__ list analyse_app_mapfile print_file_list
 .PHONY: warnings_parser basic_memory_stats full_memory_stats memory_badges test_badges
-.PHONY: release_package force_ceedling_relink mux_dbc
+.PHONY: release_package force_ceedling_relink mux_dbc dataset
 
 ####################################################################################################
 #                      All (Default) Target and other Build Targets                                #
@@ -289,10 +276,21 @@ $(BM_IMAGE):
 $(FBL_IMAGE):
 	@$(MAKE) $(MAKE_FLAGS) -C ../FBL fbl_build
 
-all: $(BM_IMAGE) $(FBL_IMAGE) app_build
-	@$(SREC) $(BM_IMAGE) -Intel --multiple $(FBL_IMAGE) -Intel --multiple $(APP_HEX_SIGNED_FILE) -Intel --multiple -o $(COMBINED_IMAGE) -intel
+# Tyre pressure table -> signed DATASET0 hex, downloadable on its own through FBL. Same CRC and
+# signing steps as APP, over the dataset's own header/payload addresses. The generator already
+# defines every byte of the region, so no separate padding step.
+dataset:
+	@mkdir -p $(BUILD_OUT_DIR)
+	@echo "--> Generating DATASET0 (tyre pressures) from $(notdir $(DATASET0_CSV))..."
+	@ruby $(DATASET0_GEN) $(DATASET0_CSV) --output=$(DATASET0_HEX_FILE) --header-addr=$(DATASET0_FLASH_START) --code-start=$(DATASET0_CODE_START) --code-end=$(DATASET0_FLASH_END)
+	@$(BUILD_ENV_BIN)/app_crc_injector $(DATASET0_HEX_FILE) --output=$(DATASET0_HEX_WITH_CRC_FILE) --header-addr=$(DATASET0_FLASH_START) --code-start=$(DATASET0_CODE_START) --code-end=$(DATASET0_FLASH_END) --crc-type=$(APP_CRC_TYPE)
+	@$(BUILD_ENV_BIN)/app_signer $(DATASET0_HEX_WITH_CRC_FILE) --output=$(DATASET0_HEX_SIGNED_FILE) --header-addr=$(DATASET0_FLASH_START) --code-start=$(DATASET0_CODE_START) --code-end=$(DATASET0_FLASH_END) --algorithm=$(SIGN_ALGORITHM) --signing-key=$(SIGNING_KEY)
+	@echo "   $(notdir $(DATASET0_HEX_SIGNED_FILE))   (DATASET0 signed - download via FBL)"
+
+all: $(BM_IMAGE) $(FBL_IMAGE) app_build dataset
+	@$(SREC) $(BM_IMAGE) -Intel --multiple $(FBL_IMAGE) -Intel --multiple $(APP_HEX_SIGNED_FILE) -Intel --multiple $(DATASET0_HEX_SIGNED_FILE) -Intel --multiple -o $(COMBINED_IMAGE) -intel
 	@echo "--> Combined image created: $(COMBINED_IMAGE)"
-	@echo "    Contains: BM ($(BM_FLASH_START)-$(BM_FLASH_END)) + FBL ($(FBL_FLASH_START)-$(FBL_FLASH_END)) + APP ($(APP_FLASH_START)-$(APP_FLASH_END))"
+	@echo "    Contains: BM ($(BM_FLASH_START)-$(BM_FLASH_END)) + FBL ($(FBL_FLASH_START)-$(FBL_FLASH_END)) + APP ($(APP_FLASH_START)-$(APP_FLASH_END)) + DATASET0 ($(DATASET0_FLASH_START)-$(DATASET0_FLASH_END))"
 	@echo "--> Generating flash pack..."
 	@ruby -S $(FLASH_PACK_SCRIPT) $(FLASH_PACK_PROFILE) $(APP_HEX_SIGNED_FILE) \
 		--output=$(FLASH_PACK_OUTPUT) \

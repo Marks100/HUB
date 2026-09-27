@@ -15,8 +15,9 @@
 /***************************************************************************************************
 **                              Data                                                              **
 ***************************************************************************************************/
-STATIC HAL_CAN_rx_callback_ft hal_can_rx_callback_s = NULL_P;
-STATIC u8_t                   hal_can_channel_s     = 0u;
+STATIC HAL_CAN_rx_callback_ft       hal_can_rx_callback_s       = NULL_P;
+STATIC HAL_CAN_tx_ready_callback_ft hal_can_tx_ready_callback_s = NULL_P;
+STATIC u8_t                         hal_can_channel_s           = 0u;
 
 /***************************************************************************************************
 **                              Public Functions                                                  **
@@ -64,7 +65,7 @@ void HAL_CAN_init( void )
     can_init.CAN_TTCM      = DISABLE;
     can_init.CAN_ABOM      = ENABLE;   /* auto-recover from bus-off */
     can_init.CAN_AWUM      = DISABLE;
-    can_init.CAN_NART      = ENABLE;   /* single-shot TX - callers already re-send (MSG_SCHED period, UDS req/resp), don't let one stuck ACK starve a mailbox */
+    can_init.CAN_NART      = DISABLE;  /* automatic retransmission - a frame that loses arbitration to a lower ID is re-sent by the hardware. Single-shot silently dropped it, and nothing re-sends a CANTP Flow Control or UDS response, so any other traffic on the bus failed FBL downloads. Cost: with no other node to ACK, a frame retries until the bus is fixed, holding its mailbox */
     can_init.CAN_RFLM      = DISABLE;
     can_init.CAN_TXFP      = DISABLE;
     can_init.CAN_Mode      = CAN_Mode_Normal;
@@ -113,6 +114,39 @@ void HAL_CAN_set_rx_callback( u8_t channel, HAL_CAN_rx_callback_ft rx_callback_p
 {
     hal_can_channel_s     = channel;
     hal_can_rx_callback_s = rx_callback_p;
+}
+
+/*!
+****************************************************************************************************
+*
+*   \brief         Register the TX-mailbox-free callback and enable its interrupt.
+*
+*   \param         channel              Handed back to tx_ready_callback_p - same channel as
+*                                       HAL_CAN_set_rx_callback()'s, this is one controller.
+*   \param         tx_ready_callback_p  Called from the TX ISR each time a mailbox comes free, so
+*                                       queued frames go out as fast as the bus takes them rather
+*                                       than 3 per caller tick.
+*
+*   \note          The ISR runs at the LOWEST preemption priority - the same level as SysTick, which
+*                  runs APP's whole schedule. Equal priorities never preempt each other, so the
+*                  callback is always serialised with everything that queues frames and needs no
+*                  locking. Only call this if every other caller of the TX path runs at that level.
+*
+***************************************************************************************************/
+void HAL_CAN_set_tx_ready_callback( u8_t channel, HAL_CAN_tx_ready_callback_ft tx_ready_callback_p )
+{
+    NVIC_InitTypeDef nvic_init;
+
+    hal_can_channel_s           = channel;
+    hal_can_tx_ready_callback_s = tx_ready_callback_p;
+
+    CAN_ITConfig( CAN1, CAN_IT_TME, ENABLE );
+
+    nvic_init.NVIC_IRQChannel                   = USB_HP_CAN1_TX_IRQn;
+    nvic_init.NVIC_IRQChannelPreemptionPriority = 15u;   /* = SysTick's, see above */
+    nvic_init.NVIC_IRQChannelSubPriority        = 0u;
+    nvic_init.NVIC_IRQChannelCmd                = ENABLE;
+    NVIC_Init( &nvic_init );
 }
 
 /*!
@@ -251,6 +285,19 @@ void USB_LP_CAN1_RX0_IRQHandler( void )
     if( hal_can_rx_callback_s != NULL_P )
     {
         hal_can_rx_callback_s( hal_can_channel_s, rx_id, rx_id_type, rx_msg.Data, (u8_t)rx_msg.DLC );
+    }
+}
+
+/* A mailbox finished (sent or aborted) - clear RQCP0-2 and let the owner refill it. Direct TSR
+   write (write-1-to-clear) rather than CAN_ClearITPendingBit(): that SPL call is a large switch,
+   and this handler is linked into FBL too, whose flash is tight. */
+void USB_HP_CAN1_TX_IRQHandler( void )
+{
+    CAN1->TSR = CAN_TSR_RQCP0 | CAN_TSR_RQCP1 | CAN_TSR_RQCP2;
+
+    if( hal_can_tx_ready_callback_s != NULL_P )
+    {
+        hal_can_tx_ready_callback_s( hal_can_channel_s );
     }
 }
 

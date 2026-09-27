@@ -2,7 +2,7 @@
 *               Author: mstewart
 *   \brief      Firmware signing public key (ECDSA P-256) - PLACEHOLDER, not yet generated
 *
-*   All zero bytes on purpose - this is NOT a real key. BM_app_signature_is_valid() in BM.c
+*   All zero bytes on purpose - this is NOT a real key. bm_app_signature_is_valid() in BM.c
 *   fails closed regardless of this array's contents (signature_enabled is FALSE and
 *   signature_verify is a stub in BM/Src/bm_main.c until real ECDSA verification is wired up -
 *   see that file's signature_verify_not_implemented()), so a placeholder here doesn't create a
