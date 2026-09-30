@@ -36,6 +36,7 @@
 #include "HAL_CAN.h"
 #include "HAL_ADC.h"
 #include "HAL_BRD.h"
+#include "HMI_SH1106.h"   /* HMI_SH1106_is_button_held() - confirm held turns the knob into up/down */
 #include "DWT.h"
 #include "TIME.h"
 
@@ -48,10 +49,10 @@
 #define GEARBOX_DQ250   ( 1u )   /* 6-speed DSG, pre-facelift / early Mk3, wet clutch */
 #define GEARBOX_722_9   ( 2u )   /* 7-speed torque-converter auto, Mercedes 7G-Tronic Plus */
 #define GEARBOX_ZF_8HP  ( 3u )   /* 8-speed torque-converter auto, ZF 8HP - the F30's own gearbox */
-#define ACTIVE_GEARBOX  GEARBOX_ZF_8HP
+#define ACTIVE_GEARBOX  GEARBOX_722_9
 
 /* TCU tuning - see TCU.h's own doc on these fields */
-#define TCU_AUTO_UPSHIFT_RPM            ( 8000u )
+#define TCU_AUTO_UPSHIFT_RPM            ( 5500u )   /* just under ENGINE_REDLINE_RPM, so a shift lands before the limiter */
 #define TCU_AUTO_DOWNSHIFT_RPM          ( 1500u )
 #define TCU_MIN_AUTO_SHIFT_INTERVAL_MS  ( 300u )
 #define TCU_WHEEL_CIRCUMFERENCE_M       ( 2.00f ) /* ~225/40R18's */
@@ -99,7 +100,7 @@
 /* ENGINE_SIM tuning - see ENGINE_SIM.h's own doc on these fields. PLACEHOLDER figures below -
    tune to taste. */
 #define ENGINE_IDLE_RPM                   ( 800u )
-#define ENGINE_REDLINE_RPM                ( 8000u )
+#define ENGINE_REDLINE_RPM                ( 6000u )
 #define ENGINE_INERTIA_KG_M2              ( 0.15f )    /* rotating assembly (crank/flywheel/clutch) 
                                                           moment of * inertia */
 #define VEHICLE_MASS_KG                   ( 1450.0f )  /* real curb weight for the class of
@@ -107,6 +108,9 @@
 #define ENGINE_PEAK_TORQUE_NM             ( 350u )     /* THIS engine's real torque rating */
 #define ENGINE_SHIFT_DURATION_MS          ( 200u )     /* typical real DSG/torque-converter
                                                           shift time under load */
+#define ENGINE_CRANK_RPM                  ( 400u )     /* starter turning the engine over, while
+                                                          cranking - see ENGINE_SIM.h */
+#define ENGINE_CRANK_TIME_MS              ( 600u )     /* cranking time before the engine catches */
 
 /***************************************************************************************************
 **                              Private Function Prototypes                                       **
@@ -168,20 +172,27 @@ STATIC const TCU_gear_ratio_cfg_st tcu_reverse_gear_ratio_s = { 3.26f, 3.44f };
 
 /* Real ratios - Mercedes 7G-Tronic Plus (722.9). A conventional torque-converter automatic, not
    a dual-clutch box like the two DSGs above - one output shaft, so every gear (and reverse) uses
-   the SAME final drive, unlike DQ381/DQ250's per-gear switch. */
+   the SAME final drive, unlike DQ381/DQ250's per-gear switch.
+
+   Final drive is TUNED, not the real axle's: 3.84 makes 7th at ENGINE_REDLINE_RPM (6000) with
+   TCU_WHEEL_CIRCUMFERENCE_M (2.00 m) come out at this bench car's 257 km/h top speed -
+   6000 / (0.73 x 3.84) x 2.00 m x 0.06 = 257. Change either of those and the top speed moves with
+   them. Only this final drive needs re-tuning to get it back. */
+#define GEARBOX_722_9_FINAL_DRIVE   ( 3.84f )
+
 STATIC const TCU_gear_ratio_cfg_st tcu_gear_ratios_s[] =
 {
     /* gear_ratio, final_drive_ratio */
-    { 4.38f, 3.07f },  /* 1st */
-    { 2.86f, 3.07f },  /* 2nd */
-    { 1.92f, 3.07f },  /* 3rd */
-    { 1.37f, 3.07f },  /* 4th */
-    { 1.00f, 3.07f },  /* 5th - direct drive */
-    { 0.82f, 3.07f },  /* 6th - overdrive */
-    { 0.73f, 3.07f },  /* 7th - overdrive */
+    { 4.38f, GEARBOX_722_9_FINAL_DRIVE },  /* 1st */
+    { 2.86f, GEARBOX_722_9_FINAL_DRIVE },  /* 2nd */
+    { 1.92f, GEARBOX_722_9_FINAL_DRIVE },  /* 3rd */
+    { 1.37f, GEARBOX_722_9_FINAL_DRIVE },  /* 4th */
+    { 1.00f, GEARBOX_722_9_FINAL_DRIVE },  /* 5th - direct drive */
+    { 0.82f, GEARBOX_722_9_FINAL_DRIVE },  /* 6th - overdrive */
+    { 0.73f, GEARBOX_722_9_FINAL_DRIVE },  /* 7th - overdrive */
 };
 
-STATIC const TCU_gear_ratio_cfg_st tcu_reverse_gear_ratio_s = { 3.42f, 3.07f };  /* normal, not Comfort/Winter - see above */
+STATIC const TCU_gear_ratio_cfg_st tcu_reverse_gear_ratio_s = { 3.42f, GEARBOX_722_9_FINAL_DRIVE };  /* normal, not Comfort/Winter - see above */
 
 #elif ACTIVE_GEARBOX == GEARBOX_ZF_8HP
 
@@ -350,6 +361,8 @@ const ENGINE_SIM_cfg_st engine_sim_cfg_s =
     .vehicle_mass_kg             = VEHICLE_MASS_KG,
     .peak_torque_nm              = ENGINE_PEAK_TORQUE_NM,
     .shift_duration_ms           = ENGINE_SHIFT_DURATION_MS,
+    .crank_rpm                   = ENGINE_CRANK_RPM,
+    .crank_duration_ms           = ENGINE_CRANK_TIME_MS,
     .get_throttle_percent_func_p    = app_read_throttle_percent,
     .get_gear_func_p                = TCU_get_current_gear,
     .get_gear_ratio_func_p          = TCU_get_gear_combined_ratio,
@@ -422,6 +435,140 @@ STATIC u8_t app_read_throttle_percent( void )
 #endif
 }
 
+/* app_cluster_steering_relay()'s state - file scope rather than static locals, since STATIC is
+   empty under TEST (COMPILER_defs.h) and a local would then lose its value between calls */
+STATIC u32_t                       app_cluster_last_cw_count_s  = 0u;
+STATIC u32_t                       app_cluster_last_ccw_count_s = 0u;
+STATIC u32_t                       app_cluster_last_select_count_s = 0u;
+STATIC u32_t                       app_cluster_last_back_count_s   = 0u;
+STATIC MRA_CLUSTER_steering_btn_et app_cluster_last_turn_btn_s  = MRA_CLUSTER_BTN_NONE;
+
+/*!
+****************************************************************************************************
+*
+*   \brief         Queue one cluster button press per knob detent
+*
+*   \author        mstewart
+*
+*   \param[in]     button - Button those detents map to
+*   \param[in]     detents - Detents turned since the last call
+*
+*   \return        none
+*
+*   \note          A different button from the last detents' (the knob turned the other way, or
+*                  confirm pressed/released) cancels presses still queued for the old one first, so
+*                  the cluster never plays out stale moves. Detents beyond what MRA_CLUSTER can
+*                  queue are dropped - spinning the knob doesn't build up a backlog
+*
+*****************************************************************************************************/
+STATIC void app_cluster_queue_turns( MRA_CLUSTER_steering_btn_et button, u32_t detents )
+{
+    u32_t i;
+
+    if( detents > 0u )
+    {
+        if( button != app_cluster_last_turn_btn_s )
+        {
+            MRA_CLUSTER_cancel_button_presses();
+            app_cluster_last_turn_btn_s = button;
+        }
+
+        for( i = 0u; i < detents; i++ )
+        {
+            if( MRA_CLUSTER_press_button( button ) != PASS )
+            {
+                break;
+            }
+        }
+    }
+}
+
+/*!
+****************************************************************************************************
+*
+*   \brief         Mirror the panel's rotary encoder and buttons onto the W204 steering wheel
+*                  buttons
+*
+*   \author        mstewart
+*
+*   \return        none
+*
+*   \note          Each detent clockwise = one right press, anticlockwise = one left press - or,
+*                  with the confirm button held, down and up. MRA_CLUSTER times the presses; this
+*                  only turns detents into them. Detents come from the panel's lifetime input
+*                  counters, so none are missed between calls
+*   \note          Knob pushed = OK and the panel's back button = back, as one press each once the
+*                  panel has classified the push (a short press, at release). A long press of the
+*                  knob is the engine start/stop, so it never reaches the cluster as OK
+*   \note          The panel still gets every push and turn as normal - this only listens. So
+*                  the OLED menu also scrolls with the knob, and sees confirm's release as a press
+*
+*****************************************************************************************************/
+STATIC void app_cluster_steering_relay( void )
+{
+    HMI_SH1106_stats_st         stats;
+    false_true_et               vertical = HMI_SH1106_is_button_held( HMI_SH1106_BTN_CONFIRM );
+
+    HMI_SH1106_get_stats( &stats );
+
+    app_cluster_queue_turns( ( vertical == TRUE ) ? MRA_CLUSTER_BTN_DOWN : MRA_CLUSTER_BTN_RIGHT,
+                             stats.count[HMI_SH1106_INPUT_CW] - app_cluster_last_cw_count_s );
+    app_cluster_queue_turns( ( vertical == TRUE ) ? MRA_CLUSTER_BTN_UP : MRA_CLUSTER_BTN_LEFT,
+                             stats.count[HMI_SH1106_INPUT_CCW] - app_cluster_last_ccw_count_s );
+
+    app_cluster_queue_turns( MRA_CLUSTER_BTN_OK,
+                             stats.count[HMI_SH1106_INPUT_SELECT] - app_cluster_last_select_count_s );
+    app_cluster_queue_turns( MRA_CLUSTER_BTN_BACK,
+                             stats.count[HMI_SH1106_INPUT_BACK] - app_cluster_last_back_count_s );
+
+    app_cluster_last_cw_count_s     = stats.count[HMI_SH1106_INPUT_CW];
+    app_cluster_last_ccw_count_s    = stats.count[HMI_SH1106_INPUT_CCW];
+    app_cluster_last_select_count_s = stats.count[HMI_SH1106_INPUT_SELECT];
+    app_cluster_last_back_count_s   = stats.count[HMI_SH1106_INPUT_BACK];
+}
+
+/* app_engine_start_stop_relay()'s state - file scope, see app_cluster_last_cw_count_s above */
+STATIC u32_t app_engine_last_select_long_count_s = 0u;
+
+/*!
+****************************************************************************************************
+*
+*   \brief         Start or stop the simulated engine on a long press of the rotary knob
+*
+*   \author        mstewart
+*
+*   \return        none
+*
+*   \note          Each long press toggles: engine OFF starts it (cranking, then running - see
+*                  ENGINE_SIM.h), anything else - cranking or running - stops it. Long presses come
+*                  from the panel's lifetime input counter, so none are missed between calls; if
+*                  several land in one call, only whether the count changed matters, so a
+*                  double-toggle is not possible
+*   \note          The panel still gets the press as normal. The cluster only sees OK for a short
+*                  press (app_cluster_steering_relay()), not this long one
+*
+*****************************************************************************************************/
+STATIC void app_engine_start_stop_relay( void )
+{
+    HMI_SH1106_stats_st stats;
+
+    HMI_SH1106_get_stats( &stats );
+
+    if( stats.count[HMI_SH1106_INPUT_SELECT_LONG] != app_engine_last_select_long_count_s )
+    {
+        app_engine_last_select_long_count_s = stats.count[HMI_SH1106_INPUT_SELECT_LONG];
+
+        if( ENGINE_SIM_get_state( &engine_sim_instance_s ) == ENGINE_SIM_STATE_OFF )
+        {
+            ENGINE_SIM_start( &engine_sim_instance_s );
+        }
+        else
+        {
+            ENGINE_SIM_stop( &engine_sim_instance_s );
+        }
+    }
+}
+
 /* Not STATIC: called from MODE_MGR.c right after ENGINE_SIM_tick() so the cluster sees this
    cycle's freshly simulated RPM and road speed. Speed comes from TCU_get_speed_kmh(), not
    ENGINE_SIM - see TCU_cfg_st.gear_kmh_per_1000rpm's own doc for why that's a gearbox output
@@ -432,6 +579,9 @@ void app_engine_sim_cluster_relay( void )
     MQB_CLUSTER_set_vehicle_speed_kmh( (f32_t)TCU_get_speed_kmh() );
     MRA_CLUSTER_set_rpm( ENGINE_SIM_get_rpm( &engine_sim_instance_s ) );
     MRA_CLUSTER_set_vehicle_speed_kmh( (f32_t)TCU_get_speed_kmh() );
+
+    app_engine_start_stop_relay();
+    app_cluster_steering_relay();
 }
 
 /****************************** END OF FILE *******************************************************/

@@ -51,11 +51,6 @@ void app_main( void )
 
     CLK_STM32F1_init( &hse8_72mhz_s );
 
-    /* Idempotent (guarded by shared_ram_g.magic, see SHARED_RAM_init()) - a no-op on the normal
-       BM->APP boot chain where BM already did this, but a real safety net if APP is ever entered
-       directly (debugger, factory reflash) without BM having run first. FBL already does the same
-       (fbl_board_init(), FBL/Src/INT_STUBS/INTEGRATION_STUBS.c) - APP was the one stage skipping
-       it, silently trusting shared_ram_g.magic was already valid before this point. */
     SHARED_RAM_init();
 
     /* Reads BM's dataset result from shared RAM, so after SHARED_RAM_init() and before the menu */
@@ -113,7 +108,6 @@ void app_main( void )
 
     TCU_init( &tcu_cfg_s );
     GKT_SHIFTER_init( &gkt_shifter_cfg_s );
-    MQB_CLUSTER_init( &mqb_cluster_cfg_s );
     MRA_CLUSTER_init( &mra_cluster_cfg_s );
 
     app_cantp_instance_init();
