@@ -91,7 +91,7 @@
 #define APS_WOT_COUNTS                      ( 4092u )  /* ch1 raw count, pedal floored */
 #define APS_EMA_WEIGHTING                   ( 50u )    /* light smoothing (tau ~29ms, 90%
                                               * settle ~66ms at this 20ms tick rate - see
-                                              * APS_tick()'s call site, MODE_MGR.c) so pedal
+                                              * APS_tick()'s call site, SCHED_config.c) so pedal
                                               * response stays crisp. Single-channel for now (see
                                               * aps_pedal_cfg_s below), so there is no plausibility
                                               * check to catch a genuine sensor fault - just this
@@ -282,7 +282,7 @@ const MRA_CLUSTER_cfg_st mra_cluster_cfg_s =
 **  which calls CPS_tooth_event() directly — no generic dispatch layer. Wired directly in main():    **
 **  CPS_init(&cps_crank_instance_s, &cps_crank_cfg_s, SystemCoreClock), which itself runs AFTER      **
 **  HAL_BRD_init() (unlike a plain GPIO peripheral, order here doesn't matter for safety - see       **
-**  interrupt_enable_func_p below). Ticked via CPS_tick() from MODE_MGR. Watch                        **
+**  interrupt_enable_func_p below). Ticked via CPS_tick() from SCHED. Watch                        **
 **  cps_crank_instance_s.rpm live in the debugger, or call CPS_get_rpm().                            **
 **  CPS_tooth_event() does not NULL/state-guard instance_p (see its own doc, CPS.c) - that's traded  **
 **  for HAL_BRD_init() leaving EXTI3's NVIC line disabled (EXTI itself still armed, so a real edge    **
@@ -320,7 +320,7 @@ const CPS_cfg_st cps_crank_cfg_s =
 **  NULL_P (no second channel, no plausibility check, ch1 accepted as-is). Swap in                   **
 **  HAL_ADC_measure_throttle_input_2 for ch2_read_func_p once a pin is freed up and the second        **
 **  track is wired to it (and give it its own GPIO_Mode_AIN in HAL_BRD_init()), and restore           **
-**  ch2_ratio/plausibility_tolerance_percent (APS.h's own doc on those). Ticked from MODE_MGR. Its    **
+**  ch2_ratio/plausibility_tolerance_percent (APS.h's own doc on those). Ticked from SCHED. Its    **
 **  only consumer in this project is ENGINE_SIM below (app_read_throttle_percent) - that's why it     **
 **  lives here rather than in INTEGRATION_STUBS.c's generic peripheral wiring.                        **
 ***************************************************************************************************/
@@ -408,7 +408,7 @@ void app_pdur_gkt_heartbeat_rx( PDUR_pdu_id_t pdu_id, u8_t* data_p, u16_t len )
    Delivers the same payload TCU_encode_gear_state_frame() would put on the wire straight to
    GKT_SHIFTER's and MQB_CLUSTER's normal process_rx_frame() decode path instead, skipping the
    bus round-trip entirely - not through a wrapper, since none is needed. Not STATIC: called from
-   MODE_MGR.c's mode_mgr_action_schedule_normal(), right after TCU_tick() so this cycle's resolved
+   SCHED_config.c's table, right after TCU_tick() so this cycle's resolved
    gear is current. */
 void app_tcu_gear_state_local_relay( void )
 {
@@ -569,7 +569,7 @@ STATIC void app_engine_start_stop_relay( void )
     }
 }
 
-/* Not STATIC: called from MODE_MGR.c right after ENGINE_SIM_tick() so the cluster sees this
+/* Not STATIC: called from SCHED_config.c right after ENGINE_SIM_tick() so the cluster sees this
    cycle's freshly simulated RPM and road speed. Speed comes from TCU_get_speed_kmh(), not
    ENGINE_SIM - see TCU_cfg_st.gear_kmh_per_1000rpm's own doc for why that's a gearbox output
    rather than something the engine model itself should compute. */

@@ -129,7 +129,7 @@ STATIC const bm_config_st bm_config_s =
    .shared_ram_get_failure_reason = SHARED_RAM_get_last_failure_reason,
    .shared_ram_is_valid           = SHARED_RAM_is_valid,
 
-   /* Boot-failure counter (APP clears it once up - see MODE_MGR.c) and dataset results */
+   /* Boot-failure counter (APP clears it once up - see main.c in APP) and dataset results */
    .shared_ram_get_boot_failure_count = SHARED_RAM_get_boot_failure_count,
    .shared_ram_set_boot_failure_count = SHARED_RAM_set_boot_failure_count,
    .shared_ram_set_dataset_valid_mask = SHARED_RAM_set_dataset_valid_mask,

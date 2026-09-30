@@ -7,6 +7,9 @@
 #define BL_TIMER_TICK_RATE_MS           ( 5u )
 #define ONBOARD_BUTTON_PRESENT
 
+/* OLED pages pushed per HMI tick - each is a blocking ~3 ms I2C write */
+#define SH1106_MAX_PAGES_PER_TICK       ( 2u )
+
 /* System clock in Hz - must match the CLK_STM32F1_init() profile selected in main.c
    (currently hse8_72mhz_s: HSE 8MHz + PLLx9 = 72MHz, see CLKS/README.md) */
 #define SYSCLK_HZ                       ( 72000000u )

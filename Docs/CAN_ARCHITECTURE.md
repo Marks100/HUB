@@ -64,7 +64,7 @@ Never sees a CAN id or a channel — only `UDS_route_id_t` (a PDUR route index).
 
 ## How APP wires it (multi-channel-ready)
 
-Files: `APP/Src/INT_STUBS/APP_PDU_IDS.h`, `APP/Src/INT_STUBS/INTEGRATION_STUBS.c`, `APP/Src/MAIN/main.c`, `APP/Src/MODE_MGR/MODE_MGR.c`.
+Files: `APP/Src/INT_STUBS/APP_PDU_IDS.h`, `APP/Src/INT_STUBS/INTEGRATION_STUBS.c`, `APP/Src/MAIN/main.c`, `APP/Src/SCHED_CFG/SCHED_config.c`.
 
 - **Channels**: `app_can_channel_et` in `APP_PDU_IDS.h` — currently just `APP_CAN_CH_MAIN = 0u`.
 - **PDU ids**: `app_pdu_id_et` in the same file — logical route indices (sensor slots, UDS functional/physical, GKT/TCU/MQB_CLUSTER tx), not raw CAN ids. These index `pdur_routing_table_s[]`.
@@ -74,7 +74,7 @@ Files: `APP/Src/INT_STUBS/APP_PDU_IDS.h`, `APP/Src/INT_STUBS/INTEGRATION_STUBS.c
   - `canif_channels_s[APP_CAN_NUM_CHANNELS]` — row `[APP_CAN_CH_MAIN]` wires `HAL_CAN_send_frame`/`HAL_CAN_set_mode`/`HAL_CAN_get_status` + the TJA1051 transceiver + `&app_cantp_instance_s`.
   - `pdur_routing_table_s[]` — every route is on `APP_CAN_CH_MAIN` by leaving `.channel` at its zero default.
 - **Boot order** (`APP/Src/MAIN/main.c`, `app_main()`): `HAL_CAN_init()` → `PDUR_init(...)` → `app_cantp_instance_init(); CANTP_init(&app_cantp_instance_s)` → `CANIF_init(canif_channels_s, APP_CAN_NUM_CHANNELS)` → **then** `HAL_CAN_set_rx_callback(APP_CAN_CH_MAIN, CANIF_rx_indication)` (deliberately last, so a frame can't arrive mid-init) → `UDS_init(...)`.
-- **Tick**: `MODE_MGR_tick()` calls `CANIF_tick()` every cycle, which ticks every channel's CANTP instance — a new bus needs no change here.
+- **Tick**: `SCHED_tick()` (the SysTick callback) runs `CANIF_tick()` every cycle - a period-0 entry in `SCHED_config.c` -, which ticks every channel's CANTP instance — a new bus needs no change here.
 
 ## How FBL wires it (deliberately smaller — no CANIF)
 
@@ -108,7 +108,7 @@ Steps, in `APP/Src/INT_STUBS/`:
 5. **PDU ids + routes** — add new entries to `app_pdu_id_et` for whatever lives on the new bus, and add rows to `pdur_routing_table_s[]` with `.channel = APP_CAN_CH_SECONDARY` (existing rows are unaffected — they stay on `APP_CAN_CH_MAIN` by leaving `.channel` at its default 0).
 6. **RX delivery** — bxCAN's RX arrives via a real NVIC IRQ into `HAL_CAN_set_rx_callback()`. MCP2515 has no direct core interrupt wired through `HAL_CAN`; its `/INT` pin needs its own GPIO-EXTI or polled glue in `INTEGRATION_STUBS.c` that calls `CANIF_rx_indication(APP_CAN_CH_SECONDARY, id, id_type, data, dlc)` directly.
 7. `CANIF_init(canif_channels_s, APP_CAN_NUM_CHANNELS)` in `main.c` needs no change — the count is already dynamic.
-8. `MODE_MGR_tick()`'s `CANIF_tick()` call needs no change — it already ticks every channel.
+8. the `CANIF_tick()` entry in `SCHED_config.c` needs no change — it already ticks every channel.
 
 Adding a channel to `FBL` is a separate, larger change: `FBL` bypasses `CANIF` entirely and hardcodes channel 0 straight through `fbl_can_tx`/`fbl_can_rx` to `HAL_CAN`, so it would need its own second hardcoded path rather than a new row in a table. There is currently no reason to do this — all of FBL's UDS/flash traffic runs on channel 0.
 

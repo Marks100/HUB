@@ -18,6 +18,9 @@
 **                              Includes                                                          **
 ***************************************************************************************************/
 #include "UDS_config.h"
+#include "INTEGRATION_STUBS.h"
+#include "SCHED_config.h"
+#include "PDUR.h"
 #include "FAULT_MGR.h"
 #include "MSG_SCHED.h"
 #include "APP_NVM_BLOCKS.h"
@@ -223,6 +226,20 @@ STATIC UDS_service_table_st uds_service_table_s[] =
     { UDS_SID_WRITE_DATA_BY_IDENTIFIER,   write_data_by_identifier_subfuncs_s, UDS_TABLE_ROWS( write_data_by_identifier_subfuncs_s ) },
     { UDS_SID_READ_DTC_INFORMATION,       read_dtc_information_subfuncs_s,     UDS_TABLE_ROWS( read_dtc_information_subfuncs_s ) },
     { UDS_SID_CLEAR_DIAGNOSTIC_INFORMATION, clear_diagnostic_information_subfuncs_s, UDS_TABLE_ROWS( clear_diagnostic_information_subfuncs_s ) },
+};
+
+const UDS_init_cfg_st app_uds_init_cfg_s =
+{
+    .tp_send_func_p          = PDUR_tx,
+    .message_received_notify = NULL_P,
+    .service_table_p         = uds_service_table_s,
+    .service_table_size      = UDS_TABLE_ROWS( uds_service_table_s ),
+    .buffer_p                = app_uds_buffer_g,
+    .buffer_size             = APP_UDS_BUFFER_SIZE,
+    .tick_period_ms          = SCHED_PERIOD_10MS,
+    .is_functional_route_fp  = app_uds_is_functional_route,
+    .security_max_attempts   = APP_SECURITY_MAX_FAILED_ATTEMPTS,
+    .security_lockout_ms     = APP_SECURITY_LOCKOUT_TIME_MS
 };
 
 /***************************************************************************************************

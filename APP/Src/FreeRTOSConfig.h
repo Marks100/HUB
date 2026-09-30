@@ -181,17 +181,17 @@ nothing calls vTaskStartScheduler() yet.
 
 The SysTick alias is commented out ON PURPOSE - DO NOT just uncomment it as-is. Right now
 xCOMMON_MODULES/Src/SYSTICK/SYSTICK.c owns the real SysTick_Handler symbol (it drives
-MODE_MGR_tick, the app's existing periodic heartbeat); aliasing xPortSysTickHandler to the same
+SCHED_tick, the app's existing periodic heartbeat); aliasing xPortSysTickHandler to the same
 name would be a duplicate definition and fail to link (see git history).
 
 Before FreeRTOS's scheduler is ever started (vTaskStartScheduler()), this MUST be resolved,
 because with no tick handler wired up xTaskGetTickCount() never advances, so
 vTaskDelay()/timeouts/software timers/round-robin time-slicing between equal-priority tasks
 will all silently hang forever. Pick one:
-  - Migrating MODE_MGR_tick to a FreeRTOS task (let FreeRTOS own SysTick, the port's default) -
+  - Migrating SCHED_tick to a FreeRTOS task (let FreeRTOS own SysTick, the port's default) -
     remove/rename SYSTICK.c's SysTick_Handler, then uncomment the line below unchanged.
   - Pointing FreeRTOS at a different timer instead (override the weak vPortSetupTimerInterrupt()
-    in port.c, leave SYSTICK.c/MODE_MGR_tick untouched) - uncomment the line below but change
+    in port.c, leave SYSTICK.c/SCHED_tick untouched) - uncomment the line below but change
     SysTick_Handler on the right to that timer's own IRQ handler name instead. */
 #define vPortSVCHandler                             SVC_Handler
 #define xPortPendSVHandler                          PendSV_Handler

@@ -5,7 +5,6 @@
 **                              Includes                                                          **
 ***************************************************************************************************/
 #include "STDC.h"
-#include "MODE_MGR.h"
 #include "SYSTICK.h"
 #include "HAL_config.h"
 

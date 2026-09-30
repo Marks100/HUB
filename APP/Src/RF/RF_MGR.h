@@ -5,7 +5,7 @@
 **                              Includes                                                          **
 ***************************************************************************************************/
 #include "STDC.h"
-#include "MODE_MGR.h"
+#include "SCHED_config.h"
 #include "CHKSUM.h"
 #include "NRF24.h"
 #include "CHKSUM.h"
@@ -15,7 +15,7 @@
 /***************************************************************************************************
 **                              Defines                                                           **
 ***************************************************************************************************/
-#define RF_MGR_TICK_RATE                ( MODE_MGR_TICK_RATE_MSECS )
+#define RF_MGR_TICK_RATE                ( SCHED_PERIOD_10MS )   /* RF_MGR_tick() row in SCHED_config.c */
 #define RF_MGR_MAX_PAYLOAD_SIZE         ( NRF_MAX_PAYLOAD_SIZE )
 #define RF_MGR_TX_TIMEOUT_MS            ( 30u/RF_MGR_TICK_RATE )
 #define RF_MGR_RX_TIMEOUT_MS            ( 30u/RF_MGR_TICK_RATE )

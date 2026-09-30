@@ -46,7 +46,7 @@
 #define APP_SECURITY_LEVEL_3       ( 0x03u )
 
 /* SecurityAccess lockout - enforced by UDS.c (UDS_init_cfg_st's security_max_attempts/
-   security_lockout_ms, set in main.c), same values as FBL's FBL_SECURITY_* */
+   security_lockout_ms, set in app_uds_init_cfg_s), same values as FBL's FBL_SECURITY_* */
 #define APP_SECURITY_MAX_FAILED_ATTEMPTS  ( 3u )
 #define APP_SECURITY_LOCKOUT_TIME_MS      ( 10000u )
 
@@ -70,7 +70,7 @@
 /***************************************************************************************************
 **                              Exported Globals                                                  **
 ***************************************************************************************************/
-/* None */
+extern const UDS_init_cfg_st app_uds_init_cfg_s;
 
 /***************************************************************************************************
 **                              Function Prototypes                                               **

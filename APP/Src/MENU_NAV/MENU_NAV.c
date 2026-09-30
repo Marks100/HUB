@@ -10,6 +10,7 @@
 ***************************************************************************************************/
 #include "MENU_NAV.h"
 #include "VER.h"
+#include "SCHED.h"
 #include "WIFI.h"
 #include "RF_MGR.h"
 #include "TIME_MGR.h"
@@ -1153,11 +1154,15 @@ STATIC void menu_nav_handle_home( HMI_SH1106_input_et input )
 /*!
 ****************************************************************************************************
 *
-*   \brief         Status - live input counters straight off the panel
+*   \brief         Status - live input counters straight off the panel, and scheduler timing
 *
 *   \author        MS
 *
 *   \return        none
+*
+*   \note          Bottom two rows are SCHED's: the last and longest tick in us (10000 is the budget),
+*                  the overrun count, and the table row with the longest callout. Row is the index in
+*                  SCHED_config.c's table, counting from 0.
 *
 *   \note          Repainted by the panel's own refresh timer, so these keep counting up while the
 *                  screen is open rather than freezing at whatever they were on the way in.
@@ -1166,7 +1171,11 @@ STATIC void menu_nav_handle_home( HMI_SH1106_input_et input )
 STATIC void menu_nav_draw_status( void )
 {
     HMI_SH1106_stats_st stats;
+    SCHED_stats_st      sched_stats;
     char                line[MENU_NAV_LINE_CHARS];
+    u16_t               slowest_us  = 0u;
+    u8_t                slowest_row = 0u;
+    u8_t                i;
 
     HMI_SH1106_get_stats( &stats );
 
@@ -1191,6 +1200,26 @@ STATIC void menu_nav_draw_status( void )
                          (unsigned long)stats.count[HMI_SH1106_INPUT_BACK],
                          (unsigned long)stats.count[HMI_SH1106_INPUT_BACK_LONG] );
     HMI_SH1106_draw_text( 5u, 0u, line, FALSE );
+
+    SCHED_get_stats( &sched_stats );
+
+    for( i = 0u; i < SCHED_MAX_ENTRIES; i++ )
+    {
+        if( SCHED_get_row_max_us( i ) > slowest_us )
+        {
+            slowest_us  = SCHED_get_row_max_us( i );
+            slowest_row = i;
+        }
+    }
+
+    (void)PRINTF_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "Tick %u max %u us",
+                         (unsigned int)sched_stats.last_pass_us, (unsigned int)sched_stats.max_pass_us );
+    HMI_SH1106_draw_text( 6u, 0u, line, FALSE );
+
+    (void)PRINTF_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "Over %lu Row%u %uus",
+                         (unsigned long)sched_stats.overrun_count,
+                         (unsigned int)slowest_row, (unsigned int)slowest_us );
+    HMI_SH1106_draw_text( 7u, 0u, line, FALSE );
 }
 
 /*!
