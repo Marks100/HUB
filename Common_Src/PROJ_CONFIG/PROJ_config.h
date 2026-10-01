@@ -33,3 +33,5 @@
 #define NVM_TOTAL_SIZE                  ( 2u * 1024u )
 
 #endif /* PROJ_CONFIG_H multiple inclusion guard */
+
+/****************************** END OF FILE *******************************************************/

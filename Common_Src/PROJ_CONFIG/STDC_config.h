@@ -148,3 +148,5 @@ typedef enum
 }STDC_A_module_id_et;
 
 #endif // #ifndef STDC_CONFIG_H
+
+/****************************** END OF FILE *******************************************************/

@@ -97,10 +97,10 @@ const HMI_SH1106_cfg_st hmi_sh1106_cfg_s =
     .flip_horizontal        = TRUE,
     .flip_vertical          = TRUE,
 
-    .mode                   = ROTARY_MODE_HARDWARE_TIMER,
+    .enc_mode               = ROTARY_MODE_HARDWARE_TIMER,
     .enc_get_count_func_p   = HAL_TIM_ENC_get_counter,
     .enc_cnt_max            = 0xFFFFu,
-    .reverse_direction      = FALSE,
+    .enc_reverse_direction  = FALSE,
     .enc_counts_per_detent  = 4u,           /* TIM4 decodes x4 */
 
     .btn_read_select_func_p  = HAL_BRD_read_panel_select_btn,
@@ -112,8 +112,8 @@ const HMI_SH1106_cfg_st hmi_sh1106_cfg_s =
     .refresh_period_ms      = 500u,
 
     /* HMI_SH1106_tick() runs in the SysTick ISR */
-    .stats_critical_enter_func_p = NVIC_DisableGlobalIRQ,
-    .stats_critical_exit_func_p  = NVIC_EnableGlobalIRQ,
+    .critical_enter_func_p = NVIC_DisableGlobalIRQ,
+    .critical_exit_func_p  = NVIC_EnableGlobalIRQ,
 
     .buzzer_p               = &buzzer_instance_s,
     .beep_on_rotate         = TRUE,
