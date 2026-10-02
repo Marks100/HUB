@@ -34,6 +34,14 @@ HMAC_SECRET_HEADER  := Src/secure_boot_hmac_secret.h
 ####################################################################################################
 COMMON_MODULES_DIR := ../xCOMMON_MODULES/Src
 
+# Which crypto backends BM compiles, and with what flags, follows from Src/CRYPTO_config.h - edit
+# that file, not these lists (see xCOMMON_MODULES/Src/CRYPTO/CRYPTO.mk)
+include $(COMMON_MODULES_DIR)/CRYPTO/CRYPTO.mk
+CRYPTO_CONFIG   := Src/CRYPTO_config.h
+CRYPTO_C_SRCS   := $(call crypto_srcs,$(CRYPTO_CONFIG))
+CRYPTO_INCLUDES := $(call crypto_includes,$(CRYPTO_CONFIG))
+CRYPTO_DEFINES  := $(call crypto_defines,$(CRYPTO_CONFIG))
+
 # Curated list, not a glob of the whole MCAL tree like APP/Makefile uses.
 BM_C_SRCS := \
     Src/bm_main.c \
@@ -44,9 +52,7 @@ BM_C_SRCS := \
     $(COMMON_MODULES_DIR)/CHKSUM/crc_hw_driver.c \
     $(COMMON_MODULES_DIR)/CHKSUM/CRC_HW_STM32F103.c \
     $(COMMON_MODULES_DIR)/CLKS/CLK_STM32F1.c \
-    $(COMMON_MODULES_DIR)/CRYPTO/HMAC_SHA256/SHA256.c \
-    $(COMMON_MODULES_DIR)/CRYPTO/HMAC_SHA256/HMAC_SHA256.c \
-    $(COMMON_MODULES_DIR)/CRYPTO/micro-ecc/uECC.c
+    $(CRYPTO_C_SRCS)
 
 # Vendored ST/CMSIS MCAL sources - same split as APP/Makefile's MCAL_C_SRCS/MCAL_OBJ_DIR/
 # MCAL_OPTIMISATION: this is code we never touch, so there's no reason to debug it, and it always
@@ -77,8 +83,7 @@ INCLUDES  := \
     -I $(COMMON_MODULES_DIR)/MCU_JUMP \
     -I $(COMMON_MODULES_DIR)/CHKSUM \
     -I $(COMMON_MODULES_DIR)/CLKS \
-    -I $(COMMON_MODULES_DIR)/CRYPTO/HMAC_SHA256 \
-    -I $(COMMON_MODULES_DIR)/CRYPTO/micro-ecc \
+    $(CRYPTO_INCLUDES) \
     -I $(COMMON_MODULES_DIR)/STDC \
     -I $(COMMON_MODULES_DIR)/MCAL \
     -I $(COMMON_MODULES_DIR)/MCAL/stm32/stm32f10x/inc \
@@ -90,18 +95,6 @@ INCLUDES  := \
 ####################################################################################################
 # Flags
 ####################################################################################################
-# micro-ecc build config - portable C only (uECC_PLATFORM=0/uECC_arch_other), never the ARM/Thumb2
-# asm path (those .inc files aren't vendored - see xCOMMON_MODULES/Src/CRYPTO/micro-ecc), secp256r1
-# (P-256) only, no compressed-point support needed since app_signer already emits raw X||Y.
-UECC_DEFINES := \
-    -DuECC_PLATFORM=0 \
-    -DuECC_SUPPORTS_secp160r1=0 \
-    -DuECC_SUPPORTS_secp192r1=0 \
-    -DuECC_SUPPORTS_secp224r1=0 \
-    -DuECC_SUPPORTS_secp256r1=1 \
-    -DuECC_SUPPORTS_secp256k1=0 \
-    -DuECC_SUPPORT_COMPRESSED_POINT=0
-
 # Same RELEASE/DEBUG toggle APP/Makefile uses, so `make RELEASE=y` still builds the size-optimised
 # image while a plain `make` is debuggable (-Og keeps variables live and control flow in source
 # order, which -Os destroys). MCAL_OPTIMISATION stays pinned to -Os either way: it is vendored code
@@ -156,7 +149,7 @@ $(MCAL_OBJ_DIR):
 
 $(OBJ_DIR)/%.o: %.c | $(OBJ_DIR)
 	@echo "--> Compiling $(notdir $@)..."
-	@$(CC) $(CFLAGS) $(BM_OPTIMISATION) $(INCLUDES) $(UECC_DEFINES) -c $< -o $@
+	@$(CC) $(CFLAGS) $(BM_OPTIMISATION) $(INCLUDES) $(CRYPTO_DEFINES) -c $< -o $@
 
 $(MCAL_OBJ_DIR)/%.o: %.c | $(MCAL_OBJ_DIR)
 	@echo "--> Compiling $(notdir $@)..."
