@@ -19,8 +19,8 @@
 #include "INTEGRATION_STUBS.h"
 #include "BTN_MGR.h"
 #include "BUZZER.h"
-#include "NRF24.h"
 #include "RF_MGR.h"
+#include "SENSOR_NET.h"
 #include "MSG_SCHED.h"
 #include "HMI_SH1106.h"
 #include "CPS.h"
@@ -31,7 +31,6 @@
 ***************************************************************************************************/
 STATIC void sched_cfg_buzzer_tick( void );
 STATIC void sched_cfg_btn_mgr_tick( void );
-STATIC void sched_cfg_nrf24_tick( void );
 STATIC void sched_cfg_cps_tick( void );
 STATIC void sched_cfg_aps_tick( void );
 STATIC void sched_cfg_engine_sim_tick( void );
@@ -40,7 +39,6 @@ STATIC void sched_cfg_wdg_kick( void );
 /***************************************************************************************************
 **                              Data declarations and definitions                                 **
 ***************************************************************************************************/
-extern NRF24_instance_st  nrf24_instance_s;
 extern BUZZER_instance_st buzzer_instance_s;
 extern CPS_instance_st    cps_crank_instance_s;
 
@@ -56,8 +54,8 @@ STATIC const SCHED_entry_st app_sched_table_s[] =
 	{ HMI_SH1106_tick,                SCHED_PERIOD_10MS,     0u },
 	{ sched_cfg_buzzer_tick,          SCHED_PERIOD_20MS,     0u },
 	{ sched_cfg_btn_mgr_tick,         SCHED_PERIOD_20MS,     0u },
-	{ sched_cfg_nrf24_tick,           SCHED_PERIOD_20MS,     0u },
-	{ RF_MGR_tick,                    SCHED_PERIOD_10MS,     0u },
+	{ RF_MGR_tick,                    SCHED_PERIOD_10MS,     0u },   /* also ticks the NRF24 */
+	{ SENSOR_NET_tick,                SCHED_PERIOD_10MS,     0u },   /* after RF_MGR_tick: decodes the frame it just collected */
 	{ MSG_SCHED_tick,                 SCHED_PERIOD_20MS,     0u },
 	{ sched_cfg_cps_tick,             SCHED_PERIOD_20MS,     0u },
 	{ sched_cfg_aps_tick,             SCHED_PERIOD_20MS,     0u },
@@ -111,11 +109,6 @@ STATIC void sched_cfg_buzzer_tick( void )
 STATIC void sched_cfg_btn_mgr_tick( void )
 {
 	BTN_MGR_tick( &btm_mgr_instance_s );
-}
-
-STATIC void sched_cfg_nrf24_tick( void )
-{
-	NRF24_tick( &nrf24_instance_s );
 }
 
 STATIC void sched_cfg_cps_tick( void )

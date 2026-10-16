@@ -9,7 +9,7 @@
 #include "HAL_ADC.h"
 #include "TIME_MGR.h"
 #include "STDC.h"
-#include "RF_MGR.h"
+#include "SENSOR_NET.h"
 #include "MENU_NAV.h"
 
 /* Module Identification for STDC_assert functionality */
@@ -23,7 +23,7 @@ STATIC off_on_et switch2val = OFF;
 
 #define TB_CBK_SENSOR_MIN_PUBLISH_INTERVAL_MS  ( 2u * 60u * 1000u )
 
-STATIC u64_t sensor_last_publish_ms_s[RF_MGR_MAX_SENSORS];
+STATIC u64_t sensor_last_publish_ms_s[SENSOR_NET_MAX_SENSORS];
 
 /* RPC Handler Registration Array - Exported for TB configuration */
 TB_rpc_handler_entry_st tb_rpc_handlers_s[] =
@@ -491,13 +491,13 @@ u16_t tb_telemetry_sensors_callback( u8_t* buffer_p, u16_t buffer_size )
 
     if( ( NULL_P != buffer_p ) && ( buffer_size > 0u ) )
     {
-        RF_MGR_sensor_data_st* db_p    = RF_MGR_get_sensor_db();
+        SENSOR_NET_sensor_data_st* db_p    = SENSOR_NET_get_sensor_db();
         u8_t                   checked = 0u;
         u8_t                   found   = FALSE;
 
-        while( ( checked < RF_MGR_MAX_SENSORS ) && ( found == FALSE ) )
+        while( ( checked < SENSOR_NET_MAX_SENSORS ) && ( found == FALSE ) )
         {
-            u8_t          idx      = ( next_sensor_s + checked ) % RF_MGR_MAX_SENSORS;
+            u8_t          idx      = ( next_sensor_s + checked ) % SENSOR_NET_MAX_SENSORS;
             u64_t         last_pub = sensor_last_publish_ms_s[idx];
             false_true_et time_ok  = FALSE;
 
@@ -523,7 +523,7 @@ u16_t tb_telemetry_sensors_callback( u8_t* buffer_p, u16_t buffer_size )
                     sensor_last_publish_ms_s[idx] = TIME_get_cumulative_run_time_ms_64();
                 }
 
-                next_sensor_s = ( idx + 1u ) % RF_MGR_MAX_SENSORS;
+                next_sensor_s = ( idx + 1u ) % SENSOR_NET_MAX_SENSORS;
                 found         = TRUE;
             }
 

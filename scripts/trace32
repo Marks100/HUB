@@ -1,10 +1,25 @@
 #!/bin/bash
 
-# Export ELF and combined HEX paths as Windows paths for Trace32
-export LAUTERBACH_APP_EXE=$(cygpath -w $(find $PTLD/APP/Build/ -type f -name "*.elf"))
-export LAUTERBACH_BM_EXE=$(cygpath -w $(find $PTLD/BM/Build/  -type f -name "*.elf"))
-export LAUTERBACH_FBL_EXE=$(cygpath -w $(find $PTLD/FBL/Build/  -type f -name "*.elf"))
-export LAUTERBACH_COMBINED_EXE=$(cygpath -w $(find $PTLD/APP/Build/ -type f -name "*combined*.hex"))
+# Export ELF and combined HEX paths as Windows paths for Trace32.
+# Exact file names, not find patterns: a pattern like "*combined*.hex" also matched saved copies
+# such as BM_FBL_APP_combined_baseline_10makes.hex, the variable then held two paths, and Trace32
+# flashed whichever one find happened to list first.
+APP_ELF=$PTLD/APP/Build/APP.elf
+BM_ELF=$PTLD/BM/Build/BM.elf
+FBL_ELF=$PTLD/FBL/Build/FBL.elf
+COMBINED_HEX=$PTLD/APP/Build/BM_FBL_APP_combined.hex
+
+for f in "$APP_ELF" "$BM_ELF" "$FBL_ELF" "$COMBINED_HEX"; do
+    if [ ! -f "$f" ]; then
+        echo "trace32: missing $f - build it first (make all in APP)" >&2
+        exit 1
+    fi
+done
+
+export LAUTERBACH_APP_EXE=$(cygpath -w "$APP_ELF")
+export LAUTERBACH_BM_EXE=$(cygpath -w "$BM_ELF")
+export LAUTERBACH_FBL_EXE=$(cygpath -w "$FBL_ELF")
+export LAUTERBACH_COMBINED_EXE=$(cygpath -w "$COMBINED_HEX")
 
 # Launch Trace32 for ARM Cortex-M3 (STM32)
 cd $PTLD/Tool_cfg/Lauterbach && t32marm -c $PTLD/Tool_cfg/Lauterbach/config.t32 -s $PTLD/Tool_cfg/Lauterbach/stm32f103_attach.cmm &

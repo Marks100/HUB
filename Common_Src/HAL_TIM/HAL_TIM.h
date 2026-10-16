@@ -46,6 +46,7 @@ void HAL_TIM1_set_prescaler( u16_t prescaler );
 void HAL_TIM1_start( u16_t counter );
 void HAL_TIM1_start_periodic( u16_t period );
 void HAL_TIM1_set_period( u16_t period );
+void HAL_TIM1_set_reload( u16_t period );
 void HAL_TIM2_start( void );
 void HAL_TIM3_start( void );
 void HAL_TIM1_stop( void );

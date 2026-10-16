@@ -60,6 +60,9 @@ low_high_et HAL_BRD_read_panel_back_btn( void );
 /* TJA1051 CAN transceiver */
 void HAL_BRD_TJA1051_set_en_pin( low_high_et state );
 
+/* SENT_TX output pin - written straight from the TIM1 update interrupt */
+void HAL_BRD_SENT_TX_set_pin( low_high_et level );
+
 /* WS2811 bit-bang pulses — call with interrupts disabled, tuned for 72 MHz */
 void HAL_BRD_WS2811_zero_pulse_direct( void );
 void HAL_BRD_WS2811_one_pulse_direct( void );

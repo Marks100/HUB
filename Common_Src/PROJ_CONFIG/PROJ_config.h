@@ -14,6 +14,15 @@
    (currently hse8_72mhz_s: HSE 8MHz + PLLx9 = 72MHz, see CLKS/README.md) */
 #define SYSCLK_HZ                       ( 72000000u )
 
+/* SENT_TX bench sensor emulator (APP/Src/SENT_CFG): 1 = TIM1 and PB12 run it from boot, 0 = left
+   unused. It takes TIM1 and PB12 - nothing else in this image uses either. */
+#define SENT_TX_BENCH_ENABLED           ( 1u )
+
+/* WIFI soft-AP bench test: 1 = the ESP01 runs only as an access point ("HUB_AP", see wifi_cfg_s in
+   INTEGRATION_STUBS.c) and does not join the home network, so ThingsBoard is offline. 0 = normal
+   station mode. */
+#define WIFI_AP_BENCH_ENABLED           ( 0u )
+
 /* WS2811 LED strip is NOT physically wired on this board revision. PA10 is a confirmed-free
    pin (USART1 RX, and USART1 itself is unused - see ABS2_INPUT_PIN's comment in HAL_config.h)
    used here purely as a placeholder so WS2811_HW_STM32F1.c compiles; MODE_MGR still calls

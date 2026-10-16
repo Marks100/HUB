@@ -12,7 +12,7 @@
 #include "VER.h"
 #include "SCHED.h"
 #include "WIFI.h"
-#include "RF_MGR.h"
+#include "SENSOR_NET.h"
 #include "TIME_MGR.h"
 #include "BUZZER.h"
 #include "TB.h"
@@ -128,7 +128,7 @@ typedef struct
 /*!
  * \brief One tire's reading for the (dormant) Vehicle screen
  *
- * Placeholder data - there is no tire pressure sensor anywhere in this codebase yet (RF_MGR's
+ * Placeholder data - there is no tire pressure sensor anywhere in this codebase yet (SENSOR_NET's
  * sensor DB has no pressure field and no FL/FR/RL/RR mapping). Replace menu_nav_tire_fl_s etc.
  * with real readings once that data source exists.
  */
@@ -1240,37 +1240,54 @@ STATIC void menu_nav_draw_wifi( void )
     char        line[MENU_NAV_LINE_CHARS];
     const char* status_str;
 
-    switch( WIFI_get_sta_connection_status() )
+    if( WIFI_get_ap_status() != WIFI_AP_NOT_STARTED )
     {
-        case WIFI_STA_CONNECTED_TO_AP:
-            status_str = "Connected";
-        break;
+        const WIFI_ap_clients_st* clients_p = WIFI_get_ap_clients();
 
-        case WIFI_STA_CONNECTING_TO_AP:
-            status_str = "Connecting";
-        break;
+        HMI_SH1106_draw_text( 0u, 0u, "WIFI AP", FALSE );
 
-        default:
-            status_str = "Disconnected";
-        break;
+        (void)PRINTF_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "Status %s",
+                               ( WIFI_get_ap_status() == WIFI_AP_RUNNING ) ? "Running" : "Starting" );
+        HMI_SH1106_draw_text( 2u, 0u, line, FALSE );
+
+        (void)PRINTF_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "Clients %u",
+                               (unsigned int)( ( clients_p != NULL_P ) ? clients_p->count : 0u ) );
+        HMI_SH1106_draw_text( 3u, 0u, line, FALSE );
     }
+    else
+    {
+        switch( WIFI_get_sta_connection_status() )
+        {
+            case WIFI_STA_CONNECTED_TO_AP:
+                status_str = "Connected";
+            break;
 
-    HMI_SH1106_draw_text( 0u, 0u, "WIFI", FALSE );
+            case WIFI_STA_CONNECTING_TO_AP:
+                status_str = "Connecting";
+            break;
 
-    (void)PRINTF_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "Status %s", status_str );
-    HMI_SH1106_draw_text( 2u, 0u, line, FALSE );
+            default:
+                status_str = "Disconnected";
+            break;
+        }
 
-    (void)PRINTF_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "IP %s", (const char*)WIFI_get_ip_address() );
-    HMI_SH1106_draw_text( 3u, 0u, line, FALSE );
+        HMI_SH1106_draw_text( 0u, 0u, "WIFI", FALSE );
 
-    (void)PRINTF_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "RSSI %d dBm", (int)WIFI_get_rssi() );
-    HMI_SH1106_draw_text( 4u, 0u, line, FALSE );
+        (void)PRINTF_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "Status %s", status_str );
+        HMI_SH1106_draw_text( 2u, 0u, line, FALSE );
 
-    (void)PRINTF_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "MAC %s", (const char*)WIFI_get_mac_address() );
-    HMI_SH1106_draw_text( 5u, 0u, line, FALSE );
+        (void)PRINTF_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "IP %s", (const char*)WIFI_get_ip_address() );
+        HMI_SH1106_draw_text( 3u, 0u, line, FALSE );
 
-    (void)PRINTF_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "Disconnects %lu", (unsigned long)WIFI_get_disconnect_count() );
-    HMI_SH1106_draw_text( 6u, 0u, line, FALSE );
+        (void)PRINTF_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "RSSI %d dBm", (int)WIFI_get_rssi() );
+        HMI_SH1106_draw_text( 4u, 0u, line, FALSE );
+
+        (void)PRINTF_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "MAC %s", (const char*)WIFI_get_mac_address() );
+        HMI_SH1106_draw_text( 5u, 0u, line, FALSE );
+
+        (void)PRINTF_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "Disconnects %lu", (unsigned long)WIFI_get_disconnect_count() );
+        HMI_SH1106_draw_text( 6u, 0u, line, FALSE );
+    }
 }
 
 /*!
@@ -1351,18 +1368,18 @@ STATIC void menu_nav_enter_sensors( void )
 *
 *   \note          Repainted by the panel's own refresh timer, so a node's readings and RX count
 *                  keep updating while it stays on screen. Steps through every slot in
-*                  RF_MGR_get_sensor_db(), not just ones that have reported in - an empty slot is
+*                  SENSOR_NET_get_sensor_db(), not just ones that have reported in - an empty slot is
 *                  shown as such rather than being skipped, so the count in the title always matches
-*                  RF_MGR_MAX_SENSORS and turning the knob never appears to do nothing.
+*                  SENSOR_NET_MAX_SENSORS and turning the knob never appears to do nothing.
 *
 ***************************************************************************************************/
 STATIC void menu_nav_draw_sensors( void )
 {
-    const RF_MGR_sensor_data_st* node_p = &RF_MGR_get_sensor_db()[menu_nav_sensor_index_s];
+    const SENSOR_NET_sensor_data_st* node_p = &SENSOR_NET_get_sensor_db()[menu_nav_sensor_index_s];
     char                          line[MENU_NAV_LINE_CHARS];
 
     (void)PRINTF_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "SENSOR %u/%u",
-                         (unsigned int)( menu_nav_sensor_index_s + 1u ), (unsigned int)RF_MGR_MAX_SENSORS );
+                         (unsigned int)( menu_nav_sensor_index_s + 1u ), (unsigned int)SENSOR_NET_MAX_SENSORS );
     HMI_SH1106_draw_text( 0u, 0u, line, FALSE );
 
     if( node_p->valid == TRUE )
@@ -1375,7 +1392,7 @@ STATIC void menu_nav_draw_sensors( void )
            identical in modular arithmetic ((a-b) mod 2^32 == ((a mod 2^32)-(b mod 2^32)) mod 2^32),
            but avoids a genuine 64-bit subtract (and the division that follows staying 32-bit avoids
            pulling in the ~700-byte __aeabi_uldivmod helper for this one call site). Safe regardless
-           of magnitude: comms_lost already trips after RF_MGR_COMMS_LOST_TIMEOUT_SECS (30 minutes),
+           of magnitude: comms_lost already trips after SENSOR_NET_COMMS_LOST_TIMEOUT_SECS (30 minutes),
            so this age is never anywhere near the ~49.7 days a 32-bit ms difference can hold. */
         u32_t       age_secs   = (u32_t)( TIME_get_cumulative_run_time_ms() - (u32_t)node_p->last_rx_time_ms ) / MSECS_PER_SEC;
         const char* batt_str;
@@ -1383,11 +1400,11 @@ STATIC void menu_nav_draw_sensors( void )
         temp_frac = ( temp_frac < 0 ) ? (s16_t)-temp_frac : temp_frac;
         hum_frac  = ( hum_frac  < 0 ) ? (s16_t)-hum_frac  : hum_frac;
 
-        if( ( node_p->battery_flags & (u8_t)( 1u << RF_MGR_BAT_FLAG_CRITICAL_BIT ) ) != 0u )
+        if( ( node_p->battery_flags & (u8_t)( 1u << SENSOR_NET_BAT_FLAG_CRITICAL_BIT ) ) != 0u )
         {
             batt_str = "CRIT";
         }
-        else if( ( node_p->battery_flags & (u8_t)( 1u << RF_MGR_BAT_FLAG_LOW_BIT ) ) != 0u )
+        else if( ( node_p->battery_flags & (u8_t)( 1u << SENSOR_NET_BAT_FLAG_LOW_BIT ) ) != 0u )
         {
             batt_str = "LOW";
         }
@@ -1437,14 +1454,14 @@ STATIC void menu_nav_handle_sensors( HMI_SH1106_input_et input )
     switch( input )
     {
         case HMI_SH1106_INPUT_CW:
-            menu_nav_sensor_index_s = ( menu_nav_sensor_index_s >= (u8_t)( RF_MGR_MAX_SENSORS - 1u ) )
+            menu_nav_sensor_index_s = ( menu_nav_sensor_index_s >= (u8_t)( SENSOR_NET_MAX_SENSORS - 1u ) )
                                      ? 0u : (u8_t)( menu_nav_sensor_index_s + 1u );
             HMI_SH1106_request_redraw();
         break;
 
         case HMI_SH1106_INPUT_CCW:
             menu_nav_sensor_index_s = ( menu_nav_sensor_index_s == 0u )
-                                     ? (u8_t)( RF_MGR_MAX_SENSORS - 1u ) : (u8_t)( menu_nav_sensor_index_s - 1u );
+                                     ? (u8_t)( SENSOR_NET_MAX_SENSORS - 1u ) : (u8_t)( menu_nav_sensor_index_s - 1u );
             HMI_SH1106_request_redraw();
         break;
 

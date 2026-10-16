@@ -84,6 +84,12 @@
 #define CPS_CRANK_INPUT_EXTI_PORT_SRC   GPIO_PortSourceGPIOB
 #define CPS_CRANK_INPUT_EXTI_PIN_SRC    GPIO_PinSource3
 
+/* SENT_TX sensor emulator output - PB12. SPI2 is unused and PB12 carries no alternate function this
+ * project needs, and HAL_BRD_init() claims no other use of it (PB13-15 are the panel buttons).
+ * Push-pull and idle HIGH, as a SENT line idles high. Driven from the TIM1 update interrupt, see
+ * APP/Src/SENT_CFG. */
+#define SENT_TX_OUT_PORT    GPIOB
+#define SENT_TX_OUT_PIN     GPIO_Pin_12
 /* I2C1 pins (remapped: PB8=SCL, PB9=SDA) */
 #define I2C1_PORT           GPIOB
 #define I2C1_SCL_PIN        GPIO_Pin_8

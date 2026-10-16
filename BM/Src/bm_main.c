@@ -61,89 +61,6 @@ STATIC void clk_init( void )
 }
 
 /***************************************************************************************************
-**                              Signature Verification                                           **
-***************************************************************************************************/
-/* The algorithms and their libraries are chosen in CRYPTO_config.h. BM_signature_verify_func_t is
-   BM's own slot shape, which the shared CRYPTO module knows nothing about, so each scheme is
-   adapted to it here. */
-
-/*!
-****************************************************************************************************
-*
-*   \brief         Verify an HMAC-SHA256 signature - the scheme BM checks APP, FBL and datasets with.
-*
-*   \author        mstewart
-*
-*   \param[in]     data_p      - region that was signed.
-*   \param[in]     data_len    - length of the region in bytes.
-*   \param[in]     signature_p - signature bytes from the header (only the first 32 are read).
-*   \param[in]     key_p       - shared secret.
-*   \param[in]     key_len     - length of the secret in bytes.
-*
-*   \return        TRUE only if the computed tag matches signature_p.
-*
-*   \note          The secret and a mismatching tag give the same FALSE, so BM_run() falls through to
-*                  FBL in both cases.
-*
-***************************************************************************************************/
-STATIC false_true_et signature_verify_hmac_sha256( const u8_t* data_p, u32_t data_len,
-                                                     const u8_t* signature_p,
-                                                     const u8_t* key_p, u32_t key_len )
-{
-   false_true_et verified = FALSE;
-
-   if( key_len <= (u32_t)U16_T_MAX )
-   {
-      if( CRYPTO_hmac_sha256_verify( key_p, (u16_t)key_len, data_p, data_len, signature_p ) == CRYPTO_OK )
-      {
-         verified = TRUE;
-      }
-   }
-
-   return( verified );
-}
-
-/*!
-****************************************************************************************************
-*
-*   \brief         Verify an ECDSA P-256 signature - not yet wired live.
-*
-*   \author        mstewart
-*
-*   \param[in]     data_p          - region that was signed.
-*   \param[in]     data_len        - length of the region in bytes.
-*   \param[in]     signature_p     - 64-byte raw R||S signature from the header.
-*   \param[in]     public_key_p    - 64-byte raw X||Y public key.
-*   \param[in]     public_key_len  - unused, the key size is fixed.
-*
-*   \return        TRUE only if the signature verifies.
-*
-*   \note          Not assigned to .signature_verify below. Switching is a one-line change once a real
-*                  P-256 keypair replaces the placeholder in secure_boot_public_key.h; until then the
-*                  linker drops this function and it costs no flash.
-*
-***************************************************************************************************/
-STATIC false_true_et signature_verify_ecdsa_p256( const u8_t* data_p, u32_t data_len,
-                                                    const u8_t* signature_p,
-                                                    const u8_t* public_key_p, u32_t public_key_len )
-{
-   false_true_et verified = FALSE;
-   u8_t          hash[ CRYPTO_SHA256_DIGEST_SIZE ];
-
-   (void)public_key_len;
-
-   if( CRYPTO_sha256( data_p, data_len, hash ) == CRYPTO_OK )
-   {
-      if( CRYPTO_ecdsa_p256_verify( public_key_p, hash, signature_p ) == CRYPTO_OK )
-      {
-         verified = TRUE;
-      }
-   }
-
-   return( verified );
-}
-
-/***************************************************************************************************
 **                              Dataset Table                                                    **
 ***************************************************************************************************/
 /* One field-downloadable 4KB data block (the tyre pressure table - see APP's TYRE_DATA.h), right
@@ -171,8 +88,9 @@ STATIC const bm_config_st bm_config_s =
    /* CRC calculation */
    .crc_calculate = CHKSUM_calc_hw_crc32,
 
-   /* Signature verification */
-   .signature_verify = signature_verify_hmac_sha256,
+   /* Signature verification - CRYPTO supplies verifiers in this slot's shape. For ECDSA P-256 use
+      CRYPTO_region_verify_ecdsa_p256_sha256 and change the key and sizes below to match */
+   .signature_verify = CRYPTO_region_verify_hmac_sha256,
 
    /* Platform-specific jump function */
    .jump_to_address = MCU_JUMP_to_address,
@@ -212,8 +130,9 @@ STATIC const bm_config_st bm_config_s =
 
    /* Feature flags - FIRMWARE_HMAC_SECRET is now a real generated secret (see
       secure_boot_hmac_secret.h), so both checks are live. Every APP build must be signed with
-      app_signer --algorithm=hmac-sha256 using the matching Tool_cfg/SigningKeys/hmac_secret.txt,
-      or BM_run() goes to FBL rather than jumping to an unsigned/wrongly-signed image. */
+      app_signer --algorithm=hmac-sha256 with the same secret BM was built with (see HMAC_SECRET_PATH
+      in rules.mk - DEV_KEY=y for the dummy, otherwise the HMAC_SECRET environment variable), or BM_run() goes to FBL
+      rather than jumping to an unsigned/wrongly-signed image. */
    .crc_enabled             = TRUE,
    .signature_enabled       = TRUE,
    .bypass_validity_checks  = FALSE,

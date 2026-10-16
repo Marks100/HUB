@@ -20,6 +20,7 @@
 #include "SCHED_config.h"
 #include "WS2811.h"
 #include "RF_MGR.h"
+#include "SENSOR_NET.h"
 #include "NRF24.h"
 #include "NVM_GEN2.h"
 #include "APP_NVM_BLOCKS.h"
@@ -86,7 +87,8 @@ void app_main( void )
    BUZZER_init( &buzzer_instance_s, &buzzer_func_table_s );
    WS2811_init( &ws2811_instance_s );
    NRF24_init( &nrf24_instance_s );
-   RF_MGR_init( &rf_mgr_cfg_s );
+   RF_MGR_init( &rf_mgr_cfg_s, RF_MGR_SETUP_RX );
+   SENSOR_NET_init();
    ESP01_init( &esp01_cfg_s );
    HAL_USART2_set_rx_callback( ESP01_uart_byte_rx );
    TB_CBK_init( &tb_cfg_s );

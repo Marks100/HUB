@@ -130,6 +130,13 @@ void HAL_BRD_init( void )
 	GPIO_InitStructure.GPIO_Mode  = GPIO_Mode_AIN;
 	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_10MHz;
 	GPIO_Init( ADC_THROTTLE_PORT, &GPIO_InitStructure );
+
+	/* SENT_TX output - HIGH is latched before the pin becomes an output so the line never glitches low */
+	GPIO_InitStructure.GPIO_Pin   = SENT_TX_OUT_PIN;
+	GPIO_InitStructure.GPIO_Mode  = GPIO_Mode_Out_PP;
+	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
+	SENT_TX_OUT_PORT->BSRR = SENT_TX_OUT_PIN;
+	GPIO_Init( SENT_TX_OUT_PORT, &GPIO_InitStructure );
 }
 
 /*!
@@ -176,6 +183,33 @@ void HAL_BRD_cps_crank_interrupt_disable( void )
 	NVIC_DisableIRQ( EXTI3_IRQn );
 }
 
+/*!
+****************************************************************************************************
+*
+*   \brief         Drive the SENT_TX output pin
+*
+*   \author        mstewart
+*
+*   \param[in]     level  HIGH or LOW
+*
+*   \return        none
+*
+*   \note          Writes BSRR/BRR directly rather than going through GPIO_WriteBit(): this runs from
+*                  the TIM1 update interrupt right at the edge it makes, and the SPL call is a real
+*                  function call (no LTO in this build).
+*
+***************************************************************************************************/
+void HAL_BRD_SENT_TX_set_pin( low_high_et level )
+{
+	if( level == HIGH )
+	{
+		SENT_TX_OUT_PORT->BSRR = SENT_TX_OUT_PIN;
+	}
+	else
+	{
+		SENT_TX_OUT_PORT->BRR = SENT_TX_OUT_PIN;
+	}
+}
 /*!
 ****************************************************************************************************
 *

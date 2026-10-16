@@ -3,12 +3,16 @@
 **  Board/peripheral wiring. The vehicle simulation config is in VEHICLE_SIM_config.c.             **
 ***************************************************************************************************/
 #include "INTEGRATION_STUBS.h"
+#include "PROJ_config.h"
 #include "APP_PDU_IDS.h"
 #include "VEHICLE_SIM_config.h"
 #include "HAL_BRD.h"
 #include "HAL_CAN.h"
 #include "PDUR.h"
 #include "MSG_SCHED.h"
+#include "RF_MGR.h"
+#include "RF_MGR_NRF24.h"
+#include "SENSOR_NET.h"
 #include "WIFI.h"
 #include "GKT_SHIFTER.h"
 #include "HAL_TIM.h"
@@ -109,7 +113,7 @@ const HMI_SH1106_cfg_st hmi_sh1106_cfg_s =
     .btn_inverted            = TRUE,
 
     .tick_rate_ms           = SCHED_PERIOD_10MS,
-    .refresh_period_ms      = 500u,
+    .refresh_period_ms      = 50,
 
     /* HMI_SH1106_tick() runs in the SysTick ISR */
     .critical_enter_func_p = NVIC_DisableGlobalIRQ,
@@ -152,12 +156,6 @@ WS2811_instance_st ws2811_instance_s =
 /***************************************************************************************************
 **                              NRF24                                                             **
 ***************************************************************************************************/
-STATIC void on_packet_rx( void )
-{
-    RF_MGR_get_rx_frame();
-    HAL_BRD_toggle_onboard_led();
-}
-
 NRF24_instance_st nrf24_instance_s =
 {
     .ce_pin_func_p         = HAL_BRD_NRF24_set_ce_pin_state,
@@ -165,7 +163,7 @@ NRF24_instance_st nrf24_instance_s =
     .spi_func_p            = HAL_SPI1_write_and_read_data,
     .us_delay_func_p       = DWT_delay_us,
     .packet_tx_conf_func_p = RF_MGR_tx_complete,
-    .packet_rx_func_p      = on_packet_rx
+    .packet_rx_func_p      = RF_MGR_frame_received
 };
 
 /***************************************************************************************************
@@ -233,6 +231,7 @@ const WIFI_config_st wifi_cfg_s =
     .ap_password              = (const u8_t*)"hubpassword",
     .ap_channel               = 6u,
     .ap_encryption            = 3u,   /* WPA2_PSK */
+    .start_in_ap_mode         = ( WIFI_AP_BENCH_ENABLED == 1u ) ? TRUE : FALSE,
     .rx_callback_p            = tb_mqtt_rx_handler,
     .send_complete_callback_p = on_wifi_send_complete,
     .rssi_polling_enabled     = TRUE,
@@ -274,10 +273,18 @@ TJA1051_instance_st tja1051_main_instance_s;
 /***************************************************************************************************
 **                              RF_MGR                                                            **
 ***************************************************************************************************/
+STATIC const RF_MGR_NRF24_chip_st rf_mgr_nrf24_chip_s =
+{
+    .nrf24_p = &nrf24_instance_s,
+    .config  = NRF24_HUB_CONFIG,
+};
+
 const RF_MGR_cfg_st rf_mgr_cfg_s =
 {
-    .mode    = RF_MGR_MODE_RX,
-    .channel = 0u
+    .driver_p        = &RF_MGR_NRF24_driver,
+    .chip_p          = &rf_mgr_nrf24_chip_s,
+    .tx_timeout_ms   = 0u,
+    .activity_func_p = HAL_BRD_toggle_onboard_led,
 };
 
 /***************************************************************************************************
@@ -418,7 +425,7 @@ const u16_t pdur_num_routes_s = (u16_t)( sizeof(pdur_routing_table_s) / sizeof(p
 
 STATIC void can_sensor_get_data( u8_t msg_idx, u8_t* buf_p, u8_t* len_p )
 {
-    const RF_MGR_sensor_data_st* db_p = RF_MGR_get_sensor_db();
+    const SENSOR_NET_sensor_data_st* db_p = SENSOR_NET_get_sensor_db();
 
     buf_p[0u] = (u8_t)( (u16_t)db_p[msg_idx].temperature_centidegC >> 8u );
     buf_p[1u] = (u8_t)(  db_p[msg_idx].temperature_centidegC        & 0xFFu );

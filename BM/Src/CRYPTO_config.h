@@ -9,7 +9,8 @@
 /* Live: HMAC-SHA256 signature check */
 #define CRYPTO_CFG_HMAC_SHA256           ( CRYPTO_BACKEND_SHA256_CUSTOM )
 
-/* Compiled but not yet assigned to .signature_verify - see bm_main.c. Costs no flash until it is */
+/* For CRYPTO_region_verify_ecdsa_p256_sha256, not yet assigned to .signature_verify in bm_main.c.
+   Costs no flash until it is */
 #define CRYPTO_CFG_SHA256                ( CRYPTO_BACKEND_SHA256_CUSTOM )
 #define CRYPTO_CFG_ECDSA_P256_VERIFY     ( CRYPTO_BACKEND_MICRO_ECC )
 

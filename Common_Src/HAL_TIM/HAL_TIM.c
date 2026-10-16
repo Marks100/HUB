@@ -357,6 +357,35 @@ void HAL_TIM1_set_period( u16_t period )
 /*!
 ****************************************************************************************************
 *
+*   \brief         Change TIM1's reload value only - the counter keeps running undisturbed
+*
+*   \author        mstewart
+*
+*   \param[in]     period  New period in TIM1 ticks, same units as HAL_TIM1_start_periodic()
+*
+*   \return        none
+*
+*   \note          Writes ARR and nothing else. Unlike HAL_TIM1_set_period() it does not zero the
+*                  counter, so the phase that is running keeps the exact length of the update event
+*                  that started it. For a waveform whose edge times must not pick up interrupt
+*                  latency, SENT_TX for one - HAL_TIM1_set_period() restarts the count from the moment
+*                  it runs, which adds the latency to every period and the error builds up.
+*
+*   \note          Takes effect at once, so TIM1's auto-reload preload (ARPE) must stay off, as
+*                  HAL_TIM1_init() leaves it. Call it soon after the update event, while the counter
+*                  is still below the new period - if the counter has already passed it, TIM1 counts
+*                  on to 65535 and wraps before the next update.
+*
+***************************************************************************************************/
+void HAL_TIM1_set_reload( u16_t period )
+{
+	period == 0u ? period = 1u : period --;
+
+	TIM1->ARR = period;
+}
+/*!
+****************************************************************************************************
+*
 *   \brief         Timer 1 Stop
 *
 *   \author        MS
