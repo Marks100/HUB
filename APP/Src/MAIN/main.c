@@ -21,6 +21,7 @@
 #include "WS2811.h"
 #include "RF_MGR.h"
 #include "SENSOR_NET.h"
+#include "AP_MSG.h"
 #include "NRF24.h"
 #include "NVM_GEN2.h"
 #include "APP_NVM_BLOCKS.h"
@@ -89,8 +90,10 @@ void app_main( void )
    NRF24_init( &nrf24_instance_s );
    RF_MGR_init( &rf_mgr_cfg_s, RF_MGR_SETUP_RX );
    SENSOR_NET_init();
+   AP_MSG_init();
    ESP01_init( &esp01_cfg_s );
    HAL_USART2_set_rx_callback( ESP01_uart_byte_rx );
+   WIFI_init( &wifi_cfg_s );
    TB_CBK_init( &tb_cfg_s );
    TB_init( &tb_cfg_s );
    TJA1051_init( &tja1051_main_instance_s, &tja1051_func_s, &tja1051_cfg_s );
@@ -108,9 +111,8 @@ void app_main( void )
    HAL_CAN_set_tx_ready_callback( APP_CAN_CH_MAIN, CANIF_tx_ready );
 
    UDS_init( &app_uds_init_cfg_s );
-
    SCHED_init( &app_sched_cfg_s );
-   (void)SYSTICK_init( &systick_cfg_s, SystemCoreClock );
+   SYSTICK_init( &systick_cfg_s, SystemCoreClock );
    NVIC_EnableGlobalIRQ();
 
    /* Init completed - tells BM this image is good by clearing its boot failure counter */

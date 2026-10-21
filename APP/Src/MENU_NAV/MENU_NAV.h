@@ -62,6 +62,7 @@ typedef enum
     MENU_NAV_SCREEN_BUZZER,
     MENU_NAV_SCREEN_WIFI,
     MENU_NAV_SCREEN_TB,
+    MENU_NAV_SCREEN_MESSAGES,           /*!< Text sent to the HUB over its soft AP - see AP_MSG.h */
     MENU_NAV_SCREEN_SENSORS,
 
     MENU_NAV_SCREEN_VEHICLE,

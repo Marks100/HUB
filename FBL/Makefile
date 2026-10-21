@@ -239,10 +239,10 @@ fbl_clean:
 $(FBL_MAP_FILE): $(FBL_ELF_FILE)
 
 basic_memory_stats: $(FBL_ELF_FILE)
-	@$(BUILD_ENV_BIN)/memory_analyser_stm32 $(FBL_MAP_FILE) $(FBL_ELF_FILE) $(FBL_LINKER_SCRIPT) --out $(FBL_MEM_OUTPUT_FILE) --csv $(FBL_MEM_CSV_FILE)
+	@$(BUILD_ENV_BIN)/memory_analyser_stm32 $(FBL_MAP_FILE) $(FBL_ELF_FILE) $(FBL_LINKER_SCRIPT) --out $(FBL_MEM_OUTPUT_FILE) --csv $(FBL_MEM_CSV_FILE) --readme ../README.md --tag FBL
 
 full_memory_stats: $(FBL_MAP_FILE)
-	@$(BUILD_ENV_BIN)/memory_analyser_stm32 $(FBL_MAP_FILE) $(FBL_ELF_FILE) $(FBL_LINKER_SCRIPT) --out $(FBL_MEM_OUTPUT_FILE) --csv $(FBL_MEM_CSV_FILE)
+	@$(BUILD_ENV_BIN)/memory_analyser_stm32 $(FBL_MAP_FILE) $(FBL_ELF_FILE) $(FBL_LINKER_SCRIPT) --out $(FBL_MEM_OUTPUT_FILE) --csv $(FBL_MEM_CSV_FILE) --readme ../README.md --tag FBL
 
 memory_stats: basic_memory_stats
 

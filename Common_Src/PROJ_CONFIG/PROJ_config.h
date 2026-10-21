@@ -18,10 +18,17 @@
    unused. It takes TIM1 and PB12 - nothing else in this image uses either. */
 #define SENT_TX_BENCH_ENABLED           ( 1u )
 
-/* WIFI soft-AP bench test: 1 = the ESP01 runs only as an access point ("HUB_AP", see wifi_cfg_s in
-   INTEGRATION_STUBS.c) and does not join the home network, so ThingsBoard is offline. 0 = normal
-   station mode. */
-#define WIFI_AP_BENCH_ENABLED           ( 0u )
+/* WIFI mode the ESP01 starts in (it can be changed at run time from the WiFi screen):
+     0 = station only - joins the home network, ThingsBoard runs (normal)
+     1 = soft access point only ("HUB_AP", see wifi_cfg_s in INTEGRATION_STUBS.c), ThingsBoard offline
+     2 = both at once - the soft AP is up and the station joins the home network */
+#define WIFI_STARTUP_MODE               ( 0u )
+
+/* 1 = the Messages server also listens on the station, so a device on the same network as the HUB (a
+   wired PC, say) can send to the HUB's station IP shown on the WiFi screen, no WiFi on that device
+   needed. 0 = only while the soft AP is running, so only a device that has joined HUB_AP can. The server
+   has no login: anyone who can reach that port can put text on the Messages screen. */
+#define WIFI_SERVER_ON_STATION          ( 1u )
 
 /* WS2811 LED strip is NOT physically wired on this board revision. PA10 is a confirmed-free
    pin (USART1 RX, and USART1 itself is unused - see ABS2_INPUT_PIN's comment in HAL_config.h)

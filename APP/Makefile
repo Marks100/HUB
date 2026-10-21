@@ -237,7 +237,7 @@ LDFLAGS := \
 .PHONY: doxygen doxygen_clean
 .PHONY: doc_functions doc_functions_clean
 .PHONY: no_targets__ list analyse_app_mapfile print_file_list
-.PHONY: warnings_parser basic_memory_stats full_memory_stats memory_badges test_badges
+.PHONY: warnings_parser basic_memory_stats full_memory_stats test_badges
 .PHONY: release_package force_ceedling_relink mux_dbc dataset
 
 ####################################################################################################
@@ -286,7 +286,6 @@ all: $(BM_IMAGE) $(FBL_IMAGE) app_build dataset
 		--sw-version=$(VERSION) \
 		|| echo "WARNING: create_flash_pack failed — pack not generated"
 	@echo "   $(notdir $(FLASH_PACK_OUTPUT))  (flash pack)"
-	@$(MAKE) $(MAKE_FLAGS) memory_badges
 
 full_image_with_eol: full_image
 	@echo "--> Injecting EOL data from $(EOL_CONFIG)..."
@@ -540,13 +539,11 @@ warnings_parser: $(APP_ELF_FILE)
 	@cc_warning_parser $(APP_COMPILER_OUTPUT)
 
 basic_memory_stats: $(APP_ELF_FILE)
-	@$(BUILD_ENV_BIN)/memory_analyser_stm32 $(APP_MAP_FILE) $(APP_ELF_FILE) $(APP_LINKER_SCRIPT) --out $(APP_MEM_OUTPUT_FILE) --csv $(APP_MEM_CSV_FILE)
+	@$(BUILD_ENV_BIN)/memory_analyser_stm32 $(APP_MAP_FILE) $(APP_ELF_FILE) $(APP_LINKER_SCRIPT) --out $(APP_MEM_OUTPUT_FILE) --csv $(APP_MEM_CSV_FILE) --readme ../README.md --tag APP
 
 full_memory_stats: $(APP_MAP_FILE)
-	@$(BUILD_ENV_BIN)/memory_analyser_stm32 $(APP_MAP_FILE) $(APP_ELF_FILE) $(APP_LINKER_SCRIPT) --out $(APP_MEM_OUTPUT_FILE) --csv $(APP_MEM_CSV_FILE)
+	@$(BUILD_ENV_BIN)/memory_analyser_stm32 $(APP_MAP_FILE) $(APP_ELF_FILE) $(APP_LINKER_SCRIPT) --out $(APP_MEM_OUTPUT_FILE) --csv $(APP_MEM_CSV_FILE) --readme ../README.md --tag APP
 
-memory_badges:
-	@$(BUILD_ENV_BIN)/memory_analyser_stm32 $(APP_MAP_FILE) $(APP_ELF_FILE) $(APP_LINKER_SCRIPT) --badges --output ../.github/badges || true
 		
 release_package:
 	@echo "======================================================================"

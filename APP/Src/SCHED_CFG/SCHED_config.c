@@ -50,6 +50,7 @@ STATIC const SCHED_entry_st app_sched_table_s[] =
 	{ CANIF_tick,                     SCHED_PERIOD_10MS,     0u },
 	{ UDS_tick,                       SCHED_PERIOD_10MS,     0u },
 	{ ESP01_tick,                     SCHED_PERIOD_10MS,     0u },
+	{ WIFI_tick,                      SCHED_PERIOD_10MS,     0u },   /* after ESP01_tick, before TB_tick which asks it for the link state */
 	{ TB_tick,                        SCHED_PERIOD_10MS,     0u },
 	{ HMI_SH1106_tick,                SCHED_PERIOD_10MS,     0u },
 	{ sched_cfg_buzzer_tick,          SCHED_PERIOD_20MS,     0u },

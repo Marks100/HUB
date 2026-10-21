@@ -13,6 +13,7 @@
 #include "SCHED.h"
 #include "WIFI.h"
 #include "SENSOR_NET.h"
+#include "AP_MSG.h"
 #include "TIME_MGR.h"
 #include "BUZZER.h"
 #include "TB.h"
@@ -170,6 +171,8 @@ STATIC void menu_nav_draw_home( void );
 STATIC void menu_nav_handle_home( HMI_SH1106_input_et input );
 STATIC void menu_nav_draw_status( void );
 STATIC void menu_nav_draw_wifi( void );
+STATIC void menu_nav_handle_wifi( HMI_SH1106_input_et input );
+STATIC void menu_nav_draw_messages( void );
 STATIC void menu_nav_draw_tb( void );
 STATIC void menu_nav_draw_sensors( void );
 STATIC void menu_nav_handle_sensors( HMI_SH1106_input_et input );
@@ -230,6 +233,7 @@ STATIC const MENU_NAV_item_st menu_nav_main_items_s[] =
     { "Fan Speed",           MENU_NAV_SCREEN_FAN_SPEED       },
     { "WiFi",                MENU_NAV_SCREEN_WIFI            },
     { "TB",                  MENU_NAV_SCREEN_TB              },
+    { "Messages",            MENU_NAV_SCREEN_MESSAGES        },
     { "CAN Bus",             MENU_NAV_SCREEN_NOT_IMPLEMENTED },
     { "LEDs",                MENU_NAV_SCREEN_NOT_IMPLEMENTED },
     { "Buzzer",              MENU_NAV_SCREEN_BUZZER          },
@@ -639,7 +643,14 @@ STATIC const MENU_NAV_screen_st menu_nav_screens_s[MENU_NAV_NUM_SCREENS] =
 
     [MENU_NAV_SCREEN_WIFI] =
     {
-        .draw_func_p  = menu_nav_draw_wifi,
+        .draw_func_p   = menu_nav_draw_wifi,
+        .handle_func_p = menu_nav_handle_wifi,   /* A long CONFIRM steps the WiFi mode */
+        .back_screen   = MENU_NAV_SCREEN_MAIN_MENU,
+    },
+
+    [MENU_NAV_SCREEN_MESSAGES] =
+    {
+        .draw_func_p  = menu_nav_draw_messages,
         .back_screen  = MENU_NAV_SCREEN_MAIN_MENU,
     },
 
@@ -1225,34 +1236,57 @@ STATIC void menu_nav_draw_status( void )
 /*!
 ****************************************************************************************************
 *
-*   \brief         WiFi - live status straight off the WIFI module
+*   \brief         WiFi - live status straight off the WIFI module, and the mode it is in
 *
 *   \author        MS
 *
 *   \return        none
 *
 *   \note          Repainted by the panel's own refresh timer, same as Status - RSSI and connection
-*                  state keep updating while the screen is open.
+*                  state keep updating while the screen is open. The title carries the WiFi mode.
+*                  In AP+STA the station's details are shown as usual with the AP's state on the last
+*                  line, in AP only the station is not running so the AP's state is shown instead.
 *
 ***************************************************************************************************/
 STATIC void menu_nav_draw_wifi( void )
 {
-    char        line[MENU_NAV_LINE_CHARS];
-    const char* status_str;
+    char                      line[MENU_NAV_LINE_CHARS];
+    const char*               status_str;
+    const char*               mode_str;
+    const char*               ap_str     = ( WIFI_get_ap_status() == WIFI_AP_RUNNING ) ? "Running" : "Starting";
+    const WIFI_ap_clients_st* clients_p  = WIFI_get_ap_clients();
+    unsigned int              ap_clients = (unsigned int)( ( clients_p != NULL_P ) ? clients_p->count : 0u );
 
-    if( WIFI_get_ap_status() != WIFI_AP_NOT_STARTED )
+    switch( WIFI_get_mode() )
     {
-        const WIFI_ap_clients_st* clients_p = WIFI_get_ap_clients();
+        case WIFI_MODE_AP:
+            mode_str = "AP";
+        break;
 
-        HMI_SH1106_draw_text( 0u, 0u, "WIFI AP", FALSE );
+        case WIFI_MODE_AP_STA:
+            mode_str = "AP+STA";
+        break;
 
-        (void)PRINTF_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "Status %s",
-                               ( WIFI_get_ap_status() == WIFI_AP_RUNNING ) ? "Running" : "Starting" );
+        default:
+            mode_str = "STA";
+        break;
+    }
+
+    (void)PRINTF_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "WIFI %s", mode_str );
+    HMI_SH1106_draw_text( 0u, 0u, line, FALSE );
+
+    if( WIFI_get_mode() == WIFI_MODE_AP )
+    {
+        (void)PRINTF_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "Status %s", ap_str );
         HMI_SH1106_draw_text( 2u, 0u, line, FALSE );
 
-        (void)PRINTF_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "Clients %u",
-                               (unsigned int)( ( clients_p != NULL_P ) ? clients_p->count : 0u ) );
+        (void)PRINTF_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "Clients %u", ap_clients );
         HMI_SH1106_draw_text( 3u, 0u, line, FALSE );
+
+        (void)PRINTF_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "Server %s", ( WIFI_is_server_running() == TRUE ) ? "listening" : "off" );
+        HMI_SH1106_draw_text( 4u, 0u, line, FALSE );
+
+        HMI_SH1106_draw_text( 7u, 0u, "Hold CONFIRM: mode", FALSE );
     }
     else
     {
@@ -1271,8 +1305,6 @@ STATIC void menu_nav_draw_wifi( void )
             break;
         }
 
-        HMI_SH1106_draw_text( 0u, 0u, "WIFI", FALSE );
-
         (void)PRINTF_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "Status %s", status_str );
         HMI_SH1106_draw_text( 2u, 0u, line, FALSE );
 
@@ -1287,7 +1319,123 @@ STATIC void menu_nav_draw_wifi( void )
 
         (void)PRINTF_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "Disconnects %lu", (unsigned long)WIFI_get_disconnect_count() );
         HMI_SH1106_draw_text( 6u, 0u, line, FALSE );
+
+        if( WIFI_get_mode() == WIFI_MODE_AP_STA )
+        {
+            (void)PRINTF_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "AP:%s CL:%u SRV:%s",
+                                   ( WIFI_get_ap_status() == WIFI_AP_RUNNING ) ? "Run" : "Start", ap_clients,
+                                   ( WIFI_is_server_running() == TRUE ) ? "ON" : "OFF" );
+            HMI_SH1106_draw_text( 7u, 0u, line, FALSE );
+        }
+        else
+        {
+            HMI_SH1106_draw_text( 7u, 0u, "Hold CONFIRM: mode", FALSE );
+        }
     }
+}
+
+/*!
+****************************************************************************************************
+*
+*   \brief         WiFi - a long CONFIRM press steps the mode, any other button leaves
+*
+*   \author        MS
+*
+*   \param         input - What the panel reported
+*
+*   \return        none
+*
+*   \note          STA, then AP+STA, then AP, then back to STA. It is a long press so a stray click
+*                  cannot take the station, and with it ThingsBoard, offline. How the module makes
+*                  the switch is up to the WIFI module, see WIFI_set_mode().
+*
+***************************************************************************************************/
+STATIC void menu_nav_handle_wifi( HMI_SH1106_input_et input )
+{
+    switch( input )
+    {
+        case HMI_SH1106_INPUT_CONFIRM_LONG:
+        {
+            switch( WIFI_get_mode() )
+            {
+                case WIFI_MODE_STA:
+                    WIFI_set_mode( WIFI_MODE_AP_STA );
+                break;
+
+                case WIFI_MODE_AP_STA:
+                    WIFI_set_mode( WIFI_MODE_AP );
+                break;
+
+                default:
+                    WIFI_set_mode( WIFI_MODE_STA );
+                break;
+            }
+
+            HMI_SH1106_request_redraw();
+        }
+        break;
+
+        case HMI_SH1106_INPUT_SELECT:
+        case HMI_SH1106_INPUT_CONFIRM:
+        case HMI_SH1106_INPUT_BACK:
+            MENU_NAV_goto( MENU_NAV_SCREEN_MAIN_MENU );
+        break;
+
+        default:
+            /* The knob and the other long presses do nothing here */
+        break;
+    }
+}
+/*!
+****************************************************************************************************
+*
+*   \brief         Messages - the last lines of text sent to the HUB over its soft AP
+*
+*   \author        MS
+*
+*   \return        none
+*
+*   \note          Oldest at the top, newest at the bottom. With nothing received yet it says where to
+*                  send something: the HUB's address on HUB_AP, and its station address if the server
+*                  is also listening there. Repainted by the panel's own refresh timer, so a line shows up
+*                  within a refresh of arriving.
+*
+***************************************************************************************************/
+STATIC void menu_nav_draw_messages( void )
+{
+    char  line[MENU_NAV_LINE_CHARS];
+    u8_t  count = AP_MSG_get_line_count();
+    u8_t  i;
+
+    HMI_SH1106_draw_text( 0u, 0u, "MESSAGES", FALSE );
+
+    if( count == 0u )
+    {
+        /* Nothing received yet: say where to send it. Via HUB_AP, and via the network the station is on. */
+        HMI_SH1106_draw_text( 2u, 0u, "Send TCP text to:", FALSE );
+
+        (void)PRINTF_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "%s:%u", AP_MSG_AP_IP, (unsigned int)AP_MSG_SERVER_PORT );
+        HMI_SH1106_draw_text( 3u, 0u, line, FALSE );
+
+        if( ( WIFI_is_connected() == TRUE ) && ( WIFI_is_server_running() == TRUE ) )
+        {
+            HMI_SH1106_draw_text( 4u, 0u, "or, on your network:", FALSE );
+
+            (void)PRINTF_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "%s:%u", (const char*)WIFI_get_ip_address(), (unsigned int)AP_MSG_SERVER_PORT );
+            HMI_SH1106_draw_text( 5u, 0u, line, FALSE );
+        }
+    }
+    else
+    {
+        for( i = 0u; i < count; i++ )
+        {
+            /* Age count-1 is the oldest, which goes on the first row */
+            HMI_SH1106_draw_text( (u8_t)( 2u + i ), 0u, AP_MSG_get_line( (u8_t)( count - 1u - i ) ), FALSE );
+        }
+    }
+
+    (void)PRINTF_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "Packets %lu", (unsigned long)AP_MSG_get_rx_count() );
+    HMI_SH1106_draw_text( 7u, 0u, line, FALSE );
 }
 
 /*!

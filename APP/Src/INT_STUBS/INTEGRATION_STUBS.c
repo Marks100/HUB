@@ -13,6 +13,7 @@
 #include "RF_MGR.h"
 #include "RF_MGR_NRF24.h"
 #include "SENSOR_NET.h"
+#include "AP_MSG.h"
 #include "WIFI.h"
 #include "GKT_SHIFTER.h"
 #include "HAL_TIM.h"
@@ -231,8 +232,13 @@ const WIFI_config_st wifi_cfg_s =
     .ap_password              = (const u8_t*)"hubpassword",
     .ap_channel               = 6u,
     .ap_encryption            = 3u,   /* WPA2_PSK */
-    .start_in_ap_mode         = ( WIFI_AP_BENCH_ENABLED == 1u ) ? TRUE : FALSE,
+    .ap_ip                    = (const u8_t*)AP_MSG_AP_IP,
+    .mode                     = (WIFI_mode_et)WIFI_STARTUP_MODE,
+    .client_link_id           = 4u,   /* Top of the 0-4 range, server clients take the free links from 0 upwards */
     .rx_callback_p            = tb_mqtt_rx_handler,
+    .server_port             = AP_MSG_SERVER_PORT,   /* TCP server on the soft AP: text sent to it is shown on the Messages screen */
+    .server_rx_callback_p     = AP_MSG_on_rx,
+    .server_on_station        = ( WIFI_SERVER_ON_STATION == 1u ) ? TRUE : FALSE,
     .send_complete_callback_p = on_wifi_send_complete,
     .rssi_polling_enabled     = TRUE,
 };
