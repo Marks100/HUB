@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="320" height="140" viewBox="0 0 320 140" role="img" aria-label="FBL ROM (Flash): 98.5% used">
+  <title>FBL ROM (Flash): 98.5% used</title>
+  <rect x="0.5" y="0.5" width="319" height="139" rx="10" fill="#1a1a19" stroke="#383835"/>
+  <g font-family="Segoe UI, system-ui, -apple-system, Helvetica, Arial, sans-serif">
+    <circle cx="70" cy="70" r="44" fill="none" stroke="#383835" stroke-width="14"/>
+    <circle cx="70" cy="70" r="44" fill="none" stroke="#d03b3b" stroke-width="14"
+            stroke-dasharray="272.38 276.46" transform="rotate(-90 70 70)"/>
+    <text x="70" y="76" text-anchor="middle" font-size="17" font-weight="600" fill="#f0efec">98.5%</text>
+    <text x="140" y="42" font-size="15" font-weight="600" fill="#f0efec">FBL ROM (Flash)</text>
+    <text x="140" y="70" font-size="13" fill="#c3c2b7">23,204 / 23,552 B</text>
+    <text x="140" y="90" font-size="12" fill="#898781">348 B free</text>
+    <text x="140" y="116" font-size="13" fill="#c3c2b7"><tspan fill="#d03b3b">&#9670;</tspan> Near limit</text>
+  </g>
+</svg>
