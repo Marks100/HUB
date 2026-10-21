@@ -16,17 +16,28 @@ _Built 2026-10-18 from `APP.map`_
 | ROM (Flash) | 73,668 B | 18,492 B | 79.9% |
 | RAM | 16,276 B | 4,172 B | 79.6% |
 
+<table>
+<tr>
+<td>
+
 ```mermaid
 pie showData title APP ROM (Flash) (bytes)
     "Used" : 73668
     "Free" : 18492
 ```
 
+</td>
+<td>
+
 ```mermaid
 pie showData title APP RAM (bytes)
     "Used" : 16276
     "Free" : 4172
 ```
+
+</td>
+</tr>
+</table>
 <!-- MEMORY:APP:END -->
 
 <!-- MEMORY:FBL:START -->
@@ -39,17 +50,28 @@ _Built 2026-10-18 from `FBL.map`_
 | ROM (Flash) | 23,204 B | 348 B | 98.5% |
 | RAM | 6,664 B | 13,784 B | 32.6% |
 
+<table>
+<tr>
+<td>
+
 ```mermaid
 pie showData title FBL ROM (Flash) (bytes)
     "Used" : 23204
     "Free" : 348
 ```
 
+</td>
+<td>
+
 ```mermaid
 pie showData title FBL RAM (bytes)
     "Used" : 6664
     "Free" : 13784
 ```
+
+</td>
+</tr>
+</table>
 <!-- MEMORY:FBL:END -->
 
 <!-- MEMORY:BM:START -->
@@ -62,15 +84,26 @@ _Built 2026-10-16 from `BM.map`_
 | ROM (Flash) | 4,792 B | 4,424 B | 52.0% |
 | RAM | 1,068 B | 19,380 B | 5.2% |
 
+<table>
+<tr>
+<td>
+
 ```mermaid
 pie showData title BM ROM (Flash) (bytes)
     "Used" : 4792
     "Free" : 4424
 ```
 
+</td>
+<td>
+
 ```mermaid
 pie showData title BM RAM (bytes)
     "Used" : 1068
     "Free" : 19380
 ```
+
+</td>
+</tr>
+</table>
 <!-- MEMORY:BM:END -->
