@@ -169,11 +169,6 @@ MCAL_OPTIMISATION := -Os
 # FBL's vector table sits at FBL_CODE_START (0x08002500), not FLASH_BASE (0x08000000).
 CFLAGS += -DVECT_TAB_OFFSET=$(FBL_CODE_START)
 
-# Shared-module features FBL never uses, compiled out to save flash (see each module's
-# "Compile-time feature switches" block). CANTP: FBL only ever sends ISO-TP (UDS responses) - never a
-# single raw frame - and runs classic CAN, not FD.
-CFLAGS += -DCANTP_CFG_NORMAL_TX=0 -DCANTP_CFG_FD=0
-
 LDFLAGS := \
     $(LDFLAGS_COMMON) \
     $(FBL_OPTIMISATION) \

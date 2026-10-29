@@ -123,6 +123,10 @@
 #define TJA1051_EN_PORT             GPIOB
 #define TJA1051_EN_PIN              GPIO_Pin_10
 
+/* MCP2515 CAN controller (CAN2) on SPI1. PB11 is a free-pin placeholder - confirm the real CS pin. */
+#define MCP2515_CS_PORT            GPIOB
+#define MCP2515_CS_PIN              GPIO_Pin_11
+
 /* bxCAN1 — PA11=RX, PA12=TX (default mapping, no remap required) */
 #define CAN_TX_PORT                 GPIOA
 #define CAN_TX_PIN                  GPIO_Pin_12

@@ -4,8 +4,8 @@
   "description": "UDS flash sequence for this ECU's bootloader.",
 
   "can": {
-    "tx_id":   "0x700",
-    "rx_id":   "0x600",
+    "tx_id":   "0x7E0",
+    "rx_id":   "0x7E8",
     "func_id": "0x700",
     "bitrate":  500000
   },
@@ -49,7 +49,7 @@
   },
 
   "keepalive": {
-    "_comment": "can_id must not collide with can.tx_id/func_id (0x700) - the same ID as diag requests would let a stray keepalive frame land mid-multiframe and stomp the CAN-TP reassembly session for an in-progress TransferData block (see CANTP.c cantp_free_tp_session_index_search / cantp_handle_rx_tp_single_frame).",
+    "_comment": "can_id must not collide with can.tx_id/func_id (0x7E0 / 0x700) - the same ID as diag requests would let a stray keepalive frame land mid-multiframe and stomp the CAN-TP reassembly session for an in-progress TransferData block (see CANTP.c cantp_free_tp_session_index_search / cantp_handle_rx_tp_single_frame).",
     "can_id":     "0x100",
     "data":       "00 00 00 00 00 00 00 00",
     "interval_s": 0.2

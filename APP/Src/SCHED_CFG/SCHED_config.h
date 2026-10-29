@@ -16,6 +16,7 @@
 /* Every rate anything runs at, in ms. A module whose own config needs to know how often it is
    called uses the same constant as its row in SCHED_config.c, so the two cannot disagree. Each
    must be a whole multiple of SCHED_TICK_RATE_MSECS (SCHED_init() rejects it otherwise). */
+#define SCHED_PERIOD_5MS        ( 5u )
 #define SCHED_PERIOD_10MS       ( 10u )
 #define SCHED_PERIOD_20MS       ( 20u )
 #define SCHED_PERIOD_50MS       ( 50u )

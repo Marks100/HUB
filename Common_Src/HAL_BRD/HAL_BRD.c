@@ -116,6 +116,13 @@ void HAL_BRD_init( void )
 	HAL_BRD_NRF24_set_ce_pin_state( LOW );
 #endif /* HW_VARIANT == HW_VARIANT_SUPER_PILL */
 
+	/* MCP2515 CS - deselected (HIGH) before the pin becomes an output */
+	HAL_BRD_MCP2515_spi_slave_select( HIGH );
+	GPIO_InitStructure.GPIO_Pin   = MCP2515_CS_PIN;
+	GPIO_InitStructure.GPIO_Mode  = GPIO_Mode_Out_PP;
+	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_10MHz;
+	GPIO_Init( MCP2515_CS_PORT, &GPIO_InitStructure );
+
 	/* Configure the GPIO_LED pin and set LOW immediately */
 	GPIO_InitStructure.GPIO_Pin = ONBOARD_LED_PIN;
 	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_Out_PP;
@@ -223,6 +230,22 @@ void HAL_BRD_SENT_TX_set_pin( low_high_et level )
 void HAL_BRD_TJA1051_set_en_pin( low_high_et state )
 {
 	HAL_BRD_set_pin_state( TJA1051_EN_PORT, TJA1051_EN_PIN, state );
+}
+
+/*!
+****************************************************************************************************
+*
+*   \brief         Sets the SPI chip select pin state for the MCP2515 (CAN2)
+*
+*   \author        mstewart
+*
+*   \param[in]     state - LOW selects the chip, HIGH releases it
+*
+*   \return        none
+*****************************************************************************************************/
+void HAL_BRD_MCP2515_spi_slave_select( low_high_et state )
+{
+	HAL_BRD_set_pin_state( MCP2515_CS_PORT, MCP2515_CS_PIN, state );
 }
 
 void HAL_BRD_reset( void )

@@ -228,6 +228,23 @@ STATIC UDS_service_table_st uds_service_table_s[] =
     { UDS_SID_CLEAR_DIAGNOSTIC_INFORMATION, clear_diagnostic_information_subfuncs_s, UDS_TABLE_ROWS( clear_diagnostic_information_subfuncs_s ) },
 };
 
+/*!
+****************************************************************************************************
+*
+*   \brief         UDS_init_cfg_st.is_functional_route_fp - whether a request arrived on the functional address
+*
+*   \author        mstewart
+*
+*   \param[in]     route_id - The PDUR route the request came in on
+*
+*   \return        TRUE for the functional route, FALSE for the physical one
+*
+*****************************************************************************************************/
+STATIC false_true_et uds_cfg_is_functional_route( UDS_route_id_t route_id )
+{
+    return( ( route_id == (UDS_route_id_t)APP_PDU_UDS_FUNCTIONAL ) ? TRUE : FALSE );
+}
+
 const UDS_init_cfg_st app_uds_init_cfg_s =
 {
     .tp_send_func_p          = PDUR_tx,
@@ -237,7 +254,7 @@ const UDS_init_cfg_st app_uds_init_cfg_s =
     .buffer_p                = app_uds_buffer_g,
     .buffer_size             = APP_UDS_BUFFER_SIZE,
     .tick_period_ms          = SCHED_PERIOD_10MS,
-    .is_functional_route_fp  = app_uds_is_functional_route,
+    .is_functional_route_fp  = uds_cfg_is_functional_route,
     .security_max_attempts   = APP_SECURITY_MAX_FAILED_ATTEMPTS,
     .security_lockout_ms     = APP_SECURITY_LOCKOUT_TIME_MS
 };
@@ -391,7 +408,7 @@ STATIC u8_t uds_handle_check_programming_preconditions( u16_t subfunc, u8_t* dat
 *   \brief         0x28 - CommunicationControl
 *   \details       SLP3 §2.2.5: gates non-diagnostic bus traffic during the Pre/Post-Programming
 *                  Steps. This product's only non-diagnostic TX is MSG_SCHED's cyclic sensor
-*                  telemetry (see CAN_SENSOR_BASE_ID in INT_STUBS/INTEGRATION_STUBS.c) - there is
+*                  telemetry (see can_msg_table_s in INT_STUBS/INTEGRATION_STUBS.c) - there is
 *                  no separate non-diagnostic RX path to gate, so $01 (enable RX, disable TX) and
 *                  $03 (disable RX and TX) are treated the
 *                  same: suspend MSG_SCHED. $00 resumes it. CommunicationType (data_p[0], always

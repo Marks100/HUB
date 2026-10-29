@@ -16,6 +16,7 @@
 #include "WDG.h"
 #include "CANIF.h"
 #include "UDS.h"
+#include "UDS_CLIENT.h"
 #include "INTEGRATION_STUBS.h"
 #include "BTN_MGR.h"
 #include "BUZZER.h"
@@ -29,12 +30,13 @@
 /***************************************************************************************************
 **                              Private Function Prototypes                                       **
 ***************************************************************************************************/
+STATIC void sched_cfg_mcp2515_tick( void );
+STATIC void sched_cfg_cantp_tick( void );
 STATIC void sched_cfg_buzzer_tick( void );
 STATIC void sched_cfg_btn_mgr_tick( void );
 STATIC void sched_cfg_cps_tick( void );
 STATIC void sched_cfg_aps_tick( void );
 STATIC void sched_cfg_engine_sim_tick( void );
-STATIC void sched_cfg_wdg_kick( void );
 
 /***************************************************************************************************
 **                              Data declarations and definitions                                 **
@@ -47,16 +49,20 @@ extern CPS_instance_st    cps_crank_instance_s;
 STATIC const SCHED_entry_st app_sched_table_s[] =
 {
 	{ TIME_increment_time,            SCHED_PERIOD_10MS,     0u },
-	{ CANIF_tick,                     SCHED_PERIOD_10MS,     0u },
+	{ sched_cfg_mcp2515_tick,         SCHED_PERIOD_5MS,      0u },
+	{ DIAG_GW_tick,                   SCHED_PERIOD_5MS,      0u },
+	{ UDS_CLIENT_tick,                SCHED_PERIOD_10MS,     0u },
+	{ CANIF_tick,                     SCHED_PERIOD_5MS,      0u },
+	{ sched_cfg_cantp_tick,           SCHED_PERIOD_5MS,      0u }, 
 	{ UDS_tick,                       SCHED_PERIOD_10MS,     0u },
 	{ ESP01_tick,                     SCHED_PERIOD_10MS,     0u },
-	{ WIFI_tick,                      SCHED_PERIOD_10MS,     0u },   /* after ESP01_tick, before TB_tick which asks it for the link state */
+	{ WIFI_tick,                      SCHED_PERIOD_10MS,     0u },   /* after ESP01_tick, before TB_tick */
 	{ TB_tick,                        SCHED_PERIOD_10MS,     0u },
-	{ HMI_SH1106_tick,                SCHED_PERIOD_10MS,     0u },
+	{ HMI_SH1106_tick,                SCHED_PERIOD_10MS,     SCHED_PERIOD_5MS },   /* blocking OLED writes (~6 ms) kept off the gateway's passes */
 	{ sched_cfg_buzzer_tick,          SCHED_PERIOD_20MS,     0u },
 	{ sched_cfg_btn_mgr_tick,         SCHED_PERIOD_20MS,     0u },
-	{ RF_MGR_tick,                    SCHED_PERIOD_10MS,     0u },   /* also ticks the NRF24 */
-	{ SENSOR_NET_tick,                SCHED_PERIOD_10MS,     0u },   /* after RF_MGR_tick: decodes the frame it just collected */
+	{ RF_MGR_tick,                    SCHED_PERIOD_10MS,     0u },
+	{ SENSOR_NET_tick,                SCHED_PERIOD_10MS,     0u },   /* after RF_MGR_tick */
 	{ MSG_SCHED_tick,                 SCHED_PERIOD_20MS,     0u },
 	{ sched_cfg_cps_tick,             SCHED_PERIOD_20MS,     0u },
 	{ sched_cfg_aps_tick,             SCHED_PERIOD_20MS,     0u },
@@ -71,7 +77,7 @@ STATIC const SCHED_entry_st app_sched_table_s[] =
 
 	/* Kicked last, so a kick means a whole pass completed - a callout that hangs part-way
 	   through stops the kicks */
-	{ sched_cfg_wdg_kick,             SCHED_PERIOD_10MS,     0u }
+	{ WDG_kick,                       SCHED_PERIOD_10MS,     0u }
 };
 
 const SCHED_cfg_st app_sched_cfg_s =
@@ -102,6 +108,17 @@ const SCHED_cfg_st app_sched_cfg_s =
 *                  pointer, which keeps the table type-safe.
 *
 ***************************************************************************************************/
+STATIC void sched_cfg_mcp2515_tick( void )
+{
+	MCP2515_tick( &mcp2515_can2_instance_s );
+}
+
+STATIC void sched_cfg_cantp_tick( void )
+{
+	CANTP_tick( &app_cantp_instance_s );
+	CANTP_tick( &app_cantp2_instance_s );
+}
+
 STATIC void sched_cfg_buzzer_tick( void )
 {
 	BUZZER_tick( &buzzer_instance_s );
@@ -125,11 +142,6 @@ STATIC void sched_cfg_aps_tick( void )
 STATIC void sched_cfg_engine_sim_tick( void )
 {
 	ENGINE_SIM_tick( &engine_sim_instance_s );
-}
-
-STATIC void sched_cfg_wdg_kick( void )
-{
-	(void)WDG_kick();
 }
 
 /****************************** END OF FILE *******************************************************/

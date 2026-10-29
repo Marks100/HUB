@@ -106,9 +106,13 @@ void app_main( void )
 
    app_cantp_instance_init();
    CANTP_init( &app_cantp_instance_s );
-   (void)CANIF_init( canif_channels_s, (u8_t)APP_CAN_NUM_CHANNELS );
+   app_cantp2_instance_init();
+   CANTP_init( &app_cantp2_instance_s );
+   MCP2515_init( &mcp2515_can2_instance_s, &mcp2515_can2_func_s, &mcp2515_can2_cfg_s );
+   CANIF_init( canif_channels_s, (u8_t)APP_CAN_NUM_CHANNELS, canif_tx_pdus_s, canif_num_tx_pdus_s );
+   DIAG_GW_init( &app_diag_gw_cfg_s );
+   UDS_CLIENT_init( &app_uds_client_cfg_s );
    HAL_CAN_set_rx_callback( APP_CAN_CH_MAIN, CANIF_rx_indication );
-   HAL_CAN_set_tx_ready_callback( APP_CAN_CH_MAIN, CANIF_tx_ready );
 
    UDS_init( &app_uds_init_cfg_s );
    SCHED_init( &app_sched_cfg_s );

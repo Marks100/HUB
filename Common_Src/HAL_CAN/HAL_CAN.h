@@ -15,8 +15,6 @@
    HAL_CAN_set_rx_callback() - the controller doesn't know its own channel number, the board does.
    Same shape as CANIF_rx_indication(), so APP binds that directly. */
 typedef void (*HAL_CAN_rx_callback_ft)( u8_t channel, u32_t id, u8_t id_type, const u8_t* data_p, u8_t dlc );
-/* A TX mailbox has come free. Same shape as CANIF_tx_ready(), so APP binds that directly. */
-typedef void (*HAL_CAN_tx_ready_callback_ft)( u8_t channel );
 
 /***************************************************************************************************
 **                              Function Prototypes                                               **
@@ -25,7 +23,6 @@ typedef void (*HAL_CAN_tx_ready_callback_ft)( u8_t channel );
    send_frame/ctrl_set_mode/ctrl_get_status - a CANIF channel table names them directly */
 void         HAL_CAN_init( void );
 void         HAL_CAN_set_rx_callback( u8_t channel, HAL_CAN_rx_callback_ft rx_callback_p );
-void         HAL_CAN_set_tx_ready_callback( u8_t channel, HAL_CAN_tx_ready_callback_ft tx_ready_callback_p );
 pass_fail_et HAL_CAN_send_frame( u32_t id, u8_t id_type, const u8_t* data_p, u8_t dlc );
 pass_fail_et HAL_CAN_set_mode( CANIF_ctrl_mode_et mode );
 pass_fail_et HAL_CAN_get_status( CANIF_ctrl_status_st* status_p );

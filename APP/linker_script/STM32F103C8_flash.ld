@@ -35,7 +35,7 @@ ENTRY(Reset_Handler)
 
 _estack = 0x20005000;   /* top of 20 KB SRAM - same as BM/FBL, see SHARED_RAM.h's fixed layout */
 
-_Min_Heap_Size  = 0x200;   /* 512 B */
+_Min_Heap_Size  = 0x0;     /* no heap: nothing in the image allocates (no malloc/_sbrk linked) */
 _Min_Stack_Size = 0x400;   /* 1 KB  */
 
 /* DATASET0's payload - APP reads it (TYRE_DATA.c), it does not occupy it. Same names and values as

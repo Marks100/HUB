@@ -6,8 +6,8 @@
 *   that supply something the module's function-pointer signature has no room for: a config struct
 *   (clk_init, crc_init). They are adapters, not indirection - deleting one means changing a module's contract for every project
 *   that uses it. Where a module's function-pointer type already matches another layer's signature
-*   exactly (PDUR_tx, PDUR_rx_indication_physical, PDUR_tx_confirmation_physical, and the whole CAN
-*   stack through CANIF), it's bound directly below with no adapter at all.
+*   exactly (PDUR_tx, PDUR_rx_indication, PDUR_tx_confirmation, and the CAN stack through CANIF,
+*   except the one PDUR-to-CANTP transmit adapter that names the instance), it's bound directly below with no adapter at all.
 *
 *   Definitions are ordered so each is complete before it is referenced, which is why this file
 *   carries no forward-declaration block. Keep it that way when adding to it.
@@ -281,6 +281,12 @@ STATIC TJA1051_instance_st fbl_tja1051_instance_s;
    fitting and not. Zero-initialised in .bss, populated at runtime in fbl_comms_init(). */
 STATIC CANTP_instance_st fbl_cantp_instance_s;
 
+/* PDUR's lower-layer TX shape, bound to FBL's one instance */
+STATIC pass_fail_et fbl_cantp_transmit( PDUR_pdu_id_t tx_pdu_id, const u8_t* data_p, u16_t len )
+{
+    return( CANTP_tx_request( &fbl_cantp_instance_s, tx_pdu_id, data_p, len ) );
+}
+
 /* The one message buffer CANTP reassembles requests into and UDS builds responses in. Sized for
    FBL's largest request, a full TransferData: SID + blockSequenceCounter + max_transfer_block_len
    of data - enough whether the tester reads maxNumberOfBlockLength as covering those two header
@@ -288,39 +294,61 @@ STATIC CANTP_instance_st fbl_cantp_instance_s;
 #define FBL_UDS_BUFFER_SIZE     ( FLS_STM32F1_PAGE_SIZE + 2u )
 STATIC u8_t fbl_uds_buffer_s[ FBL_UDS_BUFFER_SIZE ];
 
-/* No adapter functions between the CAN layers - same wiring as APP, every signature lines up:
+/* No adapter functions between the CAN layers - same wiring as APP, every signature lines up, and each layer
+   knows PDU IDs only (CAN IDs are in CANIF's two tables below):
    - HAL_CAN RX ISR -> CANIF_rx_indication() (HAL_CAN_set_rx_callback() in fbl_comms_init()), CANIF ->
-     fbl_cantp_instance_s.
-   - CANTP -> PDUR: rx_indication_func_p is PDUR_rx_indication_physical(), TP completion goes through
-     PDUR_tx_confirmation_physical().
-   - PDUR -> CANTP: both routes point at CANIF_pdur_tp_tx (always ISO-TP framed - UDS request/response).
-   - CANTP -> driver: can_tx_func_p is CANIF_transmit.
-   FBL has one bus, so every channel involved is 0 (the CANTP instance's and every route's default). */
+     CANTP_rx_frame_received() on the channel's cantp_p, by N-PDU.
+   - CANTP -> PDUR: rx_indication_func_p is PDUR_rx_indication(), TP completion goes through
+     PDUR_tx_confirmation(), both by the pair's N-SDU (the route).
+   - PDUR -> CANTP: both routes point at fbl_cantp_transmit (always ISO-TP framed - UDS request/response).
+   - CANTP -> driver: can_tx_func_p is CANIF_transmit, by N-PDU.
+   FBL has one bus, so every channel involved is 0. */
 
-/* The only IDs FBL receives on - the two UDS request IDs. CANIF_rx_indication() drops every other ID
-   before it reaches CANTP. Without it, foreign frames share CANTP's 10-deep RX queue with a 10-frame
-   TransferData block (rx_block_size below) - one of them mid-block costs a Consecutive Frame and
-   fails the download. */
-STATIC const u32_t fbl_can_rx_ids_s[] = { FBL_UDS_REQUEST_ID, FBL_CAN_RX_ID };
+/* CANIF's PDU IDs for CANTP - its N-PDUs. Not PDUR route IDs, so kept above them. */
+typedef enum
+{
+    FBL_NPDU_FUNC_RX = 0x100u,    /* FBL_UDS_REQUEST_ID */
+    FBL_NPDU_FUNC_TX,             /* FBL_UDS_RESPONSE_ID */
+    FBL_NPDU_PHYS_RX,             /* FBL_CAN_RX_ID */
+    FBL_NPDU_PHYS_TX              /* FBL_CAN_TX_ID */
+} fbl_npdu_id_et;
+
+/* The only IDs FBL receives on - the two UDS request IDs, both ISO-TP. CANIF_rx_indication() drops
+   every other ID before it reaches CANTP. Without it, foreign frames share CANTP's 10-deep RX queue
+   with a 10-frame TransferData block (rx_block_size below) - one of them mid-block costs a
+   Consecutive Frame and fails the download. */
+STATIC const CANIF_rx_pdu_st fbl_can_rx_pdus_s[] =
+{
+    { FBL_UDS_REQUEST_ID, CANIF_TO_CANTP, FBL_NPDU_FUNC_RX },
+    { FBL_CAN_RX_ID,      CANIF_TO_CANTP, FBL_NPDU_PHYS_RX },
+};
+
+/* What CANTP's N-PDUs are sent on */
+STATIC const CANIF_tx_pdu_st fbl_canif_tx_pdus_s[] =
+{
+    { FBL_NPDU_FUNC_TX, 0u, 0u, FBL_UDS_RESPONSE_ID },
+    { FBL_NPDU_PHYS_TX, 0u, 0u, FBL_CAN_TX_ID },
+};
 
 /* ctrl_set_mode/ctrl_get_status/trcv_set_mode deliberately left NULL_P: FBL never changes controller
    or transceiver mode at runtime (TJA1051_init() puts the transceiver in NORMAL once), and naming
    them would link HAL_CAN_set_mode/get_status, their SPL helpers and TJA1051_canif_set_mode - ~400 B
-   of flash for nothing. */
+   of flash for nothing. No state_p: FBL carries ISO-TP only, so it needs no plain-frame queues. */
 STATIC const CANIF_channel_cfg_st fbl_canif_channels_s[] =
 {
-    { .send_frame = HAL_CAN_send_frame,
-      .rx_ids_p   = fbl_can_rx_ids_s,
-      .num_rx_ids = (u8_t)( sizeof( fbl_can_rx_ids_s ) / sizeof( fbl_can_rx_ids_s[0] ) ),
-      .cantp_p    = &fbl_cantp_instance_s },
+    { .send_frame  = HAL_CAN_send_frame,
+      .rx_pdus_p   = fbl_can_rx_pdus_s,
+      .num_rx_pdus = (u8_t)( sizeof( fbl_can_rx_pdus_s ) / sizeof( fbl_can_rx_pdus_s[0] ) ),
+      .cantp_p     = &fbl_cantp_instance_s },
 };
 
 /* fbl_config_st's comms_tick_func_p - CAN-TP must pump its queue before UDS_tick() can see
-   anything it finished reassembling this cycle, so this owns the order rather than exposing two
+   anything it finished reassembling this cycle, so this owns the order rather than exposing
    separately-orderable slots. */
 STATIC void fbl_comms_tick( void )
 {
     CANIF_tick();
+    CANTP_tick( &fbl_cantp_instance_s );
     UDS_tick();
 }
 
@@ -337,15 +365,13 @@ typedef enum
 } fbl_pdu_id_et;
 
 /* Bidirectional routes: functional (0x700->0x600) and physical (0x7E0->0x7E8). TX goes via CANTP
-   (CANIF_pdur_tp_tx, always TP-framed) so multi-frame UDS responses get segmented. UDS_tx_confirmation tells UDS each response has actually gone out - it holds the
+   (fbl_cantp_transmit, always TP-framed) so multi-frame UDS responses get segmented. UDS_tx_confirmation tells UDS each response has actually gone out - it holds the
    shared buffer and any scheduled reset/APP jump until then. */
 STATIC const PDUR_route_st fbl_pdur_routing_table_s[] =
 {
-    [FBL_PDU_UDS_FUNCTIONAL] = { .rx_id = FBL_UDS_REQUEST_ID, .tx_id = FBL_UDS_RESPONSE_ID,
-      .upperLayerRxIndication = UDS_rx_indication, .lower_layer_tx_func = CANIF_pdur_tp_tx,
+    [FBL_PDU_UDS_FUNCTIONAL] = { .upperLayerRxIndication = UDS_rx_indication, .lower_layer_tx_func = fbl_cantp_transmit,
       .txConfirmation = UDS_tx_confirmation },
-    [FBL_PDU_UDS_PHYSICAL] = { .rx_id = FBL_CAN_RX_ID, .tx_id = FBL_CAN_TX_ID,
-      .upperLayerRxIndication = UDS_rx_indication, .lower_layer_tx_func = CANIF_pdur_tp_tx,
+    [FBL_PDU_UDS_PHYSICAL] = { .upperLayerRxIndication = UDS_rx_indication, .lower_layer_tx_func = fbl_cantp_transmit,
       .txConfirmation = UDS_tx_confirmation },
 };
 
@@ -381,7 +407,6 @@ STATIC false_true_et fbl_uds_is_functional_route( UDS_route_id_t route_id )
 STATIC void fbl_comms_init( void )
 {
     GPIO_InitTypeDef gpio_init;
-    pass_fail_et     canif_ok;
     pass_fail_et     pdur_ok;
 
     /* CAN: TJA1051 EN pin - push-pull output, driven via tja1051_en_pin_set() */
@@ -400,12 +425,13 @@ STATIC void fbl_comms_init( void )
        change where the object itself lives - only how the initial values get written into it. */
     fbl_cantp_instance_s = (CANTP_instance_st)
     {
-        .rx_indication_func_p    = PDUR_rx_indication_physical,
+        .rx_indication_func_p    = PDUR_rx_indication,
+        .tx_confirm_func_p       = PDUR_tx_confirmation,
         .can_tx_func_p           = CANIF_transmit,
         .rx_buffer_p             = fbl_uds_buffer_s,
         .rx_buffer_size          = FBL_UDS_BUFFER_SIZE,
-        .tp_ids                  = { { FBL_UDS_REQUEST_ID, FBL_UDS_RESPONSE_ID },
-                                     { FBL_CAN_RX_ID,       FBL_CAN_TX_ID       } },
+        .tp_ids                  = { { FBL_NPDU_FUNC_RX, FBL_NPDU_FUNC_TX, FBL_PDU_UDS_FUNCTIONAL, FBL_PDU_UDS_FUNCTIONAL },
+                                     { FBL_NPDU_PHYS_RX, FBL_NPDU_PHYS_TX, FBL_PDU_UDS_PHYSICAL,   FBL_PDU_UDS_PHYSICAL } },
         .st_min                  = 0x01u,
         .rx_block_size           = 10u,     /* 0 = unlimited (ISO 15765-2) - CANTP_init() no longer
                                               rewrites this to a default, so it genuinely means one
@@ -417,9 +443,8 @@ STATIC void fbl_comms_init( void )
 
     CANTP_init( &fbl_cantp_instance_s );
 
-    /* FAIL is a wiring mistake in fbl_canif_channels_s */
-    canif_ok = CANIF_init( fbl_canif_channels_s, (u8_t)( sizeof( fbl_canif_channels_s ) / sizeof( fbl_canif_channels_s[0] ) ) );
-    STDC_assert( canif_ok == PASS );
+    CANIF_init( fbl_canif_channels_s, (u8_t)( sizeof( fbl_canif_channels_s ) / sizeof( fbl_canif_channels_s[0] ) ),
+                fbl_canif_tx_pdus_s, (u16_t)( sizeof( fbl_canif_tx_pdus_s ) / sizeof( fbl_canif_tx_pdus_s[0] ) ) );
 
     /* Only once CANTP's queues are initialised - a frame delivered mid-init could be lost */
     HAL_CAN_set_rx_callback( 0u, CANIF_rx_indication );

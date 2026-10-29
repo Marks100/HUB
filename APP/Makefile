@@ -217,6 +217,11 @@ endif
 # of this define. Kept in sync anyway so it doesn't sit there silently wrong.
 CFLAGS += -DVECT_TAB_OFFSET=$(APP_CODE_START)
 
+# FAULT_MGR slot cap: APP defines no faults yet (no fault table, no monitors), so the module's default of
+# 64 slots only costs RAM. 8 is a placeholder - raise it when APP gets a real fault table; init rejects a
+# table larger than this, so it cannot silently overflow.
+CFLAGS += -DFAULT_MGR_MAX_FAULTS=8
+
 # Linker flags configuration
 LDFLAGS := \
     $(LDFLAGS_COMMON) \

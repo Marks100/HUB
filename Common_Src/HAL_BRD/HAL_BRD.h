@@ -59,6 +59,7 @@ low_high_et HAL_BRD_read_panel_back_btn( void );
 
 /* TJA1051 CAN transceiver */
 void HAL_BRD_TJA1051_set_en_pin( low_high_et state );
+void HAL_BRD_MCP2515_spi_slave_select( low_high_et state );
 
 /* SENT_TX output pin - written straight from the TIM1 update interrupt */
 void HAL_BRD_SENT_TX_set_pin( low_high_et level );
