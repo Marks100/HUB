@@ -123,6 +123,13 @@ void HAL_BRD_init( void )
 	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_10MHz;
 	GPIO_Init( MCP2515_CS_PORT, &GPIO_InitStructure );
 
+	/* TJA1051 EN - an output so TJA1051_init() can take the transceiver out of standby. ODR is not touched: after a reset
+	   it is low (standby), and after a jump from the bootloader it keeps the level that stage left, so the bus stays up. */
+	GPIO_InitStructure.GPIO_Pin   = TJA1051_EN_PIN;
+	GPIO_InitStructure.GPIO_Mode  = GPIO_Mode_Out_PP;
+	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_2MHz;
+	GPIO_Init( TJA1051_EN_PORT, &GPIO_InitStructure );
+
 	/* Configure the GPIO_LED pin and set LOW immediately */
 	GPIO_InitStructure.GPIO_Pin = ONBOARD_LED_PIN;
 	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_Out_PP;
@@ -144,6 +151,18 @@ void HAL_BRD_init( void )
 	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
 	SENT_TX_OUT_PORT->BSRR = SENT_TX_OUT_PIN;
 	GPIO_Init( SENT_TX_OUT_PORT, &GPIO_InitStructure );
+
+	/* ERX supply enables - LOW (off) is latched before each pin becomes an output, so a supply never blips on */
+	GPIO_InitStructure.GPIO_Mode  = GPIO_Mode_Out_PP;
+	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_2MHz;
+
+	HAL_BRD_set_pin_state( ERX_PORT_0_PWR_PORT, ERX_PORT_0_PWR_PIN, LOW );
+	GPIO_InitStructure.GPIO_Pin = ERX_PORT_0_PWR_PIN;
+	GPIO_Init( ERX_PORT_0_PWR_PORT, &GPIO_InitStructure );
+
+	HAL_BRD_set_pin_state( ERX_PORT_1_PWR_PORT, ERX_PORT_1_PWR_PIN, LOW );
+	GPIO_InitStructure.GPIO_Pin = ERX_PORT_1_PWR_PIN;
+	GPIO_Init( ERX_PORT_1_PWR_PORT, &GPIO_InitStructure );
 }
 
 /*!

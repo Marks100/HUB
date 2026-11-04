@@ -67,6 +67,11 @@
 #define DID_APP_SOFTWARE_IDENTIFICATION  ( 0xF181u )
 #define APP_SW_ID_MAX_LEN                ( 24u )
 
+/* 0x22 ReadDataByIdentifier DID for the ERX heartbeat state (AUTOCFG_get_erx_heartbeat_info()): the ISO position,
+   alive/lost, frames received and alive counter of every ERX the HUB follows. Same vehicle-manufacturer-specific range
+   as the keys above (0xF900-0xF9FF), read-only. */
+#define DID_APP_ERX_HEARTBEATS           ( 0xF910u )
+
 /***************************************************************************************************
 **                              Exported Globals                                                  **
 ***************************************************************************************************/

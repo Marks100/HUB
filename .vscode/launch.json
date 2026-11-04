@@ -52,14 +52,15 @@
       "name": "Ceedling Debug",
       "type": "cppdbg",
       "request": "launch",
-      "program": "${workspaceFolder}/APP/test/build/gcov/out/${fileBasenameNoExtension}.out",
+      "preLaunchTask": "test_specific",
+      "program": "${workspaceFolder}/APP/test/build/test/out/${fileBasenameNoExtension}/${fileBasenameNoExtension}.exe",
       "args": [],
       "stopAtEntry": false,
-      "cwd": "${workspaceFolder}",
+      "cwd": "${workspaceFolder}/APP/test",
       "environment": [],
       "externalConsole": false,
       "MIMode": "gdb",
-      "miDebuggerPath": "${env:TTLD}/MinGW/TDM32_492_0/bin/gdb.exe",
+      "miDebuggerPath": "C:/SVN_source/Tools/MinGW/mingw32_v15.2/bin/gdb.exe",
       "setupCommands": [
         {
           "description": "Enable pretty-printing for gdb",

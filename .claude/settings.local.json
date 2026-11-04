@@ -2,7 +2,10 @@
   "permissions": {
     "allow": [
       "PowerShell(Get-Command app_crc_injector -ErrorAction SilentlyContinue)",
-      "PowerShell(cd \"c:\\\\Users\\\\marks\\\\OneDrive\\\\Desktop\\\\Projects\\\\HUB\\\\APP\"; make app_build 2>&1 | Select-String -Pattern \"libg_nano|TOTAL|error:|warning:\" | ForEach-Object { $_.Line })"
+      "PowerShell(cd \"c:\\\\Users\\\\marks\\\\OneDrive\\\\Desktop\\\\Projects\\\\HUB\\\\APP\"; make app_build 2>&1 | Select-String -Pattern \"libg_nano|TOTAL|error:|warning:\" | ForEach-Object { $_.Line })",
+      "PowerShell(make -C APP 2>&1 | Select-String -Pattern \"ESP01|rror|Warning|warning found\" | Select-Object -First 30; Write-Output \"=== exit $LASTEXITCODE ===\")",
+      "PowerShell(make -C APP 2>&1)",
+      "PowerShell(Set-Location \"c:\\\\Users\\\\marks\\\\OneDrive\\\\Desktop\\\\Projects\\\\HUB\\\\APP\"; make 2>&1 | Select-String -Pattern \"ESP01\\\\.o|warning|Warning|rror\" | Select-Object -First 20; Write-Output \"=== exit $LASTEXITCODE ===\")"
     ]
   }
 }

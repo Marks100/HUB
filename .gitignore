@@ -13,3 +13,8 @@ BM/Src/secure_boot_hmac_secret.h
 FBL/Build/obj/
 FBL/Build/
 APP/test/support/library_timestamp.h
+APP/test/build_system/build/
+APP/test/build_system/build_cov/
+APP/test/build_system/*.a
+APP/test/build/
+APP/test/CodeCoverage/

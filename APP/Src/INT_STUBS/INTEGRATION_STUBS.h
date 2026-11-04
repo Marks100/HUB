@@ -28,18 +28,21 @@
 #include "CANIF.h"
 #include "UDS.h"
 #include "APP_PDU_IDS.h"
+#include "APP_ISO_POSITIONS.h"
 #include "APP_NVM_BLOCKS.h"
 #include "FAULT_MGR.h"
 #include "UDS_config.h"
 #include "UDS_CLIENT.h"
 #include "DIAG_GW.h"
+#include "AUTOCFG.h"
 
-/* The diagnostic nodes on CAN2: a node can have any of the 130 request IDs 0x718-0x799, and answers on its
-   request ID - 0x100. Node number n (what UDS_CLIENT_set_node() and DIAG_GW take) is request ID - 0x718. */
-#define APP_NODE_REQUEST_BASE_ID                ( 0x718u )
-#define APP_NODE_REQUEST_LAST_ID                ( 0x799u )
-#define APP_NODE_RESPONSE_BASE_ID               ( 0x618u )
-#define APP_NODE_RESPONSE_LAST_ID               ( 0x699u )
+/* The diagnostic nodes on CAN2: an ERX at one of the ISO positions of APP_ISO_POSITIONS.h (the 69 from 0x16 to 0x5A, of
+   which 25 are used) has the request ID 0x700 plus its position, 0x716-0x75A, and answers on 0x600 plus it, 0x616-0x65A.
+   Node number n (what UDS_CLIENT_set_node() and DIAG_GW take) is request ID - 0x716, so node 0 is the first position. */
+#define APP_NODE_REQUEST_BASE_ID                ( 0x700u + APP_ISO_POSITION_FIRST )
+#define APP_NODE_REQUEST_LAST_ID                ( 0x700u + APP_ISO_POSITION_LAST )
+#define APP_NODE_RESPONSE_BASE_ID               ( 0x600u + APP_ISO_POSITION_FIRST )
+#define APP_NODE_RESPONSE_LAST_ID               ( 0x600u + APP_ISO_POSITION_LAST )
 
 /* The HUB's CANTP on CAN2 talks to one virtual node on these - outside both ranges, so PDUR can tell a frame the
    gateway is routing from a message CANTP has reassembled for the HUB. Never on the bus. */
@@ -64,6 +67,7 @@ extern const hw_crc_config_st           hw_crc_cfg_s;
 extern const DBG_MGR_cfg_st             dbg_mgr_cfg_s;
 extern const TIME_cfg_st                time_cfg_s;
 extern const WDG_HW_STM32_config_st     wdg_cfg_s;
+extern AUTOCFG_init_st                  app_autocfg_init_s;
 
 /* HMI, buttons, buzzer and LEDs */
 extern const BTN_MGR_func_table_st      btm_mgr_func_table_s[3];

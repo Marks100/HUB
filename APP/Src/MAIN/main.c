@@ -112,6 +112,7 @@ void app_main( void )
    CANIF_init( canif_channels_s, (u8_t)APP_CAN_NUM_CHANNELS, canif_tx_pdus_s, canif_num_tx_pdus_s );
    DIAG_GW_init( &app_diag_gw_cfg_s );
    UDS_CLIENT_init( &app_uds_client_cfg_s );
+   AUTOCFG_init( &app_autocfg_init_s );
    HAL_CAN_set_rx_callback( APP_CAN_CH_MAIN, CANIF_rx_indication );
 
    UDS_init( &app_uds_init_cfg_s );
@@ -121,13 +122,14 @@ void app_main( void )
 
    /* Init completed - tells BM this image is good by clearing its boot failure counter */
    SHARED_RAM_set_boot_failure_count( 0u );
-
-   while(1);
 }
 
 void main( void )
 {
    app_main();
+
+   /* Everything from here is interrupt driven: SysTick runs the scheduler */
+   while(1);
 }
 
 /****************************** END OF FILE *******************************************************/

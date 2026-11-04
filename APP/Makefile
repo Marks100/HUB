@@ -238,7 +238,7 @@ LDFLAGS := \
 ####################################################################################################
 .PHONY: all rebuild build_clean total_clean app_build app_rebuild test_all gen_lcov_report
 .PHONY: $(BM_IMAGE) $(FBL_IMAGE) full_image full_image_with_eol
-.PHONY: test_clean test_unit_all test_int_all insert_test_headers
+.PHONY: test_clean test_unit_all test_sw_all
 .PHONY: doxygen doxygen_clean
 .PHONY: doc_functions doc_functions_clean
 .PHONY: no_targets__ list analyse_app_mapfile print_file_list
@@ -389,9 +389,13 @@ force_ceedling_relink:
 	@mkdir -p $(dir $(LIBRARY_TIMESTAMP_FILE))
 	@touch $(LIBRARY_TIMESTAMP_FILE)
 
-# YML FILES for test configuration
+# YML FILES for test configuration - run from test/
 UNIT_TEST_YML 	:= unit_project.yml
-INT_TEST_YML 	:= int_project.yml
+SW_TEST_YML 	:= sw_test_project.yml
+
+# The software tests link libHUB_APP_x86.a, built by test/build_system. HUB_COVERAGE=y makes the Ceedling project
+# build and link the one with coverage instrumentation, which the coverage targets below set
+SW_COVERAGE_ENV := HUB_COVERAGE=y
 
 # Various test reports
 CEEDLING_COV_DIR					  := test/CodeCoverage
@@ -401,23 +405,34 @@ CEEDLING_COV_XML_TEST_REPORT_DEST     := test/$(CEEDLING_COV_DIR)
 EXCLUDE_TEST    := --exclude '.*test_.*'
 EXCLUDE_TMD     := --exclude '.*TMD_.*'
 EXCLUDE_UNITY   := --exclude '.*unity.*'
-GCOVR_EXCLUDES  := $(EXCLUDE_TEST) $(EXCLUDE_TMD) $(EXCLUDE_UNITY)
+EXCLUDE_TEST_DIR := --exclude '.*/test/.*'
+GCOVR_EXCLUDES  := $(EXCLUDE_TEST) $(EXCLUDE_TMD) $(EXCLUDE_UNITY) $(EXCLUDE_TEST_DIR)
 
-# Function to detect test type based on file location
+# Where gcovr looks for coverage data: Ceedling's own build, and the instrumented library's objects when there are any
+GCOVR_SEARCH    := test/build $(wildcard test/build_system/build_cov)
+
+# Function to detect test type based on file location: unit_tests/ or sw_tests/, anywhere else is unknown
 define detect_test_type
-$(if $(wildcard test/unit_tests/$(1).c ../*/test/unit_tests/$(1).c),unit,integration)
+$(if $(wildcard test/unit_tests/$(1).c ../*/test/unit_tests/$(1).c),unit,$(if $(wildcard test/sw_tests/$(1).c),software,unknown))
 endef
 
 # Function to get the correct YML file
 define get_test_yml
-$(if $(filter unit,$(call detect_test_type,$(1))),$(UNIT_TEST_YML),$(INT_TEST_YML))
+$(if $(filter unit,$(call detect_test_type,$(1))),$(UNIT_TEST_YML),$(SW_TEST_YML))
+endef
+
+# The coverage environment a test type needs: only the software tests link a prebuilt library
+define get_test_env
+$(if $(filter software,$(call detect_test_type,$(1))),$(SW_COVERAGE_ENV),)
 endef
 
 define set_test_vars
   	$(eval TEST_FILE := $(1))
   	$(eval TEST_TYPE := $(call detect_test_type,$(basename $(1))))
   	$(eval TEST_YML := $(call get_test_yml,$(basename $(1))))
-  	$(info --> Detected $(TEST_TYPE) test with coverage: $(TEST_FILE))
+  	$(eval TEST_ENV := $(call get_test_env,$(basename $(1))))
+  	$(if $(filter unknown,$(TEST_TYPE)),$(error $(TEST_FILE) is in neither test/unit_tests nor test/sw_tests))
+  	$(info --> Detected $(TEST_TYPE) test: $(TEST_FILE))
 	$(info --> Using config: $(TEST_YML))
 endef
 
@@ -427,20 +442,15 @@ $(CEEDLING_COV_XML_TEST_REPORT_DEST):
 $(CEEDLING_COV_DIR):
 	@mkdir -p $(CEEDLING_COV_DIR)
 
-# mbedTLS MinGW library for test environment
-$(MBEDTLS_MINGW_LIB):
-	@echo "Building mbedTLS MinGW library for tests..."
-	@$(MAKE) $(MAKE_FLAGS) -C ../mbedtls-official-3.6.4 -f Makefile.mingw.mk all
-	@$(MAKE) $(MAKE_FLAGS) force_ceedling_relink
-
-TEST_REPORT_HTML      := test/test_report.html
+# Ceedling's test report for the last coverage run (report_tests_log_factory)
+TEST_REPORT_HTML      := test/build/artifacts/gcov/tests_report.html
 BADGE_OUTPUT_DIR      := ../.github/badges
 
 # Coverage report generation - works for both single tests and all tests
 cov_report: $(CEEDLING_COV_DIR)
 	@echo "--> Generating Code Coverage Report..."
-	@$(GCOVR_EXE) $(GCOVR_EXCLUDES) --root .. --txt-metric branch --merge-mode-functions=merge-use-line-0 --html-details --gcov-ignore-errors=no_working_dir_found -o $(CEEDLING_COV_DIR)/coverage.html test/build
-	@$(GCOVR_EXE) --root .. --txt-metric branch --merge-mode-functions=merge-use-line-0 --cobertura-pretty --gcov-ignore-errors=no_working_dir_found --cobertura $(CEEDLING_COV_DIR)/example_cobertura.xml test/build
+	@$(GCOVR_EXE) $(GCOVR_EXCLUDES) --root .. --txt-metric branch --merge-mode-functions=merge-use-line-0 --html-details --gcov-ignore-errors=no_working_dir_found -o $(CEEDLING_COV_DIR)/coverage.html $(GCOVR_SEARCH)
+	@$(GCOVR_EXE) $(GCOVR_EXCLUDES) --root .. --txt-metric branch --merge-mode-functions=merge-use-line-0 --cobertura-pretty --gcov-ignore-errors=no_working_dir_found --cobertura $(CEEDLING_COV_DIR)/example_cobertura.xml $(GCOVR_SEARCH)
 	@-$(MAKE) test_badges
 	@echo "--> Launching HTML..."
 	@-cd $(CEEDLING_COV_DIR) && $(OPEN_CMD) coverage.html 2>/dev/null || true
@@ -454,27 +464,28 @@ test_badges:
 test_clean: 
 	@echo "--> Cleaning test artifacts..."
 	@-cd test && ceedling --project=$(UNIT_TEST_YML) clobber > /dev/null 2>&1
-	@-cd test && ceedling --project=$(INT_TEST_YML) clobber > /dev/null 2>&1
+	@-cd test && ceedling --project=$(SW_TEST_YML) clobber > /dev/null 2>&1
+	@$(MAKE) $(MAKE_FLAGS) -C test/build_system clean
 	@rm -fr $(CEEDLING_COV_XML_TEST_REPORT_DEST) $(CEEDLING_COV_DIR)
 	@echo "--> Test Cleaned!"
 
-# Inserts/updates auto-managed headers in all int test files from the template
-.PHONY: insert_test_headers
-insert_test_headers:
-	@echo "--> Inserting test headers from template..."
-	@ruby -S test_header_inserter --template test/int_tests/header_template.txt --test-dir test/int_tests
+# make test_X.test and make test_X.test_cov do what make test_X and make test_X_cov do - the form the VS Code tasks use.
+# Before the test_% rules: the stems tie in length for some names, and the earlier rule wins
+%.test:
+	@$(MAKE) $*
 
-# Universal test runner - automatically detects unit vs integration
+%.test_cov:
+	@$(MAKE) $*_cov
+
+# Universal test runner - automatically detects a unit test (test/unit_tests) from a software test (test/sw_tests)
 test_%:
 	@$(call set_test_vars,test_$*.c)
-	@if [ "$(TEST_TYPE)" = "integration" ]; then $(MAKE) insert_test_headers; $(MAKE) autoversion; $(MAKE) $(MBEDTLS_MINGW_LIB); fi
 	@cd test && ceedling --project=$(TEST_YML) test:$(TEST_FILE)
 
-# Universal test with coverage - automatically detects unit vs integration
+# Universal test with coverage. A software test links the instrumented library, so the modules in it are measured
 test_%_cov: $(CEEDLING_COV_DIR)
 	@$(call set_test_vars,test_$(patsubst %_cov,%,$*).c)
-	@if [ "$(TEST_TYPE)" = "integration" ]; then $(MAKE) insert_test_headers; $(MAKE) autoversion; $(MAKE) $(MBEDTLS_MINGW_LIB); fi
-	@cd test && ceedling --project=$(TEST_YML) gcov:$(TEST_FILE)
+	@cd test && $(TEST_ENV) ceedling --project=$(TEST_YML) gcov:$(TEST_FILE)
 	@$(MAKE) cov_report
 
 # All unit tests
@@ -483,10 +494,10 @@ test_unit_all: test_clean $(CEEDLING_COV_DIR)
 	@-cd test && ceedling --project=$(UNIT_TEST_YML) gcov:all
 	@$(MAKE) cov_report
 
-# All integration tests
-test_int_all: test_clean insert_test_headers autoversion $(MBEDTLS_MINGW_LIB)
-	@echo "Running all integration tests"
-	@cd test && ceedling --project=$(INT_TEST_YML) gcov:all
+# All software tests, with coverage
+test_sw_all: test_clean $(CEEDLING_COV_DIR)
+	@echo "Running all software tests"
+	@cd test && $(SW_COVERAGE_ENV) ceedling --project=$(SW_TEST_YML) gcov:all
 	@$(MAKE) cov_report
 
 # user fn check overall test result for Pass \ Fail.  Exits with error code on failure

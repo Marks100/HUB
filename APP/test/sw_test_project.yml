@@ -1,0 +1,181 @@
+---
+# Software tests: each test links libHUB_APP_x86.a, the project's own source and xCOMMON_MODULES' built for
+# the host by build_system/Makefile, and drives the real modules through the real wiring (INTEGRATION_STUBS.c).
+# Run from this folder:  ceedling --project=sw_test_project.yml test:test_<name>.c
+# The library is built by the :pre_build hook below, from build_system/lib_*.txt - see build_system/Makefile.
+:project:
+  :which_ceedling: gem
+  :ceedling_version: 1.0.1
+  :use_mocks: FALSE                 # real modules only - nothing is mocked
+  :use_test_preprocessor: :none
+  :use_deep_preprocessor: :none
+  :use_backtrace: :simple
+  :use_decorators: :auto
+  :build_root: build
+  :test_file_prefix: test_
+  :default_tasks:
+    - test:all
+  :test_threads: 8
+  :compile_threads: 8
+  :release_build: FALSE
+
+:mixins:
+  :enabled: []
+  :load_paths: []
+
+:test_build:
+  :use_assembly: FALSE
+
+:plugins:
+  :load_paths: []
+  :enabled:
+    - command_hooks                 # builds the library before any build - see :command_hooks: below
+    - gcov                          # coverage - needs HUB_COVERAGE=y so the library is the instrumented one, see :libraries:
+    - report_tests_pretty_stdout
+    - report_tests_log_factory
+
+# build/artifacts/<test or gcov>/report.html and the like
+:report_tests_log_factory:
+  :reports:
+    - html
+    - junit
+    - json
+
+:paths:
+  :test:
+    - +:sw_tests/**
+  # No :source: a test links the library, not the module's .c - a source path would have Ceedling compile
+  # (and link ahead of the library) the .c of every header the test includes
+  :source: []
+  # The folders of build_system/lib_includes.txt and build_system/lib_sources.txt, as globs: the target-header stand-ins first,
+  # then the project, then the common modules, then the config. Ceedling applies the - lines after all the
+  # others, so they name only what no folder wanted should sit under: the other targets' MCAL, FreeRTOS and
+  # the CRYPTO third-party trees
+  :include:
+    - ../../xCOMMON_MODULES/test/support/VHW_STM32F10X
+    - support
+    - ../Src/**
+    - ../../Common_Src/**
+    - ../../xCOMMON_MODULES/Src/**
+    - -:../../xCOMMON_MODULES/Src/MCAL/s32k/**
+    - -:../../xCOMMON_MODULES/Src/MCAL/stm32/stm32f0x0/**
+    - -:../../xCOMMON_MODULES/Src/MCAL/stm32/stm32f4xx/**
+    - -:../../xCOMMON_MODULES/Src/MCAL/stm32/stm32g4xx/**
+    - -:../../xCOMMON_MODULES/Src/FREERTOS/**
+    - -:../../xCOMMON_MODULES/Src/CRYPTO/BearSSL/**
+    - -:../../xCOMMON_MODULES/Src/CRYPTO/micro-ecc/**
+    - -:../../xCOMMON_MODULES/Src/CRYPTO/ED25519/**
+    - ../../xCOMMON_MODULES/cfg
+    - ../../xCOMMON_MODULES/test/support/models/TMD_TIME
+    - ../../xCOMMON_MODULES/test/support/models/TMD_SYSTICK
+    - ../../xCOMMON_MODULES/test/support/models/TMD_NVM
+    - ../../xCOMMON_MODULES/test/support/models/TMD_ERX
+    - ../../xCOMMON_MODULES/test/support/models/TMD_GPIO
+    - ../../xCOMMON_MODULES/test/support/models/TMD_INIT
+    - ../../xCOMMON_MODULES/test/support/models/TMD_CANTP
+    - ../../xCOMMON_MODULES/test/support/models/TMD_UDS
+  # Linked into every test: the CAN bus (TMD_CAN, with TMD_DEBUG for its prints), the TJA1051 and MCP2515 models, and sw_stubs
+  # (the TMD_INIT_cfg_st every test's setUp() starts a virgin ECU with). The virtual STM32 (xCOMMON VHW_STM32F10X) is in the library
+  :support:
+    - sw_stubs
+    - ../../xCOMMON_MODULES/test/support/models/TMD_CAN
+    - ../../xCOMMON_MODULES/test/support/models/TMD_DEBUG
+    - ../../xCOMMON_MODULES/test/support/models/TMD_TJA1051
+    - ../../xCOMMON_MODULES/test/support/models/TMD_MCP2515
+  :libraries:
+    - build_system                  # the folder libHUB_APP_x86.a is built into
+
+# The clock and the ECU start, one file of their folders each: the models to start and the clock's list are the project's own,
+# in sw_stubs/SW_TEST_STUBS.c
+:files:
+  :support:
+    - ../../xCOMMON_MODULES/test/support/models/TMD_TIME/TMD_TIME.c
+    - ../../xCOMMON_MODULES/test/support/models/TMD_SYSTICK/TMD_SYSTICK.c
+    - ../../xCOMMON_MODULES/test/support/models/TMD_NVM/TMD_NVM.c
+    - ../../xCOMMON_MODULES/test/support/models/TMD_ERX/TMD_ERX_UDS.c
+    - ../../xCOMMON_MODULES/test/support/models/TMD_ERX/TMD_ERX.c
+    - ../../xCOMMON_MODULES/test/support/models/TMD_GPIO/TMD_GPIO.c
+    - ../../xCOMMON_MODULES/test/support/models/TMD_INIT/TMD_INIT.c
+    - ../../xCOMMON_MODULES/test/support/models/TMD_CANTP/TMD_CANTP.c
+    - ../../xCOMMON_MODULES/test/support/models/TMD_UDS/TMD_UDS.c
+
+# Must match build_system/lib_defines.txt. TEST is not defined: the library is built without it, so STATIC is static
+# in the library and a test that saw it empty would disagree about the headers
+:defines:
+  :test:
+    - STM32F103xB
+    - TARGET_STM32F103C8T6
+    - TARGET_STM32F1
+    - STM32F10X_MD
+    - FAULT_MGR_MAX_FAULTS=8
+  :release: []
+  :use_test_definition: FALSE
+
+# Must agree with build_system/lib_flags.txt where it changes the code: no -fpack-struct / -fshort-enums here or there
+:flags:
+  :test:
+    :compile:
+      - -std=gnu11
+      - -O0
+      - -g
+      - -Wno-incompatible-pointer-types
+    :link:
+      # A test may define a function the library or the virtual hardware also defines: the first definition in link
+      # order, the test's, wins. weak does not work for this on MinGW. The cost is that a real duplicate is no longer an error.
+      - -Wl,--allow-multiple-definition
+  :gcov:
+    :compile:
+      - -std=gnu11
+      - -O0
+      - -g
+      - -fprofile-arcs
+      - -ftest-coverage
+      - -Wno-incompatible-pointer-types
+
+:unity:
+  :defines:
+    - UNITY_EXCLUDE_FLOAT
+    - UNITY_INCLUDE_EXEC_TIME       # Unity.CurrentTestStartTime / StopTime - see support/test_timing.h
+
+:gcov:
+  :summaries: TRUE
+
+# HUB_COVERAGE=y links the library built with coverage instrumentation, so the modules in it are measured too
+:libraries:
+  :placement: :end
+  :flag: "-l${1}"
+  :path_flag: "-L ${1}"
+  :system:
+    - m
+  :test:
+    - "HUB_APP_x86#{ENV['HUB_COVERAGE'] == 'y' ? '_cov' : ''}"
+  :release: []
+
+# Build the library before every Ceedling build. Incremental: a no-op once built.
+:command_hooks:
+  :pre_build:
+    :executable: "#{ENV['TTLD']}/MinGW/mingw32_v15.2/bin/make.exe"
+    :arguments:
+      - -C
+      - build_system
+      - -j8
+      - "COVERAGE=#{ENV['HUB_COVERAGE']}"
+      - "MINGW_CC=#{ENV['TTLD']}/MinGW/mingw32_v15.2/bin/gcc.exe"
+      - "MINGW_AR=#{ENV['TTLD']}/MinGW/mingw32_v15.2/bin/ar.exe"
+    :logging: TRUE
+
+:environment:
+  - :path:
+    - "#{ENV['TTLD']}/MinGW/mingw32_v15.2/bin"
+    - "#{ENV['PATH']}"
+
+:tools:
+  :test_compiler:
+    :executable: "#{ENV['TTLD']}/MinGW/mingw32_v15.2/bin/gcc.exe"
+    :name: GCC
+    :optional: FALSE
+  :test_linker:
+    :executable: "#{ENV['TTLD']}/MinGW/mingw32_v15.2/bin/gcc.exe"
+    :name: GCC
+    :optional: FALSE
+...

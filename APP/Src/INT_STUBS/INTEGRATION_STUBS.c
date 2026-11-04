@@ -169,6 +169,36 @@ const NVM_GEN2_hw_interface_st nvm_gen2_hw_interface_s =
 };
 
 /***************************************************************************************************
+**                              AUTOCFG (follows the ERXs' heartbeats; the HUB does not run the AUTOCFG protocol)            **
+***************************************************************************************************/
+/* Each port's ERX supply enable is a pin, HIGH = on (HAL_config.h). With autocfg_enabled FALSE, AUTOCFG_init()
+   switches on the ports that have an ERX configured and nothing switches them off. */
+STATIC void app_autocfg_port_0_power( AUTOCFG_port_power_state_et state )
+{
+    HAL_BRD_set_pin_state( ERX_PORT_0_PWR_PORT, ERX_PORT_0_PWR_PIN, ( state == PORT_POWER_ON ) ? HIGH : LOW );
+}
+
+STATIC void app_autocfg_port_1_power( AUTOCFG_port_power_state_et state )
+{
+    HAL_BRD_set_pin_state( ERX_PORT_1_PWR_PORT, ERX_PORT_1_PWR_PIN, ( state == PORT_POWER_ON ) ? HIGH : LOW );
+}
+
+/* The ERXs the HUB follows and powers: the port each is on and its ISO position, at most AUTOCFG_V2_MAX_ERX_PER_PORT
+   per port. A port with no row is not powered. */
+AUTOCFG_init_st app_autocfg_init_s =
+{
+    .get_time_ms         = TIME_get_cumulative_run_time_ms_64,
+    .has_time_elapsed_ms = TIME_has_time_elapsed_ms_64,
+    .port_pwr_ctrl       = { app_autocfg_port_0_power, app_autocfg_port_1_power },
+    .erx_locations       =
+    {
+        { 0u, APP_ISO_AXLE_1_CENTRE },
+        { 1u, APP_ISO_AXLE_1_OUTER_LEFT }
+    },
+    .autocfg_enabled     = FALSE
+};
+
+/***************************************************************************************************
 **                              WDG                                                               **
 ***************************************************************************************************/
 const WDG_HW_STM32_config_st wdg_cfg_s =
@@ -460,7 +490,8 @@ STATIC const CANIF_rx_pdu_st canif_main_rx_pdus_s[] =
 /* DIAG_GW decides per frame whether a reply is the HUB's (its CANTP) or the tester's (CAN1) */
 STATIC const CANIF_rx_pdu_st canif_can2_rx_pdus_s[] =
 {
-    { APP_NODE_RESPONSE_BASE_ID, CANIF_TO_PDUR, APP_PDU_GW_NODE, APP_NODE_RESPONSE_LAST_ID },
+    { APP_NODE_RESPONSE_BASE_ID,   CANIF_TO_PDUR, APP_PDU_GW_NODE,           APP_NODE_RESPONSE_LAST_ID },
+    { AUTOCFG_HEARTBEAT_BASE_ID + APP_ISO_POSITION_FIRST, CANIF_TO_PDUR, APP_PDU_ERX_HEARTBEAT_RX, AUTOCFG_HEARTBEAT_BASE_ID + APP_ISO_POSITION_LAST },
 };
 
 /* Row index = channel number. A second bus is one more row. */
@@ -589,6 +620,14 @@ const u16_t canif_num_tx_pdus_s = (u16_t)( sizeof( canif_tx_pdus_s ) / sizeof( c
 /***************************************************************************************************
 **                              PDUR                                                              **
 ***************************************************************************************************/
+/* PDUR's receive shape with the CAN ID, to AUTOCFG's heartbeat consumer */
+STATIC void app_pdur_erx_heartbeat_rx( PDUR_pdu_id_t pdu_id, u32_t id, u8_t* data_p, u16_t len )
+{
+    (void)pdu_id;
+
+    AUTOCFG_receive_heartbeat( id, data_p, len );
+}
+
 /* Routes by PDU ID alone - no CAN ID, channel or medium. What a route sends with and receives from is the
    lower layer's: CANIF's receive and transmit tables, CANTP's pairs. */
 const PDUR_route_st pdur_routing_table_s[] =
@@ -637,6 +676,9 @@ const PDUR_route_st pdur_routing_table_s[] =
        (CAN2) to these two routes, and DIAG_GW is told the ID so it knows the node */
     [APP_PDU_GW_TESTER] = { .upperLayerRxIndicationId = DIAG_GW_tester_rx },
     [APP_PDU_GW_NODE]   = { .upperLayerRxIndicationId = DIAG_GW_node_rx },
+
+    /* AUTOCFG follows the ERXs' heartbeats: the ISO position is in the ID, which PDUR passes up */
+    [APP_PDU_ERX_HEARTBEAT_RX] = { .upperLayerRxIndicationId = app_pdur_erx_heartbeat_rx },
 
     /* Plain-frame routes - CANIF sends by PDU ID (its transmit table) and queues what the controller's
        mailboxes can't take at once */

@@ -1,0 +1,9 @@
+-std=gnu11
+-O1
+-g
+-Wall
+-Wno-unknown-pragmas
+-Wno-pointer-sign
+-Wno-incompatible-pointer-types
+-ffunction-sections
+-fdata-sections

@@ -146,7 +146,7 @@ void HAL_USART1_close( void )
 *   \note         
 *
 ***************************************************************************************************/
-void HAL_USART1_set_callback( HAL_USART_func_type func_p )
+void HAL_USART1_set_rx_callback( HAL_USART_func_type func_p )
 {
 	if( func_p != NULL_P )
 	{

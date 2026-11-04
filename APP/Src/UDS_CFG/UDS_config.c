@@ -66,6 +66,7 @@ STATIC u8_t uds_handle_communication_control( u16_t subfunc, u8_t* data_p, u16_t
 STATIC u8_t uds_handle_control_dtc_setting( u16_t subfunc, u8_t* data_p, u16_t* len_p, UDS_response_code_et* nrc_p );
 STATIC u8_t uds_handle_write_key( u16_t subfunc, u8_t* data_p, u16_t* len_p, UDS_response_code_et* nrc_p );
 STATIC u8_t uds_handle_read_app_sw_id( u16_t subfunc, u8_t* data_p, u16_t* len_p, UDS_response_code_et* nrc_p );
+STATIC u8_t uds_handle_read_erx_heartbeats( u16_t subfunc, u8_t* data_p, u16_t* len_p, UDS_response_code_et* nrc_p );
 STATIC u8_t uds_handle_read_dtc_information( u16_t subfunc, u8_t* data_p, u16_t* len_p, UDS_response_code_et* nrc_p );
 STATIC u8_t uds_handle_clear_diagnostic_information( u16_t subfunc, u8_t* data_p, u16_t* len_p, UDS_response_code_et* nrc_p );
 STATIC void uds_handle_programming_session_notify( void );
@@ -162,6 +163,7 @@ STATIC UDS_subfunction_table_st write_data_by_identifier_subfuncs_s[] =
 STATIC UDS_subfunction_table_st read_data_by_identifier_subfuncs_s[] =
 {
     { DID_APP_SOFTWARE_IDENTIFICATION, UDS_SUBFUNC_MASK_EXACT, uds_handle_read_app_sw_id, UDS_SES_ANY, 0u },
+    { DID_APP_ERX_HEARTBEATS, UDS_SUBFUNC_MASK_EXACT, uds_handle_read_erx_heartbeats, UDS_SES_ANY, 0u },
 };
 
 /* 0x19/0x14 read and clear FAULT_MGR's DTCs - any session, no security (ISO 14229-1 has both
@@ -531,6 +533,23 @@ STATIC u8_t uds_handle_read_app_sw_id( u16_t subfunc, u8_t* data_p, u16_t* len_p
                                 sw_version[0], sw_version[1], sw_version[2], VER_get_sw_release_type() );
 
     *len_p = ( written > 0 ) ? (u16_t)written : 0u;
+    *nrc_p = UDS_RC_POSITIVE_RESPONSE;
+
+    return( 0u );
+}
+
+/*!
+****************************************************************************************************
+*   \brief         0x22 ReadDataByIdentifier - the ERX heartbeat state (DID_APP_ERX_HEARTBEATS)
+*   \details       AUTOCFG_HEARTBEAT_INFO_SIZE bytes, one record per ISO position slot: see
+*                  AUTOCFG_get_erx_heartbeat_info() for the layout. Any session, no security, like the identification
+*                  DIDs: it reports what the HUB hears and changes nothing.
+***************************************************************************************************/
+STATIC u8_t uds_handle_read_erx_heartbeats( u16_t subfunc, u8_t* data_p, u16_t* len_p, UDS_response_code_et* nrc_p )
+{
+    (void)subfunc;
+
+    AUTOCFG_get_erx_heartbeat_info( data_p, len_p );
     *nrc_p = UDS_RC_POSITIVE_RESPONSE;
 
     return( 0u );

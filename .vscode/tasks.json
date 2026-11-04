@@ -86,7 +86,19 @@
             "label": "test_all",
             "type": "shell",
             "options": { "cwd": "${workspaceFolder}/APP" },
-            "command": "mingw32-make.exe test_unit_all test_int_all",
+            "command": "mingw32-make.exe test_unit_all test_sw_all",
+        },
+        {
+            "label": "sw_test_lib_build",
+            "type": "shell",
+            "options": { "cwd": "${workspaceFolder}/APP/test/build_system" },
+            "command": "mingw32-make.exe -j8",
+        },
+        {
+            "label": "sw_test_lib_clean",
+            "type": "shell",
+            "options": { "cwd": "${workspaceFolder}/APP/test/build_system" },
+            "command": "mingw32-make.exe clean",
         },
         {
             "label": "gen_overall_gcovr_report",

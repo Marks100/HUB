@@ -11,7 +11,6 @@
 **                              Includes                                                          **
 ***************************************************************************************************/
 #include "SCHED_config.h"
-#include "DWT.h"
 #include "TIME.h"
 #include "WDG.h"
 #include "CANIF.h"
@@ -74,6 +73,7 @@ STATIC const SCHED_entry_st app_sched_table_s[] =
 	{ MQB_CLUSTER_tick,               SCHED_PERIOD_20MS,     0u },
 	{ MRA_CLUSTER_tick,               SCHED_PERIOD_20MS,     0u },
 	{ NVM_GEN2_tick,                  SCHED_PERIOD_50MS,     0u },
+	{ AUTOCFG_tick,                   SCHED_PERIOD_50MS,     0u },   /* autocfg_enabled is FALSE: follows the ERXs' heartbeats, no master */
 
 	/* Kicked last, so a kick means a whole pass completed - a callout that hangs part-way
 	   through stops the kicks */
@@ -84,11 +84,7 @@ const SCHED_cfg_st app_sched_cfg_s =
 {
 	.table_p     = app_sched_table_s,
 	.num_entries = (u8_t)( sizeof( app_sched_table_s ) / sizeof( app_sched_table_s[0u] ) ),
-	.tick_ms     = SCHED_TICK_RATE_MSECS,
-
-	.get_count_func_p   = DWT_get_count,
-	.count_to_us_func_p = DWT_cycles_to_us,
-	.overrun_func_p     = NULL_P
+	.tick_ms     = SCHED_TICK_RATE_MSECS
 };
 
 /***************************************************************************************************

@@ -36,7 +36,7 @@ void HAL_SPI1_init( void )
 	RCC_APB2PeriphClockCmd( RCC_APB2Periph_SPI1, ENABLE );
 
 	/* Enable the GPIOA clock */
-	RCC_APB2PeriphClockCmd( GPIO_Speed_10MHz, ENABLE );
+	RCC_APB2PeriphClockCmd( RCC_APB2Periph_GPIOA, ENABLE );
 
 	/* Configure the GPIOs */
 	GPIO_InitTypeDef GPIO_InitStructure;

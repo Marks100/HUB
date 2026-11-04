@@ -90,6 +90,15 @@
  * APP/Src/SENT_CFG. */
 #define SENT_TX_OUT_PORT    GPIOB
 #define SENT_TX_OUT_PIN     GPIO_Pin_12
+/* ERX supply enables, one per port - active HIGH, idle LOW (off) from HAL_BRD_init(). PB4 is free because
+ * SWJ_JTAGDisable (see HAL_BRD_init()) releases it from JNTRST; PB5 carries no alternate function this project
+ * needs. The switch's enable input wants a pull-down on the board so the supply stays off while the pin is
+ * still an input, before HAL_BRD_init() runs. */
+#define ERX_PORT_0_PWR_PORT GPIOB
+#define ERX_PORT_0_PWR_PIN  GPIO_Pin_4
+#define ERX_PORT_1_PWR_PORT GPIOB
+#define ERX_PORT_1_PWR_PIN  GPIO_Pin_5
+
 /* I2C1 pins (remapped: PB8=SCL, PB9=SDA) */
 #define I2C1_PORT           GPIOB
 #define I2C1_SCL_PIN        GPIO_Pin_8
