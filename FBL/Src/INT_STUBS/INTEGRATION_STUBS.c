@@ -20,7 +20,7 @@
 #include "FBL_NVM_BLOCKS.h"
 #include "CHKSUM.h"
 #include "CLK_STM32F1.h"
-#include "SHARED_RAM.h"
+#include "BOOT_HANDOFF.h"
 #include "FLS_STM32F1.h"
 #include "NVM_GEN2.h"
 #include "SYSTICK.h"
@@ -123,7 +123,7 @@ STATIC void fbl_download_attempt_notify( void )
     /* New flash contents are coming, so the old APP's unconfirmed launches no longer count against
        whatever boots next - otherwise BM would refuse a freshly downloaded APP straight away (see
        BM_MAX_BOOT_FAILURES, BM.h) until a power cycle. */
-    SHARED_RAM_set_boot_failure_count( 0u );
+    BOOT_HANDOFF_set_boot_failure_count( 0u );
 }
 
 /* fbl_config_st's dataset_download_notify_func_p - called once per accepted 0x34 RequestDownload
@@ -140,13 +140,22 @@ STATIC void fbl_dataset_download_notify( u8_t index )
     }
 }
 
+/* The blocks FBL registers, in registration order */
+STATIC const NVM_GEN2_block_entry_st fbl_nvm_gen2_block_table_s[] =
+{
+    { FBL_FINGERPRINT_BLOCK_ID,            &fbl_nvm_gen2_fingerprint_block_s },
+    { FBL_BOOT_COUNT_BLOCK_ID,             &fbl_nvm_gen2_boot_count_block_s },
+    { FBL_DOWNLOAD_ATTEMPT_COUNT_BLOCK_ID, &fbl_nvm_gen2_download_attempt_count_block_s },
+    { FBL_DATASET_DOWNLOAD_COUNT_BLOCK_ID, &fbl_nvm_gen2_dataset_download_count_block_s }
+};
+
 /* fbl_config_st's board_init - flash driver bring-up, shared RAM bring-up and NVM bring-up are
    independent of each other (order between them does not matter), but shared RAM must be up
    before reprog_request_clear_func_p runs, so all three are combined into that one early slot. */
 STATIC void fbl_board_init( void )
 {
     FLS_STM32F1_init();
-    SHARED_RAM_init();
+    BOOT_HANDOFF_init();
     NVM_GEN2_init( &fbl_nvm_gen2_hw_interface_s );
 
     /* Registration leaves a write pending if no record exists yet for a given block, and FBL
@@ -156,10 +165,7 @@ STATIC void fbl_board_init( void )
        FBL/Src/UDS_CFG/UDS_config.c, fbl_download_attempt_notify(), and the boot-count increment
        below) - an interrupted compaction is discarded at mount, never resumed, so there is no
        other NVM work for FBL to do in the background. */
-    NVM_GEN2_register_block( FBL_FINGERPRINT_BLOCK_ID, &fbl_nvm_gen2_fingerprint_block_s );
-    NVM_GEN2_register_block( FBL_BOOT_COUNT_BLOCK_ID, &fbl_nvm_gen2_boot_count_block_s );
-    NVM_GEN2_register_block( FBL_DOWNLOAD_ATTEMPT_COUNT_BLOCK_ID, &fbl_nvm_gen2_download_attempt_count_block_s );
-    NVM_GEN2_register_block( FBL_DATASET_DOWNLOAD_COUNT_BLOCK_ID, &fbl_nvm_gen2_dataset_download_count_block_s );
+    NVM_GEN2_register_blocks( fbl_nvm_gen2_block_table_s, NVM_GEN2_BLOCK_TABLE_SIZE( fbl_nvm_gen2_block_table_s ) );
 
     /* Unconditional, once per boot - this is literally what "boot count" means. Flushed
        immediately rather than left pending for the same reason as the two writers above. */
@@ -513,7 +519,7 @@ const fbl_config_st fbl_config_s =
     .crc_calculate_func_p      = CHKSUM_calc_hw_crc32,
     .display_update_func_p     = display_render,
 
-    .reprog_request_clear_func_p    = SHARED_RAM_set_fbl_request,
+    .reprog_request_clear_func_p    = BOOT_HANDOFF_set_fbl_request,
     .download_attempt_notify_func_p = fbl_download_attempt_notify,
     .dataset_download_notify_func_p = fbl_dataset_download_notify,
 

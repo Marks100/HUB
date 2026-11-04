@@ -70,6 +70,7 @@ FBL_C_SRCS := \
     $(COMMON_MODULES_DIR)/CANIF/CANIF.c \
     $(COMMON_MODULES_DIR)/CAN_TRCV/TJA1051/TJA1051.c \
     $(COMMON_MODULES_DIR)/SHARED_RAM/SHARED_RAM.c \
+    ../Common_Src/BOOT_HANDOFF/BOOT_HANDOFF.c \
     $(COMMON_MODULES_DIR)/MCU_JUMP/MCU_JUMP.c \
     $(COMMON_MODULES_DIR)/CHKSUM/CHKSUM.c \
     $(COMMON_MODULES_DIR)/CHKSUM/crc_hw_driver.c \
@@ -149,7 +150,8 @@ INCLUDES  := \
     -I ../Common_Src/HAL_CAN \
     -I ../Common_Src/HAL_I2C \
     -I ../Common_Src/PROJ_CONFIG \
-    -I ../Common_Src/FBL_NVM_BLOCKS
+    -I ../Common_Src/FBL_NVM_BLOCKS \
+    -I ../Common_Src/BOOT_HANDOFF
 
 ####################################################################################################
 # Flags

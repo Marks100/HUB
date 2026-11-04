@@ -6,7 +6,7 @@
 **                              Includes                                                          **
 ***************************************************************************************************/
 #include "TYRE_DATA.h"
-#include "SHARED_RAM.h"
+#include "BOOT_HANDOFF.h"
 
 /***************************************************************************************************
 **                              Defines                                                           **
@@ -72,7 +72,7 @@ void TYRE_DATA_init( void )
 
     tyre_data_valid_s = FALSE;
 
-    if( ( ( SHARED_RAM_get_dataset_valid_mask() & TYRE_DATA_DATASET_VALID_BIT ) != 0u ) &&
+    if( ( ( BOOT_HANDOFF_get_dataset_valid_mask() & TYRE_DATA_DATASET_VALID_BIT ) != 0u ) &&
         ( header_p->magic[0] == (u8_t)TYRE_DATA_MAGIC_0 ) &&
         ( header_p->magic[1] == (u8_t)TYRE_DATA_MAGIC_1 ) &&
         ( header_p->format_version == TYRE_DATA_FORMAT_VERSION ) )

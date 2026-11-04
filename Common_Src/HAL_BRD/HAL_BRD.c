@@ -222,14 +222,17 @@ void HAL_BRD_SENT_TX_set_pin( low_high_et level )
 		SENT_TX_OUT_PORT->BRR = SENT_TX_OUT_PIN;
 	}
 }
+
 /*!
 ****************************************************************************************************
 *
-*   \brief         Resets the board
+*   \brief         Sets the enable pin of the TJA1051 CAN transceiver
 *
 *   \author        MS
 *
-*   \return        low_high_et
+*   \param[in]     state - HIGH = normal mode, LOW = standby
+*
+*   \return        none
 *
 ***************************************************************************************************/
 void HAL_BRD_TJA1051_set_en_pin( low_high_et state )
@@ -396,7 +399,7 @@ low_high_et HAL_BRD_read_panel_back_btn( void )
 **  neither, and its LED lights when the pin is LOW. The helpers HAL_BRD_init() and                **
 **  HAL_BRD_set_onboard_led() use exist on both so those two need no variant code of their own.    **
 ***************************************************************************************************/
-#if ( HW_VARIANT == HW_VARIANT_SUPER_PILL )
+#if ( HW_VARIANT == SUPER_PILL )
 STATIC HAL_BRD_nrf_func_type HAL_BRD_nrf_func_p;
 
 /*!
@@ -550,7 +553,7 @@ void EXTI15_10_IRQHandler(void)
 		EXTI_ClearITPendingBit( NRF24_IRQ_EXT_LINE );
 	}
 }
-#else /* HW_VARIANT == HW_VARIANT_BLUE_PILL */
+#else /* HW_VARIANT == BLUE_PILL */
 /*!
 ****************************************************************************************************
 *
@@ -582,7 +585,7 @@ STATIC low_high_et hal_brd_onboard_led_level( off_on_et state )
 {
 	return( ( state == ON ) ? LOW : HIGH );
 }
-#endif /* HW_VARIANT == HW_VARIANT_SUPER_PILL */
+#endif /* HW_VARIANT == SUPER_PILL */
 
 /*!
 ****************************************************************************************************

@@ -47,6 +47,7 @@ BM_C_SRCS := \
     Src/bm_main.c \
     $(COMMON_MODULES_DIR)/BM/BM.c \
     $(COMMON_MODULES_DIR)/SHARED_RAM/SHARED_RAM.c \
+    ../Common_Src/BOOT_HANDOFF/BOOT_HANDOFF.c \
     $(COMMON_MODULES_DIR)/MCU_JUMP/MCU_JUMP.c \
     $(COMMON_MODULES_DIR)/CHKSUM/CHKSUM.c \
     $(COMMON_MODULES_DIR)/CHKSUM/crc_hw_driver.c \
@@ -90,7 +91,8 @@ INCLUDES  := \
     -I $(COMMON_MODULES_DIR)/MCAL/stm32/stm32f10x/core \
     -I $(COMMON_MODULES_DIR)/MCAL/stm32/cmsis_core \
     -I $(COMMON_MODULES_DIR) \
-    -I ../Common_Src/PROJ_CONFIG
+    -I ../Common_Src/PROJ_CONFIG \
+    -I ../Common_Src/BOOT_HANDOFF
 
 ####################################################################################################
 # Flags

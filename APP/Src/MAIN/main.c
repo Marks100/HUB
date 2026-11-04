@@ -37,7 +37,7 @@
 #include "VEHICLE_SIM_config.h"
 #include "VER.h"
 #include "UDS_config.h"
-#include "SHARED_RAM.h"
+#include "BOOT_HANDOFF.h"
 #include "TYRE_DATA.h"
 
 extern u32_t __isr_vector_start;   /* Linker symbol - APP/linker_script/STM32F103C8_flash.ld */
@@ -47,13 +47,10 @@ void app_main( void )
    MCU_JUMP_set_vector_table( (u32_t)&__isr_vector_start );
 
    CLK_STM32F1_init( &hse8_72mhz_s );
-   SHARED_RAM_init();
+   BOOT_HANDOFF_init();
 
    NVM_GEN2_init( &nvm_gen2_hw_interface_s );
-   NVM_GEN2_register_block( APP_GENERIC_BLOCK_ID, &app_nvm_gen2_generic_block_s );
-   NVM_GEN2_register_block( APP_KEY_1_BLOCK_ID, &app_nvm_gen2_key_1_block_s );
-   NVM_GEN2_register_block( APP_KEY_2_BLOCK_ID, &app_nvm_gen2_key_2_block_s );
-   NVM_GEN2_register_block( APP_CHASSIS_NUM_BLOCK_ID, &app_nvm_gen2_chassis_num_block_s );
+   NVM_GEN2_register_blocks( app_nvm_gen2_block_table_s, app_nvm_gen2_block_count_s );
    (void)APP_read_fbl_fingerprint( &app_fbl_fingerprint_g );
    (void)APP_read_fbl_boot_count( &app_fbl_boot_count_g );
    (void)APP_read_fbl_download_attempt_count( &app_fbl_download_attempt_count_g );
@@ -79,7 +76,7 @@ void app_main( void )
 
    VER_init();
    TIME_init( &time_cfg_s );
-#if ( HW_VARIANT == HW_VARIANT_SUPER_PILL )
+#if ( HW_VARIANT == SUPER_PILL )
    HMI_SH1106_init( &hmi_sh1106_cfg_s );
    MENU_NAV_init();
    BUZZER_init( &buzzer_instance_s, &buzzer_func_table_s );
@@ -100,7 +97,7 @@ void app_main( void )
    TCU_init( &tcu_cfg_s );
    GKT_SHIFTER_init( &gkt_shifter_cfg_s );
    MRA_CLUSTER_init( &mra_cluster_cfg_s );
-#endif /* HW_VARIANT == HW_VARIANT_SUPER_PILL */
+#endif /* HW_VARIANT == SUPER_PILL */
    TJA1051_init( &tja1051_main_instance_s, &tja1051_func_s, &tja1051_cfg_s );
    (void)PDUR_init( pdur_routing_table_s, pdur_num_routes_s );
    MSG_SCHED_init( &msg_sched_cfg_s );
@@ -120,7 +117,7 @@ void app_main( void )
    NVIC_EnableGlobalIRQ();
 
    /* Init completed - tells BM this image is good by clearing its boot failure counter */
-   SHARED_RAM_set_boot_failure_count( 0u );
+   BOOT_HANDOFF_set_boot_failure_count( 0u );
 }
 
 void main( void )

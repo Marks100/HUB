@@ -72,7 +72,7 @@ extern const WDG_HW_STM32_config_st     wdg_cfg_s;
 extern AUTOCFG_init_st                  app_autocfg_init_s;
 
 /* Not fitted on BLUE_PILL: the display, buzzer and LEDs, the onboard button, the radio, and WiFi and cloud */
-#if ( HW_VARIANT == HW_VARIANT_SUPER_PILL )
+#if ( HW_VARIANT == SUPER_PILL )
 extern const HMI_SH1106_cfg_st          hmi_sh1106_cfg_s;
 extern const BUZZER_func_table_st       buzzer_func_table_s;
 extern       BUZZER_instance_st         buzzer_instance_s;
@@ -85,7 +85,7 @@ extern const RF_MGR_cfg_st              rf_mgr_cfg_s;
 extern const ESP01_cfg_st               esp01_cfg_s;
 extern const WIFI_config_st             wifi_cfg_s;
 extern       TB_config_st               tb_cfg_s;
-#endif /* HW_VARIANT == HW_VARIANT_SUPER_PILL */
+#endif /* HW_VARIANT == SUPER_PILL */
 
 /* Storage and messages */
 extern const NVM_GEN2_hw_interface_st   nvm_gen2_hw_interface_s;

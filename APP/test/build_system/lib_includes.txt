@@ -1,6 +1,7 @@
 xCOMMON_MODULES/test/support/VHW_STM32F10X
 APP/test/support
 APP/Src
+Common_Src/BOOT_HANDOFF
 Common_Src/HAL_ADC
 Common_Src/HAL_BRD
 Common_Src/HAL_I2C

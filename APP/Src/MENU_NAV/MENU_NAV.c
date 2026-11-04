@@ -20,7 +20,7 @@
 #include "GFX.h"
 #include "VEHICLE_SIM_config.h"
 #include "printf.h"
-#include "SHARED_RAM.h"
+#include "BOOT_HANDOFF.h"
 #include "MCU_JUMP.h"
 #include "TYRE_DATA.h"
 
@@ -2174,13 +2174,13 @@ STATIC void menu_nav_draw_bootloader( void )
 *
 *   \return        none
 *
-*   \note          SHARED_RAM_set_fbl_request(TRUE) followed by a reset is the same explicit-request
+*   \note          BOOT_HANDOFF_set_fbl_request(TRUE) followed by a reset is the same explicit-request
 *                  path BM_run() checks on every boot (see BM.c's bm_check_for_reprog_flag()) - BM
 *                  still validates FBL's presence/CRC/signature before actually jumping to it, the
 *                  same as every other path into FBL, so a corrupt/missing FBL image fails safe
-*                  rather than this screen being able to strand the device. SHARED_RAM's magic is
+*                  rather than this screen being able to strand the device. The handoff region is
 *                  already valid by the time APP is running (BM sets it before ever jumping here),
-*                  so no SHARED_RAM_init() call is needed first. MCU_JUMP_software_reset() never
+*                  so no BOOT_HANDOFF_init() call is needed first. MCU_JUMP_software_reset() never
 *                  returns, so CONFIRM has no case that falls through to anything after it.
 *
 ***************************************************************************************************/
@@ -2190,7 +2190,7 @@ STATIC void menu_nav_handle_bootloader( HMI_SH1106_input_et input )
     {
         case HMI_SH1106_INPUT_SELECT:
         case HMI_SH1106_INPUT_CONFIRM:
-            SHARED_RAM_set_fbl_request( TRUE );
+            BOOT_HANDOFF_set_fbl_request( TRUE );
             MCU_JUMP_software_reset();
         break;
 

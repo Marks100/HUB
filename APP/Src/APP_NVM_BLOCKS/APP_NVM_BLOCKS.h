@@ -81,13 +81,11 @@ extern FBL_counter_blk_st                app_fbl_boot_count_g;
 extern FBL_counter_blk_st                app_fbl_download_attempt_count_g;
 extern FBL_dataset_download_count_blk_st app_fbl_dataset_download_count_g;
 
-/* Config for each block above, used by main.c's NVM_GEN2_register_block() calls. Kept here, not
+/* Every block this image registers, handed to NVM_GEN2_register_blocks() by app_main(). Kept here, not
    INTEGRATION_STUBS.c, since default_data/version/event_fn describe the block's data, not this
    board's hardware. */
-extern const NVM_GEN2_block_cfg_st app_nvm_gen2_generic_block_s;
-extern const NVM_GEN2_block_cfg_st app_nvm_gen2_key_1_block_s;
-extern const NVM_GEN2_block_cfg_st app_nvm_gen2_key_2_block_s;
-extern const NVM_GEN2_block_cfg_st app_nvm_gen2_chassis_num_block_s;
+extern const NVM_GEN2_block_entry_st app_nvm_gen2_block_table_s[];
+extern const u8_t                    app_nvm_gen2_block_count_s;
 
 /***************************************************************************************************
 **                              Function Prototypes                                               **

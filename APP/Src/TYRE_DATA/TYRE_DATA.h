@@ -75,7 +75,7 @@ typedef struct
 /***************************************************************************************************
 **                              Function Prototypes                                               **
 ***************************************************************************************************/
-/*!< Checks DATASET0 once - call after SHARED_RAM_init(), before anything reads the table */
+/*!< Checks DATASET0 once - call after BOOT_HANDOFF_init(), before anything reads the table */
 void                        TYRE_DATA_init( void );
 false_true_et               TYRE_DATA_is_valid( void );
 

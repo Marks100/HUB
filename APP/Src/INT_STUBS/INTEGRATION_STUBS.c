@@ -115,7 +115,7 @@ const WDG_HW_STM32_config_st wdg_cfg_s =
     .timeout_ms = 5000u
 };
 
-#if ( HW_VARIANT == HW_VARIANT_SUPER_PILL )
+#if ( HW_VARIANT == SUPER_PILL )
 /* Not fitted on BLUE_PILL: the display, buzzer and LEDs, the onboard button, the NRF24 radio, and the ESP01 WiFi with its cloud link */
 /***************************************************************************************************
 **                              HMI_SH1106 (OLED + encoder + buttons panel)                       **
@@ -291,7 +291,7 @@ TB_config_st tb_cfg_s =
     .rpc_handlers     = tb_rpc_handlers_s,
     .num_rpc_handlers = 0u    /* set by TB_CBK_init() */
 };
-#endif /* HW_VARIANT == HW_VARIANT_SUPER_PILL */
+#endif /* HW_VARIANT == SUPER_PILL */
 
 /***************************************************************************************************
 **                              TJA1051 CAN transceiver                                           **

@@ -86,7 +86,7 @@ ifeq ($(filter $(HW_VARIANT),SUPER_PILL BLUE_PILL),)
 $(error HW_VARIANT must be SUPER_PILL or BLUE_PILL, not '$(HW_VARIANT)')
 endif
 BUILD_OUT_DIR            := Build/$(HW_VARIANT)
-CFLAGS                   += -DHW_VARIANT=HW_VARIANT_$(HW_VARIANT)
+CFLAGS                   += -DHW_VARIANT=$(HW_VARIANT)
 
 COMMON_SRC_DIRS          := ../Common_Src ../xCOMMON_MODULES/Src ../xCOMMON_MODULES/cfg
 RELEASE_PACKAGE_BASE_DIR := ../Release_package

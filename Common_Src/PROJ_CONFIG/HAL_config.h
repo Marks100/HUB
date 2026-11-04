@@ -5,27 +5,27 @@
 
 /***************************************************************************************************
 **  Hardware Variant Selection
-**  The build picks the variant: rules.mk passes -DHW_VARIANT=HW_VARIANT_<name> to APP, BM and FBL
+**  The build picks the variant: rules.mk passes -DHW_VARIANT=<name> to APP, BM and FBL
 **  (make variant_<name> in APP/). A compile without the flag falls back to the default here.
 ***************************************************************************************************/
-#define HW_VARIANT_BLUE_PILL    1u
-#define HW_VARIANT_SUPER_PILL   2u
+#define BLUE_PILL    1u
+#define SUPER_PILL   2u
 
 #ifndef HW_VARIANT
-#define HW_VARIANT              HW_VARIANT_SUPER_PILL
+#define HW_VARIANT              SUPER_PILL
 #endif
 
 /***************************************************************************************************
 **  Per-Variant Pin Assignments
 **  BLUE_PILL: CAN, ERX and UDS only. SUPER_PILL adds the NRF24 radio, the ESP01 and the onboard button.
 ***************************************************************************************************/
-#if ( HW_VARIANT == HW_VARIANT_BLUE_PILL )
+#if ( HW_VARIANT == BLUE_PILL )
 
 /* The LED on PC13 lights when the pin is LOW (see HAL_BRD_set_onboard_led()) */
 #define ONBOARD_LED_PORT        GPIOC
 #define ONBOARD_LED_PIN         GPIO_Pin_13
 
-#elif ( HW_VARIANT == HW_VARIANT_SUPER_PILL )
+#elif ( HW_VARIANT == SUPER_PILL )
 
 #define ONBOARD_LED_PORT        GPIOA
 #define ONBOARD_LED_PIN         GPIO_Pin_1
@@ -42,7 +42,7 @@
 #define NRF24_IRQ_EXT_LINE  EXTI_Line15
 
 #else
-#error "Unknown HW_VARIANT - use HW_VARIANT_BLUE_PILL or HW_VARIANT_SUPER_PILL (make variant_blue_pill / variant_super_pill)"
+#error "Unknown HW_VARIANT - use BLUE_PILL or SUPER_PILL (make variant_blue_pill / variant_super_pill)"
 #endif
 
 /***************************************************************************************************
@@ -138,7 +138,8 @@
 #define TJA1051_EN_PORT             GPIOB
 #define TJA1051_EN_PIN              GPIO_Pin_10
 
-/* MCP2515 CAN controller (CAN2) on SPI1. PB11 is a free-pin placeholder - confirm the real CS pin. */
+/* MCP2515 CAN controller (CAN2) on SPI1 (PA5/6/7). Chip select on PB11, for both variants: nothing else uses it. The firmware
+   polls the MCP2515, so its INT pin is not wired to the MCU. */
 #define MCP2515_CS_PORT            GPIOB
 #define MCP2515_CS_PIN              GPIO_Pin_11
 

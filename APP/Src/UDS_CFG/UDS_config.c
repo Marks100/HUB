@@ -28,7 +28,7 @@
 #include "RNG.h"
 #include "VER.h"
 #include "printf.h"
-#include "SHARED_RAM.h"
+#include "BOOT_HANDOFF.h"
 #include "MCU_JUMP.h"
 
 /***************************************************************************************************
@@ -676,7 +676,7 @@ STATIC u8_t uds_handle_clear_diagnostic_information( u16_t subfunc, u8_t* data_p
 ***************************************************************************************************/
 STATIC void uds_handle_programming_session_notify( void )
 {
-    SHARED_RAM_set_fbl_request( TRUE );
+    BOOT_HANDOFF_set_fbl_request( TRUE );
 }
 
 /****************************** END OF FILE *******************************************************/

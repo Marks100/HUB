@@ -31,10 +31,10 @@
 ***************************************************************************************************/
 STATIC void sched_cfg_mcp2515_tick( void );
 STATIC void sched_cfg_cantp_tick( void );
-#if ( HW_VARIANT == HW_VARIANT_SUPER_PILL )
+#if ( HW_VARIANT == SUPER_PILL )
 STATIC void sched_cfg_buzzer_tick( void );
 STATIC void sched_cfg_btn_mgr_tick( void );
-#endif /* HW_VARIANT == HW_VARIANT_SUPER_PILL */
+#endif /* HW_VARIANT == SUPER_PILL */
 STATIC void sched_cfg_cps_tick( void );
 STATIC void sched_cfg_aps_tick( void );
 STATIC void sched_cfg_engine_sim_tick( void );
@@ -59,7 +59,7 @@ STATIC const SCHED_entry_st app_sched_table_s[] =
 	{ MSG_SCHED_tick,                 SCHED_PERIOD_20MS,     0u },
 	{ sched_cfg_cps_tick,             SCHED_PERIOD_20MS,     0u },
 	{ sched_cfg_aps_tick,             SCHED_PERIOD_20MS,     0u },
-#if ( HW_VARIANT == HW_VARIANT_SUPER_PILL )
+#if ( HW_VARIANT == SUPER_PILL )
 	/* Not fitted on BLUE_PILL (CAN, ERX and UDS only): the display and buzzer, WiFi and cloud, the onboard button,
 	   the radio, and the vehicle simulation. The vehicle simulation keeps its order - the TCU feeds the engine
 	   simulation, which feeds the clusters. */
@@ -78,7 +78,7 @@ STATIC const SCHED_entry_st app_sched_table_s[] =
 	{ app_engine_sim_cluster_relay,   SCHED_PERIOD_20MS,     0u },   /* right after the engine simulation */
 	{ MQB_CLUSTER_tick,               SCHED_PERIOD_20MS,     0u },
 	{ MRA_CLUSTER_tick,               SCHED_PERIOD_20MS,     0u },
-#endif /* HW_VARIANT == HW_VARIANT_SUPER_PILL */
+#endif /* HW_VARIANT == SUPER_PILL */
 	{ NVM_GEN2_tick,                  SCHED_PERIOD_50MS,     0u },
 	{ AUTOCFG_tick,                   SCHED_PERIOD_50MS,     0u },   /* autocfg_enabled is FALSE: follows the ERXs' heartbeats, no master */
 
@@ -122,7 +122,7 @@ STATIC void sched_cfg_cantp_tick( void )
 	CANTP_tick( &app_cantp2_instance_s );
 }
 
-#if ( HW_VARIANT == HW_VARIANT_SUPER_PILL )
+#if ( HW_VARIANT == SUPER_PILL )
 STATIC void sched_cfg_buzzer_tick( void )
 {
 	BUZZER_tick( &buzzer_instance_s );
@@ -132,7 +132,7 @@ STATIC void sched_cfg_btn_mgr_tick( void )
 {
 	BTN_MGR_tick( &btm_mgr_instance_s );
 }
-#endif /* HW_VARIANT == HW_VARIANT_SUPER_PILL */
+#endif /* HW_VARIANT == SUPER_PILL */
 
 STATIC void sched_cfg_cps_tick( void )
 {

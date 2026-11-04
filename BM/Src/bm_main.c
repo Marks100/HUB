@@ -10,7 +10,7 @@
 #include "BM.h"
 #include "CHKSUM.h"
 #include "CLK_STM32F1.h"
-#include "SHARED_RAM.h"
+#include "BOOT_HANDOFF.h"
 #include "MCU_JUMP.h"
 #include "CRYPTO.h"
 #include "secure_boot_hmac_secret.h"
@@ -65,7 +65,7 @@ STATIC void clk_init( void )
 ***************************************************************************************************/
 /* One field-downloadable 4KB data block (the tyre pressure table - see APP's TYRE_DATA.h), right
    after APP (see APP/linker_script/STM32F103C8_flash.ld's comment). BM_run() validates it on every
-   boot and records the result in shared RAM (SHARED_RAM_get_dataset_valid_mask()) - informational
+   boot and records the result in shared RAM (BOOT_HANDOFF_get_dataset_valid_mask()) - informational
    only, never a reason not to boot. Add/remove entries here (and the matching extern symbols above,
    defined in this project's own linker script) to change how many datasets this platform has -
    BM.c itself has no hardcoded count. Must match fbl_dataset_table_s entry-for-entry. */
@@ -96,16 +96,16 @@ STATIC const bm_config_st bm_config_s =
    .jump_to_address = MCU_JUMP_to_address,
 
    /* Shared RAM interface */
-   .shared_ram_init               = SHARED_RAM_init,
-   .shared_ram_get_fbl_request    = SHARED_RAM_get_fbl_request,
-   .shared_ram_set_failure_reason = SHARED_RAM_set_last_failure_reason,
-   .shared_ram_get_failure_reason = SHARED_RAM_get_last_failure_reason,
+   .shared_ram_init               = BOOT_HANDOFF_init,
+   .shared_ram_get_fbl_request    = BOOT_HANDOFF_get_fbl_request,
+   .shared_ram_set_failure_reason = BOOT_HANDOFF_set_last_failure_reason,
+   .shared_ram_get_failure_reason = BOOT_HANDOFF_get_last_failure_reason,
    .shared_ram_is_valid           = SHARED_RAM_is_valid,
 
    /* Boot-failure counter (APP clears it once up - see main.c in APP) and dataset results */
-   .shared_ram_get_boot_failure_count = SHARED_RAM_get_boot_failure_count,
-   .shared_ram_set_boot_failure_count = SHARED_RAM_set_boot_failure_count,
-   .shared_ram_set_dataset_valid_mask = SHARED_RAM_set_dataset_valid_mask,
+   .shared_ram_get_boot_failure_count = BOOT_HANDOFF_get_boot_failure_count,
+   .shared_ram_set_boot_failure_count = BOOT_HANDOFF_set_boot_failure_count,
+   .shared_ram_set_dataset_valid_mask = BOOT_HANDOFF_set_dataset_valid_mask,
 
    /* Memory addresses from the linker script */
    .app_header_address      = (u32_t)&__app_header_start__,
