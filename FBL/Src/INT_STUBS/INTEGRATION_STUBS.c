@@ -274,11 +274,9 @@ STATIC TJA1051_instance_st fbl_tja1051_instance_s;
 /***************************************************************************************************
 **                              CAN / CAN-TP / PDU-R                                              **
 ***************************************************************************************************/
-/* Deliberately NOT a designated initializer - see the identical comment on app_cantp_instance_s in
-   APP/Src/INT_STUBS/INTEGRATION_STUBS.c: CANTP_instance_st embeds ~1.7KB of near-all-zero RX/TX
-   queue and TP session arrays, and any non-zero designated field forces the compiler to store the
-   WHOLE struct as flash-resident .data. On FBL's flash budget that is the difference between
-   fitting and not. Zero-initialised in .bss, populated at runtime in fbl_comms_init(). */
+/* The instance is state only - the RX/TX queue and TP session arrays, ~1.7KB of mostly zeros - and has no initializer,
+   so it is .bss. Giving it one would store the WHOLE struct as flash-resident .data, which on FBL's flash budget is the
+   difference between fitting and not. Its configuration is the const fbl_cantp_cfg_s below, which CANTP_init() copies in. */
 STATIC CANTP_instance_st fbl_cantp_instance_s;
 
 /* PDUR's lower-layer TX shape, bound to FBL's one instance */
@@ -401,6 +399,25 @@ STATIC false_true_et fbl_uds_is_functional_route( UDS_route_id_t route_id )
    in fbl_uds_init_cfg_s below instead of a separate wrapper object - see UDS_init_cfg_st's comment
    in UDS.h for why that wrapper went away. */
 
+/* The CAN-TP instance's configuration, copied into fbl_cantp_instance_s by CANTP_init() */
+STATIC const CANTP_cfg_st fbl_cantp_cfg_s =
+{
+    .rx_indication_func_p    = PDUR_rx_indication,
+    .tx_confirm_func_p       = PDUR_tx_confirmation,
+    .can_tx_func_p           = CANIF_transmit,
+    .rx_buffer_p             = fbl_uds_buffer_s,
+    .rx_buffer_size          = FBL_UDS_BUFFER_SIZE,
+    .tp_ids                  = { { FBL_NPDU_FUNC_RX, FBL_NPDU_FUNC_TX, FBL_PDU_UDS_FUNCTIONAL, FBL_PDU_UDS_FUNCTIONAL },
+                                 { FBL_NPDU_PHYS_RX, FBL_NPDU_PHYS_TX, FBL_PDU_UDS_PHYSICAL,   FBL_PDU_UDS_PHYSICAL } },
+    .st_min                  = 0x01u,
+    .rx_block_size           = 10u,     /* 0 = unlimited (ISO 15765-2) - CANTP_init() no longer
+                                          rewrites this to a default, so it genuinely means one
+                                          Flow Control per TransferData PDU instead of one every
+                                          N frames. */
+    .N_Cr                    = CANTP_DEFAULT_N_CR,
+    .N_Bs                    = CANTP_DEFAULT_N_BS
+};
+
 /* fbl_config_st's comms_init - one slot for the whole stack instead of four, since CAN-TP needs a
    working CAN driver, PDUR needs CAN-TP, and UDS needs PDUR: a strict dependency chain, not four
    independently optional stages, so nothing is lost by not exposing them separately. */
@@ -420,28 +437,7 @@ STATIC void fbl_comms_init( void )
 
     HAL_CAN_init();
 
-    /* CAN-TP: compound-literal assignment for readability. Still .bss, not .data:
-       fbl_cantp_instance_s's own declaration above has no initializer, so this assignment doesn't
-       change where the object itself lives - only how the initial values get written into it. */
-    fbl_cantp_instance_s = (CANTP_instance_st)
-    {
-        .rx_indication_func_p    = PDUR_rx_indication,
-        .tx_confirm_func_p       = PDUR_tx_confirmation,
-        .can_tx_func_p           = CANIF_transmit,
-        .rx_buffer_p             = fbl_uds_buffer_s,
-        .rx_buffer_size          = FBL_UDS_BUFFER_SIZE,
-        .tp_ids                  = { { FBL_NPDU_FUNC_RX, FBL_NPDU_FUNC_TX, FBL_PDU_UDS_FUNCTIONAL, FBL_PDU_UDS_FUNCTIONAL },
-                                     { FBL_NPDU_PHYS_RX, FBL_NPDU_PHYS_TX, FBL_PDU_UDS_PHYSICAL,   FBL_PDU_UDS_PHYSICAL } },
-        .st_min                  = 0x01u,
-        .rx_block_size           = 10u,     /* 0 = unlimited (ISO 15765-2) - CANTP_init() no longer
-                                              rewrites this to a default, so it genuinely means one
-                                              Flow Control per TransferData PDU instead of one every
-                                              N frames. */
-        .N_Cr                    = CANTP_DEFAULT_N_CR,
-        .N_Bs                    = CANTP_DEFAULT_N_BS,
-    };
-
-    CANTP_init( &fbl_cantp_instance_s );
+    CANTP_init( &fbl_cantp_instance_s, &fbl_cantp_cfg_s );
 
     CANIF_init( fbl_canif_channels_s, (u8_t)( sizeof( fbl_canif_channels_s ) / sizeof( fbl_canif_channels_s[0] ) ),
                 fbl_canif_tx_pdus_s, (u16_t)( sizeof( fbl_canif_tx_pdus_s ) / sizeof( fbl_canif_tx_pdus_s[0] ) ) );

@@ -15,8 +15,8 @@
 ;                                          xCOMMON_MODULES/Src/NVM_GEN2/README.md)
 ;
 ; Required environment variables:
-;   LAUTERBACH_APP_EXE  path to APP/Build/APP.elf
-;   LAUTERBACH_BM_EXE   path to BM/Build/BM.elf
+;   LAUTERBACH_APP_EXE  path to APP/Build/<VARIANT>/APP.elf
+;   LAUTERBACH_BM_EXE   path to BM/Build/<VARIANT>/BM.elf
 
 &app_exe=OS.ENV("LAUTERBACH_APP_EXE")
 &bm_exe=OS.ENV("LAUTERBACH_BM_EXE")

@@ -5,18 +5,23 @@
 
 /***************************************************************************************************
 **  Hardware Variant Selection
-**  Define exactly one variant here.
+**  The build picks the variant: rules.mk passes -DHW_VARIANT=HW_VARIANT_<name> to APP, BM and FBL
+**  (make variant_<name> in APP/). A compile without the flag falls back to the default here.
 ***************************************************************************************************/
 #define HW_VARIANT_BLUE_PILL    1u
 #define HW_VARIANT_SUPER_PILL   2u
 
+#ifndef HW_VARIANT
 #define HW_VARIANT              HW_VARIANT_SUPER_PILL
+#endif
 
 /***************************************************************************************************
 **  Per-Variant Pin Assignments
+**  BLUE_PILL: CAN, ERX and UDS only. SUPER_PILL adds the NRF24 radio, the ESP01 and the onboard button.
 ***************************************************************************************************/
 #if ( HW_VARIANT == HW_VARIANT_BLUE_PILL )
- 
+
+/* The LED on PC13 lights when the pin is LOW (see HAL_BRD_set_onboard_led()) */
 #define ONBOARD_LED_PORT        GPIOC
 #define ONBOARD_LED_PIN         GPIO_Pin_13
 
@@ -26,11 +31,6 @@
 #define ONBOARD_LED_PIN         GPIO_Pin_1
 #define ONBOARD_BTN_PORT        GPIOA
 #define ONBOARD_BTN_PIN         GPIO_Pin_8
-
-/* USART2 - ESP8266 (PA2=TX, PA3=RX) */
-#define ESP_UART_PORT       GPIOA
-#define ESP_TX_PIN          GPIO_Pin_2
-#define ESP_RX_PIN          GPIO_Pin_3
 
 /* NRF24L01 control pins (SPI1 shared bus) */
 #define NRF_CE_PORT         GPIOB
@@ -42,12 +42,18 @@
 #define NRF24_IRQ_EXT_LINE  EXTI_Line15
 
 #else
-#error "No HW_VARIANT defined — set HW_VARIANT in HAL_config.h"
+#error "Unknown HW_VARIANT - use HW_VARIANT_BLUE_PILL or HW_VARIANT_SUPER_PILL (make variant_blue_pill / variant_super_pill)"
 #endif
 
 /***************************************************************************************************
 **  Shared Pin Assignments (common across all variants)
 ***************************************************************************************************/
+/* USART2 - the ESP8266 link on SUPER_PILL. The pins are USART2's on every variant, which keeps HAL_UART.c one
+ * build; only SUPER_PILL initialises it. (PA2=TX, PA3=RX) */
+#define ESP_UART_PORT       GPIOA
+#define ESP_TX_PIN          GPIO_Pin_2
+#define ESP_RX_PIN          GPIO_Pin_3
+
 /* SPI1 - shared bus: LCD display + NRF24 radio (PA5=SCK, PA6=MISO, PA7=MOSI) */
 #define SPI1_PORT           GPIOA
 #define SPI1_SCK_PIN        GPIO_Pin_5

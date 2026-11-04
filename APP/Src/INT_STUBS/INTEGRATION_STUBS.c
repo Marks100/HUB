@@ -61,18 +61,62 @@ const TIME_cfg_st time_cfg_s =
 };
 
 /***************************************************************************************************
-**                              BTN_MGR                                                           **
+**                              NVM                                                               **
 ***************************************************************************************************/
-const BTN_MGR_func_table_st btm_mgr_func_table_s[3] =
+/* FBL and APP share these two pages - NVM_GEN2 keys records by block ID, and each image owns its own
+   ID range, so neither can overwrite the other */
+const NVM_GEN2_hw_interface_st nvm_gen2_hw_interface_s =
 {
-    { "ONBOARD", TRUE, HAL_BRD_read_onboard_btn, WIFI_restart, NULL_P },
+    .init_func      = FLS_STM32F1_init,
+    .base_address   = NVM_BASE_ADDRESS,
+    .partition_size = FLS_STM32F1_PAGE_SIZE,
+    .total_size     = NVM_TOTAL_SIZE,
+    .erase_func     = FLS_STM32F1_erase_sector,
+    .write_func     = FLS_STM32F1_write_data,
+    .compare_func   = FLS_STM32F1_compare_data,
+    .read_func      = FLS_STM32F1_recover_data
 };
 
-/* Separate instance from the HMI panel's, so the two button sets can't form combinations with each
-   other. Storage is here because BTN_MGR allocates none. */
-BTN_MGR_control_st  btm_mgr_control_s[BTM_MGR_FUNC_TABLE_SIZE( btm_mgr_func_table_s )];
-BTN_MGR_instance_st btm_mgr_instance_s;
+/***************************************************************************************************
+**                              AUTOCFG (follows the ERXs' heartbeats; the HUB does not run the AUTOCFG protocol)            **
+***************************************************************************************************/
+/* Each port's ERX supply enable is a pin, HIGH = on (HAL_config.h). With autocfg_enabled FALSE, AUTOCFG_init()
+   switches on the ports that have an ERX configured and nothing switches them off. */
+STATIC void app_autocfg_port_0_power( AUTOCFG_port_power_state_et state )
+{
+    HAL_BRD_set_pin_state( ERX_PORT_0_PWR_PORT, ERX_PORT_0_PWR_PIN, ( state == PORT_POWER_ON ) ? HIGH : LOW );
+}
 
+STATIC void app_autocfg_port_1_power( AUTOCFG_port_power_state_et state )
+{
+    HAL_BRD_set_pin_state( ERX_PORT_1_PWR_PORT, ERX_PORT_1_PWR_PIN, ( state == PORT_POWER_ON ) ? HIGH : LOW );
+}
+
+/* The ERXs the HUB follows and powers: the port each is on and its ISO position, at most AUTOCFG_V2_MAX_ERX_PER_PORT
+   per port. A port with no row is not powered. */
+AUTOCFG_init_st app_autocfg_init_s =
+{
+    .get_time_ms         = TIME_get_cumulative_run_time_ms_64,
+    .has_time_elapsed_ms = TIME_has_time_elapsed_ms_64,
+    .port_pwr_ctrl       = { app_autocfg_port_0_power, app_autocfg_port_1_power },
+    .erx_locations       =
+    {
+        { 0u, APP_ISO_AXLE_1_CENTRE },
+        { 1u, APP_ISO_AXLE_1_OUTER_LEFT }
+    },
+    .autocfg_enabled     = FALSE
+};
+
+/***************************************************************************************************
+**                              WDG                                                               **
+***************************************************************************************************/
+const WDG_HW_STM32_config_st wdg_cfg_s =
+{
+    .timeout_ms = 5000u
+};
+
+#if ( HW_VARIANT == HW_VARIANT_SUPER_PILL )
+/* Not fitted on BLUE_PILL: the display, buzzer and LEDs, the onboard button, the NRF24 radio, and the ESP01 WiFi with its cloud link */
 /***************************************************************************************************
 **                              HMI_SH1106 (OLED + encoder + buttons panel)                       **
 ***************************************************************************************************/
@@ -139,6 +183,19 @@ WS2811_instance_st ws2811_instance_s =
 };
 
 /***************************************************************************************************
+**                              BTN_MGR                                                           **
+***************************************************************************************************/
+const BTN_MGR_func_table_st btm_mgr_func_table_s[3] =
+{
+    { "ONBOARD", TRUE, HAL_BRD_read_onboard_btn, WIFI_restart, NULL_P },
+};
+
+/* Separate instance from the HMI panel's, so the two button sets can't form combinations with each
+   other. Storage is here because BTN_MGR allocates none. */
+BTN_MGR_control_st  btm_mgr_control_s[BTM_MGR_FUNC_TABLE_SIZE( btm_mgr_func_table_s )];
+BTN_MGR_instance_st btm_mgr_instance_s;
+
+/***************************************************************************************************
 **                              NRF24                                                             **
 ***************************************************************************************************/
 NRF24_instance_st nrf24_instance_s =
@@ -152,58 +209,20 @@ NRF24_instance_st nrf24_instance_s =
 };
 
 /***************************************************************************************************
-**                              NVM                                                               **
+**                              RF_MGR                                                            **
 ***************************************************************************************************/
-/* FBL and APP share these two pages - NVM_GEN2 keys records by block ID, and each image owns its own
-   ID range, so neither can overwrite the other */
-const NVM_GEN2_hw_interface_st nvm_gen2_hw_interface_s =
+STATIC const RF_MGR_NRF24_chip_st rf_mgr_nrf24_chip_s =
 {
-    .init_func      = FLS_STM32F1_init,
-    .base_address   = NVM_BASE_ADDRESS,
-    .partition_size = FLS_STM32F1_PAGE_SIZE,
-    .total_size     = NVM_TOTAL_SIZE,
-    .erase_func     = FLS_STM32F1_erase_sector,
-    .write_func     = FLS_STM32F1_write_data,
-    .compare_func   = FLS_STM32F1_compare_data,
-    .read_func      = FLS_STM32F1_recover_data
+    .nrf24_p = &nrf24_instance_s,
+    .config  = NRF24_HUB_CONFIG
 };
 
-/***************************************************************************************************
-**                              AUTOCFG (follows the ERXs' heartbeats; the HUB does not run the AUTOCFG protocol)            **
-***************************************************************************************************/
-/* Each port's ERX supply enable is a pin, HIGH = on (HAL_config.h). With autocfg_enabled FALSE, AUTOCFG_init()
-   switches on the ports that have an ERX configured and nothing switches them off. */
-STATIC void app_autocfg_port_0_power( AUTOCFG_port_power_state_et state )
+const RF_MGR_cfg_st rf_mgr_cfg_s =
 {
-    HAL_BRD_set_pin_state( ERX_PORT_0_PWR_PORT, ERX_PORT_0_PWR_PIN, ( state == PORT_POWER_ON ) ? HIGH : LOW );
-}
-
-STATIC void app_autocfg_port_1_power( AUTOCFG_port_power_state_et state )
-{
-    HAL_BRD_set_pin_state( ERX_PORT_1_PWR_PORT, ERX_PORT_1_PWR_PIN, ( state == PORT_POWER_ON ) ? HIGH : LOW );
-}
-
-/* The ERXs the HUB follows and powers: the port each is on and its ISO position, at most AUTOCFG_V2_MAX_ERX_PER_PORT
-   per port. A port with no row is not powered. */
-AUTOCFG_init_st app_autocfg_init_s =
-{
-    .get_time_ms         = TIME_get_cumulative_run_time_ms_64,
-    .has_time_elapsed_ms = TIME_has_time_elapsed_ms_64,
-    .port_pwr_ctrl       = { app_autocfg_port_0_power, app_autocfg_port_1_power },
-    .erx_locations       =
-    {
-        { 0u, APP_ISO_AXLE_1_CENTRE },
-        { 1u, APP_ISO_AXLE_1_OUTER_LEFT }
-    },
-    .autocfg_enabled     = FALSE
-};
-
-/***************************************************************************************************
-**                              WDG                                                               **
-***************************************************************************************************/
-const WDG_HW_STM32_config_st wdg_cfg_s =
-{
-    .timeout_ms = 5000u
+    .driver_p        = &RF_MGR_NRF24_driver,
+    .chip_p          = &rf_mgr_nrf24_chip_s,
+    .tx_timeout_ms   = 0u,
+    .activity_func_p = HAL_BRD_toggle_onboard_led
 };
 
 /***************************************************************************************************
@@ -272,6 +291,7 @@ TB_config_st tb_cfg_s =
     .rpc_handlers     = tb_rpc_handlers_s,
     .num_rpc_handlers = 0u    /* set by TB_CBK_init() */
 };
+#endif /* HW_VARIANT == HW_VARIANT_SUPER_PILL */
 
 /***************************************************************************************************
 **                              TJA1051 CAN transceiver                                           **
@@ -291,23 +311,6 @@ const TJA1051_config_st tja1051_cfg_s =
 TJA1051_instance_st tja1051_main_instance_s;
 
 /***************************************************************************************************
-**                              RF_MGR                                                            **
-***************************************************************************************************/
-STATIC const RF_MGR_NRF24_chip_st rf_mgr_nrf24_chip_s =
-{
-    .nrf24_p = &nrf24_instance_s,
-    .config  = NRF24_HUB_CONFIG
-};
-
-const RF_MGR_cfg_st rf_mgr_cfg_s =
-{
-    .driver_p        = &RF_MGR_NRF24_driver,
-    .chip_p          = &rf_mgr_nrf24_chip_s,
-    .tx_timeout_ms   = 0u,
-    .activity_func_p = HAL_BRD_toggle_onboard_led
-};
-
-/***************************************************************************************************
 **                              CAN IDs                                                           **
 ***************************************************************************************************/
 /* Same IDs as FBL - safe to reuse, BM only ever runs one of APP/FBL at a time */
@@ -319,76 +322,56 @@ const RF_MGR_cfg_st rf_mgr_cfg_s =
 /***************************************************************************************************
 **                              CANTP                                                             **
 ***************************************************************************************************/
-/* Not initialised on purpose: any non-zero initializer would store the whole ~1.7KB (mostly zero)
-   struct in flash .data. Configured at runtime by app_cantp_instance_init() instead. */
+/* The instance is state only (no initializer, so .bss); CANTP_init() copies its configuration in from the const table below */
 CANTP_instance_st app_cantp_instance_s;
 
 /* Shared by CANTP reassembly and UDS responses */
 u8_t app_uds_buffer_g[ APP_UDS_BUFFER_SIZE ];
 
-/* PDUR's lower-layer TX shape, bound to CAN1's instance */
-STATIC pass_fail_et app_cantp_transmit( PDUR_pdu_id_t tx_pdu_id, const u8_t* data_p, u16_t len )
+const CANTP_cfg_st app_cantp_cfg_s =
 {
-    return( CANTP_tx_request( &app_cantp_instance_s, tx_pdu_id, data_p, len ) );
-}
-
-void app_cantp_instance_init( void )
-{
-    app_cantp_instance_s.rx_indication_func_p = PDUR_rx_indication;
-    app_cantp_instance_s.tx_confirm_func_p    = PDUR_tx_confirmation;
-    app_cantp_instance_s.can_tx_func_p        = CANIF_transmit;
-    app_cantp_instance_s.rx_buffer_p          = app_uds_buffer_g;
-    app_cantp_instance_s.rx_buffer_size       = APP_UDS_BUFFER_SIZE;
+    .rx_indication_func_p = PDUR_rx_indication,
+    .tx_confirm_func_p    = PDUR_tx_confirmation,
+    .can_tx_func_p        = CANIF_transmit,
+    .rx_buffer_p          = app_uds_buffer_g,
+    .rx_buffer_size       = APP_UDS_BUFFER_SIZE,
 
     /* { N-PDU received on, N-PDU sent on, PDUR route a request goes up to, PDUR route a response is sent on } */
-    app_cantp_instance_s.tp_ids[0]            = (CANTP_tp_id_pair_st){ APP_CANIF_PDU_UDS_FUNC_RX, APP_CANIF_PDU_UDS_FUNC_TX,
-                                                                       APP_PDU_UDS_FUNCTIONAL, APP_PDU_UDS_FUNCTIONAL };
-    app_cantp_instance_s.tp_ids[1]            = (CANTP_tp_id_pair_st){ APP_CANIF_PDU_UDS_PHYS_RX, APP_CANIF_PDU_UDS_PHYS_TX,
-                                                                       APP_PDU_UDS_PHYSICAL, APP_PDU_UDS_PHYSICAL };
-    app_cantp_instance_s.st_min               = 10u;
-    app_cantp_instance_s.rx_block_size        = 10u;
-    app_cantp_instance_s.N_Cr                 = CANTP_DEFAULT_N_CR;
-    app_cantp_instance_s.N_Bs                 = CANTP_DEFAULT_N_BS;
-}
+    .tp_ids               = { { APP_CANIF_PDU_UDS_FUNC_RX, APP_CANIF_PDU_UDS_FUNC_TX, APP_PDU_UDS_FUNCTIONAL, APP_PDU_UDS_FUNCTIONAL },
+                              { APP_CANIF_PDU_UDS_PHYS_RX, APP_CANIF_PDU_UDS_PHYS_TX, APP_PDU_UDS_PHYSICAL,   APP_PDU_UDS_PHYSICAL } },
+    .st_min               = 10u,
+    .rx_block_size        = 10u,
+    .N_Cr                 = CANTP_DEFAULT_N_CR,
+    .N_Bs                 = CANTP_DEFAULT_N_BS
+};
 
 /* CAN2: the HUB as client to the nodes, with its own reassembly buffer. It talks to one virtual node (one pair) -
    DIAG_GW hands it the replies on its receive N-PDU, and everything it sends goes down as the one transmit N-PDU */
 CANTP_instance_st app_cantp2_instance_s;
 u8_t              app_cantp2_rx_buffer_g[ APP_NODE_RESPONSE_BUFFER_SIZE ];
 
-/* The transmit N-PDU covers every node request ID - each frame goes to the selected node's */
-STATIC pass_fail_et app_cantp2_can_tx( u16_t npdu_id, const u8_t* data_p, u16_t len )
+/* PDUR's lower-layer TX shape (it carries no instance), for both buses: the HUB's requests to the nodes go down CAN2's
+   instance, everything else CAN1's */
+STATIC pass_fail_et app_cantp_transmit( PDUR_pdu_id_t tx_pdu_id, const u8_t* data_p, u16_t len )
 {
-    pass_fail_et result = CANIF_set_dynamic_tx_id( npdu_id, APP_NODE_REQUEST_BASE_ID + UDS_CLIENT_get_node() );
+    CANTP_instance_st* instance_p = ( tx_pdu_id == APP_PDU_NODE_DIAG ) ? &app_cantp2_instance_s : &app_cantp_instance_s;
 
-    if( result == PASS )
-    {
-        result = CANIF_transmit( npdu_id, data_p, len );
-    }
-
-    return( result );
+    return( CANTP_tx_request( instance_p, tx_pdu_id, data_p, len ) );
 }
 
-/* PDUR's lower-layer TX shape, bound to CAN2's instance */
-STATIC pass_fail_et app_cantp2_transmit( PDUR_pdu_id_t tx_pdu_id, const u8_t* data_p, u16_t len )
+const CANTP_cfg_st app_cantp2_cfg_s =
 {
-    return( CANTP_tx_request( &app_cantp2_instance_s, tx_pdu_id, data_p, len ) );
-}
-
-void app_cantp2_instance_init( void )
-{
-    app_cantp2_instance_s.rx_indication_func_p = PDUR_rx_indication;
-    app_cantp2_instance_s.tx_confirm_func_p    = PDUR_tx_confirmation;
-    app_cantp2_instance_s.can_tx_func_p        = app_cantp2_can_tx;
-    app_cantp2_instance_s.rx_buffer_p          = app_cantp2_rx_buffer_g;
-    app_cantp2_instance_s.rx_buffer_size       = APP_NODE_RESPONSE_BUFFER_SIZE;
-    app_cantp2_instance_s.tp_ids[0]            = (CANTP_tp_id_pair_st){ APP_CANIF_PDU_HUB_RX, APP_CANIF_PDU_HUB_TX,
-                                                                        APP_PDU_NODE_DIAG, APP_PDU_NODE_DIAG };
-    app_cantp2_instance_s.st_min               = 10u;
-    app_cantp2_instance_s.rx_block_size        = 10u;
-    app_cantp2_instance_s.N_Cr                 = CANTP_DEFAULT_N_CR;
-    app_cantp2_instance_s.N_Bs                 = CANTP_DEFAULT_N_BS;
-}
+    .rx_indication_func_p = PDUR_rx_indication,
+    .tx_confirm_func_p    = PDUR_tx_confirmation,
+    .can_tx_func_p        = CANIF_transmit,   /* the transmit N-PDU covers every node request ID: DIAG_GW_local_reserve() sets the node's */
+    .rx_buffer_p          = app_cantp2_rx_buffer_g,
+    .rx_buffer_size       = APP_NODE_RESPONSE_BUFFER_SIZE,
+    .tp_ids               = { { APP_CANIF_PDU_HUB_RX, APP_CANIF_PDU_HUB_TX, APP_PDU_NODE_DIAG, APP_PDU_NODE_DIAG } },
+    .st_min               = 10u,
+    .rx_block_size        = 10u,
+    .N_Cr                 = CANTP_DEFAULT_N_CR,
+    .N_Bs                 = CANTP_DEFAULT_N_BS
+};
 
 /***************************************************************************************************
 **                              MCP2515 (CAN2)                                                    **
@@ -466,6 +449,7 @@ const DIAG_GW_cfg_st app_diag_gw_cfg_s =
     .to_local_func_p  = app_diag_gw_to_hub,
     .node_tx_pdu_id   = APP_CANIF_PDU_GW_NODE_TX,
     .tester_tx_pdu_id = APP_CANIF_PDU_GW_TESTER_TX,
+    .local_tx_pdu_id  = APP_CANIF_PDU_HUB_TX,
     .request_base_id  = APP_NODE_REQUEST_BASE_ID,
     .response_base_id = APP_NODE_RESPONSE_BASE_ID
 };
@@ -664,11 +648,11 @@ const PDUR_route_st pdur_routing_table_s[] =
         .txConfirmation         = UDS_tx_confirmation
     },
 
-    /* The HUB's own requests to the nodes on CAN2 (app_cantp2_can_tx picks the real node ID) */
+    /* The HUB's own requests to the nodes on CAN2 (DIAG_GW_local_reserve() picks the real node ID) */
     [APP_PDU_NODE_DIAG] =
     {
         .upperLayerRxIndication = UDS_CLIENT_rx_indication,
-        .lower_layer_tx_func    = app_cantp2_transmit,
+        .lower_layer_tx_func    = app_cantp_transmit,
         .txConfirmation         = UDS_CLIENT_tx_confirmation
     },
 

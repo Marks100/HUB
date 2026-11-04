@@ -10,9 +10,8 @@
 
 extern CPS_instance_st cps_crank_instance_s;
 
-#if ( HW_VARIANT == HW_VARIANT_SUPER_PILL )
-STATIC HAL_BRD_nrf_func_type HAL_BRD_nrf_func_p;
-#endif /* HW_VARIANT == HW_VARIANT_SUPER_PILL */
+STATIC void        hal_brd_nrf24_init_pins( void );
+STATIC low_high_et hal_brd_onboard_led_level( off_on_et state );
 
 /*!
 ****************************************************************************************************
@@ -100,21 +99,8 @@ void HAL_BRD_init( void )
 	NVIC_InitStructure.NVIC_IRQChannelCmd                = DISABLE;
 	NVIC_Init( &NVIC_InitStructure );
 
-#if ( HW_VARIANT == HW_VARIANT_SUPER_PILL )
-	/* Configure the NRF24 CS pin */
-	GPIO_InitStructure.GPIO_Pin = NRF_CS_PIN;
-	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_Out_PP;
-	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_10MHz;
-	GPIO_Init( NRF_CS_PORT, &GPIO_InitStructure );
-	HAL_BRD_NRF24_spi_slave_select( LOW );
-
-	/* Configure the NRF24 CE pin */
-	GPIO_InitStructure.GPIO_Pin = NRF_CE_PIN;
-	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_Out_PP;
-	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_10MHz;
-	GPIO_Init( NRF_CE_PORT, &GPIO_InitStructure );
-	HAL_BRD_NRF24_set_ce_pin_state( LOW );
-#endif /* HW_VARIANT == HW_VARIANT_SUPER_PILL */
+	/* NRF24 CS and CE pins - nothing to do on a variant without the radio */
+	hal_brd_nrf24_init_pins();
 
 	/* MCP2515 CS - deselected (HIGH) before the pin becomes an output */
 	HAL_BRD_MCP2515_spi_slave_select( HIGH );
@@ -272,25 +258,6 @@ void HAL_BRD_reset( void )
 	NVIC_SystemReset();
 }
 
-#if ( HW_VARIANT == HW_VARIANT_SUPER_PILL )
-/***************************************************************************************************
-**                              NRF24 (SUPER_PILL only - no radio on BLUE_PILL)                    **
-***************************************************************************************************/
-/*!
-****************************************************************************************************
-*
-*   \brief         Registers the function to call for the NRF24 ISR
-*
-*   \author        MS
-*
-*   \return        low_high_et
-*
-***************************************************************************************************/
-void HAL_BRD_nrf_register_cbk( HAL_BRD_nrf_func_type func_p )
-{
-	HAL_BRD_nrf_func_p = func_p;
-}
-
 /*!
 ****************************************************************************************************
 *
@@ -350,10 +317,13 @@ void HAL_BRD_toggle_pin_state( GPIO_TypeDef* port, u16_t pin )
 *
 *   \return        None
 *
+*   \note          ON is the pin HIGH, or LOW on a variant whose LED is wired the other way
+*                  (BLUE_PILL's is on PC13, lit when the pin is LOW)
+*
 ***************************************************************************************************/
 void HAL_BRD_set_onboard_led( off_on_et state )
-{	
-	HAL_BRD_set_pin_state( ONBOARD_LED_PORT, ONBOARD_LED_PIN, (low_high_et)state );
+{
+	HAL_BRD_set_pin_state( ONBOARD_LED_PORT, ONBOARD_LED_PIN, hal_brd_onboard_led_level( state ) );
 }
 
 /*!
@@ -369,6 +339,125 @@ void HAL_BRD_set_onboard_led( off_on_et state )
 void HAL_BRD_toggle_onboard_led( void )
 {
 	HAL_BRD_toggle_pin_state( ONBOARD_LED_PORT, ONBOARD_LED_PIN );
+}
+
+/*!
+****************************************************************************************************
+*
+*   \brief         Reads the state of the IRQ Pin for the NRF module
+*
+*   \author        MS
+*
+*   \return        None
+*
+***************************************************************************************************/
+void HAL_BRD_setup_pins_for_low_power( void )
+{
+	/* Configure the GPIOs */
+	GPIO_InitTypeDef GPIO_InitStructure;
+
+	GPIO_InitStructure.GPIO_Pin = GPIO_Pin_All;
+	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AIN;
+	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_10MHz;
+	GPIO_Init( GPIOA, &GPIO_InitStructure );
+	GPIO_Init( GPIOB, &GPIO_InitStructure );
+	GPIO_Init( GPIOC, &GPIO_InitStructure );
+}
+
+/*!
+****************************************************************************************************
+*
+*   \brief         SH1106 panel button reads
+*
+*   \author        MS
+*
+*   \return        low_high_et raw pin state - LOW while pressed, since the switches pull to GND
+*                  against the internal pull-up. Register these with inverted = TRUE so BTN_MGR
+*                  reads them the right way round.
+*
+***************************************************************************************************/
+low_high_et HAL_BRD_read_panel_select_btn( void )
+{
+	return HAL_BRD_read_pin_state( PANEL_SELECT_BTN_PORT, PANEL_SELECT_BTN_PIN );
+}
+
+low_high_et HAL_BRD_read_panel_confirm_btn( void )
+{
+	return HAL_BRD_read_pin_state( PANEL_CONFIRM_BTN_PORT, PANEL_CONFIRM_BTN_PIN );
+}
+
+low_high_et HAL_BRD_read_panel_back_btn( void )
+{
+	return HAL_BRD_read_pin_state( PANEL_BACK_BTN_PORT, PANEL_BACK_BTN_PIN );
+}
+
+/***************************************************************************************************
+**  Per-variant hardware. SUPER_PILL has the NRF24 radio and the onboard button. BLUE_PILL has     **
+**  neither, and its LED lights when the pin is LOW. The helpers HAL_BRD_init() and                **
+**  HAL_BRD_set_onboard_led() use exist on both so those two need no variant code of their own.    **
+***************************************************************************************************/
+#if ( HW_VARIANT == HW_VARIANT_SUPER_PILL )
+STATIC HAL_BRD_nrf_func_type HAL_BRD_nrf_func_p;
+
+/*!
+****************************************************************************************************
+*
+*   \brief         Configures the NRF24 CS and CE pins as outputs and takes both LOW
+*
+*   \author        MS
+*
+*   \return        none
+*
+***************************************************************************************************/
+STATIC void hal_brd_nrf24_init_pins( void )
+{
+	GPIO_InitTypeDef GPIO_InitStructure;
+
+	/* Configure the NRF24 CS pin */
+	GPIO_InitStructure.GPIO_Pin = NRF_CS_PIN;
+	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_Out_PP;
+	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_10MHz;
+	GPIO_Init( NRF_CS_PORT, &GPIO_InitStructure );
+	HAL_BRD_NRF24_spi_slave_select( LOW );
+
+	/* Configure the NRF24 CE pin */
+	GPIO_InitStructure.GPIO_Pin = NRF_CE_PIN;
+	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_Out_PP;
+	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_10MHz;
+	GPIO_Init( NRF_CE_PORT, &GPIO_InitStructure );
+	HAL_BRD_NRF24_set_ce_pin_state( LOW );
+}
+
+/*!
+****************************************************************************************************
+*
+*   \brief         The pin level that puts the onboard LED in the given state
+*
+*   \author        MS
+*
+*   \param[in]     state - ON or OFF
+*
+*   \return        HIGH to light the LED on this variant, LOW to turn it off
+*
+***************************************************************************************************/
+STATIC low_high_et hal_brd_onboard_led_level( off_on_et state )
+{
+	return( (low_high_et)state );
+}
+
+/*!
+****************************************************************************************************
+*
+*   \brief         Registers the function to call for the NRF24 ISR
+*
+*   \author        MS
+*
+*   \return        low_high_et
+*
+***************************************************************************************************/
+void HAL_BRD_nrf_register_cbk( HAL_BRD_nrf_func_type func_p )
+{
+	HAL_BRD_nrf_func_p = func_p;
 }
 
 /*!
@@ -417,32 +506,7 @@ low_high_et HAL_BRD_NRF24_read_irq_pin( void )
 
 	return( state );
 }
-#endif /* HW_VARIANT == HW_VARIANT_SUPER_PILL */
 
-/*!
-****************************************************************************************************
-*
-*   \brief         Reads the state of the IRQ Pin for the NRF module
-*
-*   \author        MS
-*
-*   \return        None
-*
-***************************************************************************************************/
-void HAL_BRD_setup_pins_for_low_power( void )
-{
-	/* Configure the GPIOs */
-	GPIO_InitTypeDef GPIO_InitStructure;
-
-	GPIO_InitStructure.GPIO_Pin = GPIO_Pin_All;
-	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AIN;
-	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_10MHz;
-	GPIO_Init( GPIOA, &GPIO_InitStructure );
-	GPIO_Init( GPIOB, &GPIO_InitStructure );
-	GPIO_Init( GPIOC, &GPIO_InitStructure );
-}
-
-#if ( HW_VARIANT == HW_VARIANT_SUPER_PILL )
 /*!
 ****************************************************************************************************
 *
@@ -452,41 +516,73 @@ void HAL_BRD_setup_pins_for_low_power( void )
 *
 *   \return        low_high_et state of the onboard button pin
 *
-*   \note          SUPER_PILL only - BLUE_PILL has no ONBOARD_BTN_PORT/PIN defined.
-*
 ***************************************************************************************************/
 low_high_et HAL_BRD_read_onboard_btn( void )
 {
 	return HAL_BRD_read_pin_state( ONBOARD_BTN_PORT, ONBOARD_BTN_PIN );
 }
-#endif /* HW_VARIANT == HW_VARIANT_SUPER_PILL */
 
 /*!
 ****************************************************************************************************
 *
-*   \brief         SH1106 panel button reads
+*   \brief         Interrupt Handler ( 10 - 15 )
 *
 *   \author        MS
 *
-*   \return        low_high_et raw pin state - LOW while pressed, since the switches pull to GND
-*                  against the internal pull-up. Register these with inverted = TRUE so BTN_MGR
-*                  reads them the right way round.
+*   \return        low_high_et
+*
+*   \note          Only the NRF24 IRQ uses these lines, so BLUE_PILL has no handler for them
 *
 ***************************************************************************************************/
-low_high_et HAL_BRD_read_panel_select_btn( void )
+void EXTI15_10_IRQHandler(void)
 {
-	return HAL_BRD_read_pin_state( PANEL_SELECT_BTN_PORT, PANEL_SELECT_BTN_PIN );
+	if( EXTI_GetFlagStatus( NRF24_IRQ_EXT_LINE ) != RESET )
+	{
+		if( HAL_BRD_nrf_func_p != NULL_P )
+		{
+			/* Execute the callback */
+			HAL_BRD_nrf_func_p();
+
+			/* Unregister the callback again */
+			HAL_BRD_nrf_func_p = NULL_P;
+		}
+
+		EXTI_ClearITPendingBit( NRF24_IRQ_EXT_LINE );
+	}
+}
+#else /* HW_VARIANT == HW_VARIANT_BLUE_PILL */
+/*!
+****************************************************************************************************
+*
+*   \brief         No NRF24 on this variant, so there are no pins to configure
+*
+*   \author        MS
+*
+*   \return        none
+*
+***************************************************************************************************/
+STATIC void hal_brd_nrf24_init_pins( void )
+{
+	/* Nothing fitted */
 }
 
-low_high_et HAL_BRD_read_panel_confirm_btn( void )
+/*!
+****************************************************************************************************
+*
+*   \brief         The pin level that puts the onboard LED in the given state
+*
+*   \author        MS
+*
+*   \param[in]     state - ON or OFF
+*
+*   \return        LOW to light the LED on this variant (PC13 is active low), HIGH to turn it off
+*
+***************************************************************************************************/
+STATIC low_high_et hal_brd_onboard_led_level( off_on_et state )
 {
-	return HAL_BRD_read_pin_state( PANEL_CONFIRM_BTN_PORT, PANEL_CONFIRM_BTN_PIN );
+	return( ( state == ON ) ? LOW : HIGH );
 }
-
-low_high_et HAL_BRD_read_panel_back_btn( void )
-{
-	return HAL_BRD_read_pin_state( PANEL_BACK_BTN_PORT, PANEL_BACK_BTN_PIN );
-}
+#endif /* HW_VARIANT == HW_VARIANT_SUPER_PILL */
 
 /*!
 ****************************************************************************************************
@@ -528,35 +624,6 @@ void EXTI1_IRQHandler(void)
 		/* Clear interrupt flag */
 		EXTI_ClearITPendingBit( EXTI_Line1 );
 	}
-}
-
-/*!
-****************************************************************************************************
-*
-*   \brief         Interrupt Handler ( 10 - 15 )
-*
-*   \author        MS
-*
-*   \return        low_high_et
-*
-***************************************************************************************************/
-void EXTI15_10_IRQHandler(void)
-{
-#if ( HW_VARIANT == HW_VARIANT_SUPER_PILL )
-	if( EXTI_GetFlagStatus( NRF24_IRQ_EXT_LINE ) != RESET )
-	{
-		if( HAL_BRD_nrf_func_p != NULL_P )
-		{
-			/* Execute the callback */
-			HAL_BRD_nrf_func_p();
-
-			/* Unregister the callback again */
-			HAL_BRD_nrf_func_p = NULL_P;
-		}
-
-		EXTI_ClearITPendingBit( NRF24_IRQ_EXT_LINE );
-	}
-#endif /* HW_VARIANT == HW_VARIANT_SUPER_PILL */
 }
 
 /*!

@@ -30,10 +30,10 @@
 ; BM/Src/bm_main.c - see its signature_verify_not_implemented()), so that path can't trap yet.
 ;
 ; Required environment variables (set by scripts/trace32):
-;   LAUTERBACH_APP_EXE      path to APP/Build/APP.elf
-;   LAUTERBACH_BM_EXE       path to BM/Build/BM.elf
-;   LAUTERBACH_FBL_EXE      path to FBL/Build/FBL.elf
-;   LAUTERBACH_COMBINED_EXE path to APP/Build/BM_FBL_APP_combined.hex
+;   LAUTERBACH_APP_EXE      path to APP/Build/<VARIANT>/APP.elf
+;   LAUTERBACH_BM_EXE       path to BM/Build/<VARIANT>/BM.elf
+;   LAUTERBACH_FBL_EXE      path to FBL/Build/<VARIANT>/FBL.elf
+;   LAUTERBACH_COMBINED_EXE path to APP/Build/<VARIANT>/BM_FBL_APP_combined.hex
 
 &app_exe=OS.ENV("LAUTERBACH_APP_EXE")
 &bm_exe=OS.ENV("LAUTERBACH_BM_EXE")

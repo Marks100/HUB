@@ -49,7 +49,6 @@ void app_main( void )
    CLK_STM32F1_init( &hse8_72mhz_s );
    SHARED_RAM_init();
 
-   TYRE_DATA_init();
    NVM_GEN2_init( &nvm_gen2_hw_interface_s );
    NVM_GEN2_register_block( APP_GENERIC_BLOCK_ID, &app_nvm_gen2_generic_block_s );
    NVM_GEN2_register_block( APP_KEY_1_BLOCK_ID, &app_nvm_gen2_key_1_block_s );
@@ -79,14 +78,16 @@ void app_main( void )
    RNG_init( UID_get_unique_id_32() );
 
    VER_init();
-   BTN_MGR_init( &btm_mgr_instance_s, btm_mgr_control_s,
-               btm_mgr_func_table_s, BTM_MGR_FUNC_TABLE_SIZE( btm_mgr_func_table_s ),
-               NULL_P, 0u, BTN_MGR_TICK_TIME_MS );
    TIME_init( &time_cfg_s );
+#if ( HW_VARIANT == HW_VARIANT_SUPER_PILL )
    HMI_SH1106_init( &hmi_sh1106_cfg_s );
    MENU_NAV_init();
    BUZZER_init( &buzzer_instance_s, &buzzer_func_table_s );
    WS2811_init( &ws2811_instance_s );
+   /* Onboard button, NRF24 radio and ESP01 WiFi - not fitted on BLUE_PILL */
+   BTN_MGR_init( &btm_mgr_instance_s, btm_mgr_control_s,
+               btm_mgr_func_table_s, BTM_MGR_FUNC_TABLE_SIZE( btm_mgr_func_table_s ),
+               NULL_P, 0u, BTN_MGR_TICK_TIME_MS );
    NRF24_init( &nrf24_instance_s );
    RF_MGR_init( &rf_mgr_cfg_s, RF_MGR_SETUP_RX );
    SENSOR_NET_init();
@@ -96,18 +97,16 @@ void app_main( void )
    WIFI_init( &wifi_cfg_s );
    TB_CBK_init( &tb_cfg_s );
    TB_init( &tb_cfg_s );
+   TCU_init( &tcu_cfg_s );
+   GKT_SHIFTER_init( &gkt_shifter_cfg_s );
+   MRA_CLUSTER_init( &mra_cluster_cfg_s );
+#endif /* HW_VARIANT == HW_VARIANT_SUPER_PILL */
    TJA1051_init( &tja1051_main_instance_s, &tja1051_func_s, &tja1051_cfg_s );
    (void)PDUR_init( pdur_routing_table_s, pdur_num_routes_s );
    MSG_SCHED_init( &msg_sched_cfg_s );
 
-   TCU_init( &tcu_cfg_s );
-   GKT_SHIFTER_init( &gkt_shifter_cfg_s );
-   MRA_CLUSTER_init( &mra_cluster_cfg_s );
-
-   app_cantp_instance_init();
-   CANTP_init( &app_cantp_instance_s );
-   app_cantp2_instance_init();
-   CANTP_init( &app_cantp2_instance_s );
+   CANTP_init( &app_cantp_instance_s, &app_cantp_cfg_s );
+   CANTP_init( &app_cantp2_instance_s, &app_cantp2_cfg_s );
    MCP2515_init( &mcp2515_can2_instance_s, &mcp2515_can2_func_s, &mcp2515_can2_cfg_s );
    CANIF_init( canif_channels_s, (u8_t)APP_CAN_NUM_CHANNELS, canif_tx_pdus_s, canif_num_tx_pdus_s );
    DIAG_GW_init( &app_diag_gw_cfg_s );

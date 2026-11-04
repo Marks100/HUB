@@ -77,7 +77,17 @@ CFLAGS :=  \
 
 #either s32k or stm32 currently supported
 CPU_TYPE                 := stm32f103
-BUILD_OUT_DIR            := Build
+
+# Hardware variant, SUPER_PILL or BLUE_PILL (Common_Src/PROJ_CONFIG/HAL_config.h), for APP, BM and FBL alike: a build
+# takes it from the command line (make variant_<name> in APP/) and the sub-makes APP starts for BM and FBL inherit it.
+# Every variant builds into its own Build/<VARIANT>, so one never links with another's objects.
+HW_VARIANT               ?= SUPER_PILL
+ifeq ($(filter $(HW_VARIANT),SUPER_PILL BLUE_PILL),)
+$(error HW_VARIANT must be SUPER_PILL or BLUE_PILL, not '$(HW_VARIANT)')
+endif
+BUILD_OUT_DIR            := Build/$(HW_VARIANT)
+CFLAGS                   += -DHW_VARIANT=HW_VARIANT_$(HW_VARIANT)
+
 COMMON_SRC_DIRS          := ../Common_Src ../xCOMMON_MODULES/Src ../xCOMMON_MODULES/cfg
 RELEASE_PACKAGE_BASE_DIR := ../Release_package
 

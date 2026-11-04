@@ -4,14 +4,17 @@
 # Exact file names, not find patterns: a pattern like "*combined*.hex" also matched saved copies
 # such as BM_FBL_APP_combined_baseline_10makes.hex, the variable then held two paths, and Trace32
 # flashed whichever one find happened to list first.
-APP_ELF=$PTLD/APP/Build/APP.elf
-BM_ELF=$PTLD/BM/Build/BM.elf
-FBL_ELF=$PTLD/FBL/Build/FBL.elf
-COMBINED_HEX=$PTLD/APP/Build/BM_FBL_APP_combined.hex
+#
+# Every hardware variant builds into its own Build/<VARIANT>: SUPER_PILL unless HW_VARIANT says BLUE_PILL.
+VARIANT=${HW_VARIANT:-SUPER_PILL}
+APP_ELF=$PTLD/APP/Build/$VARIANT/APP.elf
+BM_ELF=$PTLD/BM/Build/$VARIANT/BM.elf
+FBL_ELF=$PTLD/FBL/Build/$VARIANT/FBL.elf
+COMBINED_HEX=$PTLD/APP/Build/$VARIANT/BM_FBL_APP_combined.hex
 
 for f in "$APP_ELF" "$BM_ELF" "$FBL_ELF" "$COMBINED_HEX"; do
     if [ ! -f "$f" ]; then
-        echo "trace32: missing $f - build it first (make all in APP)" >&2
+        echo "trace32: missing $f - build it first (make all in APP, or make variant_<name>)" >&2
         exit 1
     fi
 done
