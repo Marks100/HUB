@@ -4,8 +4,7 @@
 # This is the whole workflow in the repo, like AUTOCFG_HUB and Sleepy_sensor. The shared version in the build_env repo
 # (.github/workflows/embedded-ci.yml) is a private repo's workflow, which a public repo such as HUB cannot call.
 #
-# The build gates the run. Tests, docs and badges are reported but do not fail it yet: they have not run on the Linux
-# runner before. Once they are green, remove their `continue-on-error`.
+# The build and the software tests gate the run. The function docs and the badges are reported but do not fail it.
 name: CI
 
 on:
@@ -90,28 +89,11 @@ jobs:
 
       # HUB's tests are the software tests (APP/test/sw_tests). Its unit tests live in common_modules, which runs them.
       - name: Run software tests
-        continue-on-error: true
         env:
           SW_TEST_CC: gcc
           SW_TEST_MAKE: make
           SW_TEST_AR: ar
         run: make -C "$BUILD_DIR" test_sw_all
-
-      - name: DIAGNOSTIC - run one test executable by hand (temporary)
-        if: always()
-        continue-on-error: true
-        run: |
-          f=$(find APP/test/build -name 'test_NVM.out' | head -1)
-          echo "executable: $f"
-          file "$f"
-          ldd "$f" || true
-          echo "---- run"
-          "$f" || echo "exit code: $?"
-          echo "---- backtrace"
-          sudo apt-get install -y gdb > /dev/null 2>&1 || true
-          gdb -batch -ex run -ex bt -ex "info registers eip" "$f" 2>&1 | tail -n 25 || true
-          echo "---- 32-bit loader present?"
-          ls -l /lib/ld-linux.so.2 /lib32/ld-linux.so.2 2>&1 || true
 
       - name: Upload test reports
         if: always()
@@ -148,7 +130,9 @@ jobs:
         run: |
           mkdir -p .github/badges
 
-          ruby BuildEnv/xBuildEnv/bin/badge_creator --version-badge --output .github/badges/version.svg
+          # badge_creator --version-badge looks for project.yml above BuildEnv, i.e. the repo root; HUB's is in APP
+          VERSION=$(cd "$BUILD_DIR" && sVersion -l --yml project.yml)
+          ruby BuildEnv/xBuildEnv/bin/badge_creator sw_version "$VERSION" --value-color 007ec6 --output .github/badges/version.svg
 
           if [ -f APP/Build/SUPER_PILL/APP.elf ]; then
             ruby BuildEnv/xBuildEnv/bin/badge_creator build passing --value-color 44cc11 --output .github/badges/build.svg
@@ -204,7 +188,7 @@ jobs:
           CI_BUILD_SHA: ${{ github.sha }}
           CI_IS_RC: "true"
         run: |
-          VER=$(sVersion -l 2>/dev/null || echo "0.0.0.$(echo '${{ github.sha }}' | cut -c1-7)")
+          VER=$(cd "$BUILD_DIR" && sVersion -l --yml project.yml 2>/dev/null || echo "0.0.0.$(echo '${{ github.sha }}' | cut -c1-7)")
           echo "version=${VER}" >> "$GITHUB_OUTPUT"
           echo "tag=v${VER}"    >> "$GITHUB_OUTPUT"
 
