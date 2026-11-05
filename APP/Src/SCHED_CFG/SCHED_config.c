@@ -11,7 +11,7 @@
 **                              Includes                                                          **
 ***************************************************************************************************/
 #include "SCHED_config.h"
-#include "TIME.h"
+#include "TIME_MGR.h"
 #include "WDG.h"
 #include "CANIF.h"
 #include "UDS.h"

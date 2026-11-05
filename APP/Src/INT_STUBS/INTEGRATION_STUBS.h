@@ -6,7 +6,7 @@
 #include "SYSTICK.h"
 #include "DWT.h"
 #include "DBG_MGR.h"
-#include "TIME.h"
+#include "TIME_MGR.h"
 #include "BTN_MGR.h"
 #include "ROTARY_MGR.h"
 #include "HMI_SH1106.h"

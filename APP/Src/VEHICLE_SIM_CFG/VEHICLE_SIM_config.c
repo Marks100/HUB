@@ -38,7 +38,7 @@
 #include "HAL_BRD.h"
 #include "HMI_SH1106.h"   /* HMI_SH1106_is_button_held() - confirm held turns the knob into up/down */
 #include "DWT.h"
-#include "TIME.h"
+#include "TIME_MGR.h"
 
 /***************************************************************************************************
 **                              Defines                                                           **
