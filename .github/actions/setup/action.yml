@@ -30,7 +30,7 @@ runs:
       run: |
         sudo apt-get update
         sudo apt-get install -y srecord p7zip-full doxygen $EXTRA_APT
-        pip install gcovr --quiet
+        pip install "gcovr==8.6" --quiet
 
     - name: Set up Ruby
       uses: ruby/setup-ruby@v1
@@ -39,7 +39,7 @@ runs:
 
     - name: Install Ruby gems
       shell: bash
-      run: gem install docopt terminal-table ceedling
+      run: gem install docopt terminal-table && gem install ceedling -v 1.0.1
 
     - name: Configure build environment
       shell: bash

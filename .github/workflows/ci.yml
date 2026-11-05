@@ -52,7 +52,7 @@ jobs:
         run: |
           mkdir -p Tool_cfg/SigningKeys
           if [ -n "$HMAC_SECRET" ]; then
-            printf '%s\n' "$HMAC_SECRET" > Tool_cfg/SigningKeys/hmac_secret.txt
+            printf '%s' "$HMAC_SECRET" > Tool_cfg/SigningKeys/hmac_secret.txt
             echo "Using the HMAC_SECRET repository secret"
           else
             openssl rand -hex 32 > Tool_cfg/SigningKeys/hmac_secret.txt
@@ -77,15 +77,10 @@ jobs:
           if-no-files-found: warn
           retention-days: 60
 
-      - name: Run unit and software tests
+      # HUB's tests are the software tests (APP/test/sw_tests). Its unit tests live in common_modules, which runs them.
+      - name: Run software tests
         continue-on-error: true
-        run: |
-          # Every target runs, so one failure does not hide the other; the step fails if either did
-          rc=0
-          for target in test_unit_all test_sw_all; do
-            make -C "$BUILD_DIR" "$target" || rc=1
-          done
-          exit $rc
+        run: make -C "$BUILD_DIR" test_sw_all
 
       - name: Upload test reports
         if: always()
@@ -164,7 +159,7 @@ jobs:
           # A release is flashed to devices, so it is never built with a throwaway key
           if [ -z "$HMAC_SECRET" ]; then echo "::error::HMAC_SECRET is not set - refusing to release images signed with a throwaway key"; exit 1; fi
           mkdir -p Tool_cfg/SigningKeys
-          printf '%s\n' "$HMAC_SECRET" > Tool_cfg/SigningKeys/hmac_secret.txt
+          printf '%s' "$HMAC_SECRET" > Tool_cfg/SigningKeys/hmac_secret.txt
 
       - name: Build release package
         env:
