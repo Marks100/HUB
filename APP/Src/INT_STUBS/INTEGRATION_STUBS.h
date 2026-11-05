@@ -50,11 +50,12 @@
 #define APP_NODE_HUB_REQUEST_ID                 ( 0x7FEu )
 #define APP_NODE_HUB_RESPONSE_ID                ( 0x6FEu )
 
-#define APP_NODE_PART_NUMBER_DID                ( 0xF187u )   /* vehicleManufacturerSparePartNumber - confirm for the node */
-#define APP_NODE_PART_NUMBER_MAX_LEN            ( 32u )
-
 /* Largest reply the HUB's CANTP on CAN2 reassembles from a node, for UDS_CLIENT */
 #define APP_NODE_RESPONSE_BUFFER_SIZE           ( 128u )
+
+/* Longest request UDS_CLIENT sends a node, service ID included: a write of this less UDS_CLIENT_WRITE_DID_HEADER_LEN bytes.
+   Longer than a Single Frame goes out through the HUB's CANTP on CAN2 as several frames, which DIAG_GW_local_ms must cover */
+#define APP_NODE_REQUEST_BUFFER_SIZE            ( 64u )
 
 /* The largest request the tester can send the HUB, and the largest response it can send back. A longer First Frame
    is refused by CANTP with FC_OVERLOAD (the ISO-TP maximum on classic CAN is 4095). One buffer, shared by CANTP's
@@ -86,6 +87,10 @@ extern const ESP01_cfg_st               esp01_cfg_s;
 extern const WIFI_config_st             wifi_cfg_s;
 extern       TB_config_st               tb_cfg_s;
 #endif /* HW_VARIANT == SUPER_PILL */
+
+/* Whether the HUB may talk to a node (its number as UDS_CLIENT_set_node() and DIAG_GW take it): it is one of the ERXs in
+   app_autocfg_init_s, the port it is on is powered and its heartbeat is coming in. Nothing is sent to a node that is not. */
+extern false_true_et app_node_is_available( u8_t node );
 
 /* Storage and messages */
 extern const NVM_GEN2_hw_interface_st   nvm_gen2_hw_interface_s;

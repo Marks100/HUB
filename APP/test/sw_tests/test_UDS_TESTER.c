@@ -26,6 +26,7 @@
 #include "TMD_UDS.h"
 
 #include "UDS_CLIENT.h"
+#include "NODE_INFO.h"
 #include "SW_TEST_STUBS.h"
 
 /* The diagnostic IDs of the ERXs under test: the tester asks on 0x700 plus the position and the ERX answers on 0x600 plus it */
@@ -41,7 +42,8 @@
 #define TEST_PART_NUMBER            "PN-1234567"  /* what the ERX reports for DID 0xF187: 10 bytes, so an answer of several frames */
 #define TEST_PART_NUMBER_LEN        ( 10u )
 #define TEST_GATEWAY_HOLD_MS        ( 2000u )     /* how long a tester waits for P2*: longer than the gateway holds its request for the HUB's own client (1000 ms) */
-#define TEST_CLIENT_READ_MS         ( 2500u )     /* longer than the HUB's client waits between its automatic reads */
+#define TEST_CLIENT_READ_MS         ( 2500u )     /* longer than the HUB's client waits between its reads */
+#define TEST_ERX_UP_MS              ( 700u )      /* the ERX's heartbeat is coming in and the HUB's client has started reading it */
 #define TEST_SILENT_TIMEOUT_MS      ( 300u )      /* how long the tester waits for an ERX that does not answer */
 
 /*!
@@ -212,7 +214,10 @@ void test_a_tester_reaches_the_erx_at_the_first_id_of_the_gateway_range( void )
 
     sw_test_place_erx( APP_ISO_AXLE_1_OUTER_LEFT );
     TMD_CANTP_set_ids( TEST_AXLE_1_OUTER_LEFT_REQUEST_ID, TEST_AXLE_1_OUTER_LEFT_RESPONSE_ID );
-    TMD_UDS_set_timeout( TEST_GATEWAY_HOLD_MS );    /* the HUB's client is reading this ERX from start-up: the gateway holds the tester's request until the client's time is up */
+    TMD_UDS_set_timeout( TEST_GATEWAY_HOLD_MS );
+
+    /* The HUB's client waits for the ERX to be up (its heartbeat is coming in) before it reads it. Once it has, the gateway holds the tester's request until the client's time is up */
+    TMD_TIME_advance_time_ms( TEST_ERX_UP_MS );
 
     TEST_ASSERT_EQUAL( TMD_UDS_RESULT_OK, TMD_UDS_send_request( request, 2u, response, sizeof( response ), &len ) );
 
@@ -222,7 +227,7 @@ void test_a_tester_reaches_the_erx_at_the_first_id_of_the_gateway_range( void )
 
     TMD_TIME_advance_time_ms( TEST_CLIENT_READ_MS );
 
-    TEST_ASSERT_NOT_NULL( UDS_CLIENT_get_did( APP_NODE_PART_NUMBER_DID, &part_number_len ) );    /* the HUB's own client still reads the same ERX */
+    TEST_ASSERT_NOT_NULL( NODE_INFO_get( NODE_INFO_PART_NUMBER, &part_number_len ) );    /* the HUB's own client still reads the same ERX */
 }
 
 /*!

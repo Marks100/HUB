@@ -16,6 +16,7 @@
 #include "CANIF.h"
 #include "UDS.h"
 #include "UDS_CLIENT.h"
+#include "NODE_INFO.h"
 #include "INTEGRATION_STUBS.h"
 #include "BTN_MGR.h"
 #include "BUZZER.h"
@@ -53,6 +54,7 @@ STATIC const SCHED_entry_st app_sched_table_s[] =
 	{ sched_cfg_mcp2515_tick,         SCHED_PERIOD_5MS,      0u },
 	{ DIAG_GW_tick,                   SCHED_PERIOD_5MS,      0u },
 	{ UDS_CLIENT_tick,                SCHED_PERIOD_10MS,     0u },
+	{ NODE_INFO_tick,                 SCHED_PERIOD_100MS,    0u },
 	{ CANIF_tick,                     SCHED_PERIOD_5MS,      0u },
 	{ sched_cfg_cantp_tick,           SCHED_PERIOD_5MS,      0u }, 
 	{ UDS_tick,                       SCHED_PERIOD_10MS,     0u },

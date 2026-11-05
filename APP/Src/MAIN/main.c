@@ -39,6 +39,7 @@
 #include "UDS_config.h"
 #include "BOOT_HANDOFF.h"
 #include "TYRE_DATA.h"
+#include "NODE_INFO.h"
 
 extern u32_t __isr_vector_start;   /* Linker symbol - APP/linker_script/STM32F103C8_flash.ld */
 
@@ -108,6 +109,7 @@ void app_main( void )
    CANIF_init( canif_channels_s, (u8_t)APP_CAN_NUM_CHANNELS, canif_tx_pdus_s, canif_num_tx_pdus_s );
    DIAG_GW_init( &app_diag_gw_cfg_s );
    UDS_CLIENT_init( &app_uds_client_cfg_s );
+   NODE_INFO_init();
    AUTOCFG_init( &app_autocfg_init_s );
    HAL_CAN_set_rx_callback( APP_CAN_CH_MAIN, CANIF_rx_indication );
 

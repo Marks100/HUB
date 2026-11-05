@@ -107,6 +107,29 @@ AUTOCFG_init_st app_autocfg_init_s =
     .autocfg_enabled     = FALSE
 };
 
+/* A node is the ISO position (APP_ISO_POSITION_FIRST + node) of one of the ERXs above. It is talked to only while it is configured
+   (a row of erx_locations), its port is switched on and its heartbeat is coming in - a node that is unplugged, unpowered or dead
+   would only time out, and hold the gateway while it did. DIAG_GW asks it (node_available_func_p) before reserving a node for the
+   HUB's client, and NODE_INFO to know when to start. */
+false_true_et app_node_is_available( u8_t node )
+{
+    false_true_et available    = FALSE;
+    const u8_t    iso_position = (u8_t)( APP_ISO_POSITION_FIRST + node );
+    u8_t          i;
+
+    for( i = 0u; ( i < AUTOCFG_V2_MAX_ERXS ) && ( available == FALSE ); i++ )
+    {
+        if( ( app_autocfg_init_s.erx_locations[i].iso_position == iso_position ) &&
+            ( AUTOCFG_get_port_power_state( app_autocfg_init_s.erx_locations[i].port ) == PORT_POWER_ON ) &&
+            ( AUTOCFG_is_erx_alive( iso_position ) == TRUE ) )
+        {
+            available = TRUE;
+        }
+    }
+
+    return( available );
+}
+
 /***************************************************************************************************
 **                              WDG                                                               **
 ***************************************************************************************************/
@@ -443,6 +466,7 @@ const DIAG_GW_cfg_st app_diag_gw_cfg_s =
 {
     .tester_idle_ms   = 5500u,
     .local_ms         = 1000u,
+    .node_available_func_p = app_node_is_available,
     .time_ms_func_p   = TIME_get_cumulative_run_time_ms,
     .set_tx_id_func_p = CANIF_set_dynamic_tx_id,
     .tx_func_p        = app_diag_gw_tx,
@@ -745,29 +769,30 @@ const u16_t pdur_num_routes_s = (u16_t)( sizeof( pdur_routing_table_s ) / sizeof
 /***************************************************************************************************
 **                              UDS_CLIENT                                                        **
 ***************************************************************************************************/
-/* Read by itself from the selected node (UDS_CLIENT_set_node) until it answers;
-   UDS_CLIENT_get_did( APP_NODE_PART_NUMBER_DID, ... ) returns it. Every request asks DIAG_GW for that node's
-   pair first, so it never interrupts a tester. */
-STATIC u8_t app_node_part_number_s[ APP_NODE_PART_NUMBER_MAX_LEN ];
+/* What to read or write, and when, is NODE_INFO's and the layers above's to decide: each request names the function that
+   is told its outcome. Every request asks DIAG_GW for the selected node's pair first, so it never interrupts a tester.
+   P2/P2* placeholders until the node's own values are known: ISO 14229-2 defaults plus margin */
+STATIC u8_t app_node_request_buffer_s[ APP_NODE_REQUEST_BUFFER_SIZE ];
 
-STATIC const UDS_CLIENT_did_st app_uds_client_dids_s[] =
+/* A request that ends while CANTP is still sending it (a timeout) must not leave it sending from the request buffer */
+STATIC void app_node_diag_cancel( UDS_CLIENT_route_id_t route_id )
 {
-    { .did = APP_NODE_PART_NUMBER_DID, .data_p = app_node_part_number_s, .max_len = APP_NODE_PART_NUMBER_MAX_LEN },
-};
+    (void)route_id;
 
-/* P2/P2* placeholders until the node's own values are known: ISO 14229-2 defaults plus margin */
+    CANTP_cancel_tp_tx_request( &app_cantp2_instance_s, APP_CANIF_PDU_HUB_TX );
+}
+
 const UDS_CLIENT_cfg_st app_uds_client_cfg_s =
 {
     .route_id            = APP_PDU_NODE_DIAG,
     .num_nodes           = (u8_t)( APP_NODE_REQUEST_LAST_ID - APP_NODE_REQUEST_BASE_ID + 1u ),
     .tp_send_func_p      = PDUR_tx,
     .reserve_func_p      = DIAG_GW_local_reserve,
+    .tp_cancel_func_p    = app_node_diag_cancel,
+    .request_buffer_p    = app_node_request_buffer_s,
+    .request_buffer_size = APP_NODE_REQUEST_BUFFER_SIZE,
     .p2_ms               = 150u,
-    .p2_star_ms          = 5500u,
-    .tick_period_ms      = SCHED_PERIOD_10MS,
-    .auto_read_dids_p    = app_uds_client_dids_s,
-    .num_auto_read_dids  = (u8_t)( sizeof( app_uds_client_dids_s ) / sizeof( app_uds_client_dids_s[0u] ) ),
-    .auto_read_period_ms = 1000u
+    .p2_star_ms          = 5500u
 };
 
 /***************************************************************************************************
