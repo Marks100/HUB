@@ -107,6 +107,9 @@ jobs:
           ldd "$f" || true
           echo "---- run"
           "$f"; echo "exit code: $?"
+          echo "---- backtrace"
+          sudo apt-get install -y gdb > /dev/null 2>&1
+          gdb -batch -ex run -ex bt -ex "info registers eip" "$f" 2>&1 | tail -n 25
           echo "---- 32-bit loader present?"
           ls -l /lib/ld-linux.so.2 /lib32/ld-linux.so.2 2>&1 || true
 
