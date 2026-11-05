@@ -111,15 +111,18 @@
   :release: []
   :use_test_definition: FALSE
 
-# Must agree with build_system/lib_flags.txt where it changes the code: no -fpack-struct / -fshort-enums here or there
+# Must agree with build_system/lib_flags.txt where it changes the code: no -fpack-struct / -fshort-enums here or there.
+# -m32: the tests cast pointers to u32_t and map the flash at its real 32-bit address, so they are a 32-bit host build everywhere
 :flags:
   :test:
     :compile:
+      - -m32
       - -std=gnu11
       - -O0
       - -g
       - -Wno-incompatible-pointer-types
     :link:
+      - -m32
       # A test may define a function the library or the virtual hardware also defines: the first definition in link
       # order, the test's, wins. weak does not work for this on MinGW. The cost is that a real duplicate is no longer an error.
       - -Wl,--allow-multiple-definition
@@ -127,6 +130,7 @@
       - --coverage
   :gcov:
     :compile:
+      - -m32
       - -std=gnu11
       - -O0
       - -g
@@ -154,7 +158,7 @@
   :release: []
 
 # The host toolchain is whatever gcc, make and ar are first on the PATH: the 32-bit MinGW on Windows (the :environment: block below
-# puts it first), a gcc -m32 wrapper on CI. The tests need a 32-bit host build, since they cast pointers to u32_t.
+# puts it first), the system gcc with gcc-multilib on CI.
 # Build the library before every Ceedling build. Incremental: a no-op once built.
 :command_hooks:
   :pre_build:

@@ -42,21 +42,12 @@ jobs:
 
       - uses: ./.github/actions/setup
 
-      # The secure boot HMAC secret is gitignored, so a fresh clone has none. With the HMAC_SECRET repository secret the
-      # images are signed with the real key. Without it a throwaway key is made: the build and tests still run, but the
-      # signed images are only good for checking the build - they will not boot on a device provisioned with the real key.
+      # The secure boot HMAC secret is gitignored, so a fresh clone has none: the images are signed with the HMAC_SECRET
+      # repository secret.
       - name: Provide the secure boot HMAC secret
         env:
           HMAC_SECRET: ${{ secrets.HMAC_SECRET }}
-        run: |
-          mkdir -p Tool_cfg/SigningKeys
-          if [ -n "$HMAC_SECRET" ]; then
-            printf '%s' "$HMAC_SECRET" > Tool_cfg/SigningKeys/hmac_secret.txt
-            echo "Using the HMAC_SECRET repository secret"
-          else
-            openssl rand -hex 32 > Tool_cfg/SigningKeys/hmac_secret.txt
-            echo "::warning::HMAC_SECRET is not set - built with a throwaway key, the signed images are not for devices"
-          fi
+        run: printf '%s' "$HMAC_SECRET" > Tool_cfg/SigningKeys/hmac_secret.txt
 
       - name: Build every variant
         env:
@@ -77,16 +68,9 @@ jobs:
           if-no-files-found: warn
           retention-days: 60
 
-      # The software tests are built for a 32-bit host (they cast pointers to u32_t), so they need gcc -m32 everywhere: the
-      # library, the tests and the coverage link. sw_test_project.yml calls plain gcc, make and ar, so a gcc wrapper first on the
-      # PATH gives every tool that calls gcc the 32-bit one.
-      - name: Prepare the 32-bit host compiler
-        run: |
-          sudo apt-get install -y gcc-multilib
-          mkdir -p "$RUNNER_TEMP/gcc32"
-          printf '#!/bin/sh\nexec /usr/bin/gcc -m32 "$@"\n' > "$RUNNER_TEMP/gcc32/gcc"
-          chmod +x "$RUNNER_TEMP/gcc32/gcc"
-          echo "$RUNNER_TEMP/gcc32" >> "$GITHUB_PATH"
+      # The software tests are a 32-bit host build (-m32 in sw_test_project.yml), which the system gcc needs the multilib for
+      - name: Install the 32-bit host libraries
+        run: sudo apt-get install -y gcc-multilib
 
       # HUB's tests are the software tests (APP/test/sw_tests). Its unit tests live in common_modules, which runs them.
       - name: Run software tests
@@ -170,7 +154,6 @@ jobs:
         run: |
           # A release is flashed to devices, so it is never built with a throwaway key
           if [ -z "$HMAC_SECRET" ]; then echo "::error::HMAC_SECRET is not set - refusing to release images signed with a throwaway key"; exit 1; fi
-          mkdir -p Tool_cfg/SigningKeys
           printf '%s' "$HMAC_SECRET" > Tool_cfg/SigningKeys/hmac_secret.txt
 
       - name: Build release package
