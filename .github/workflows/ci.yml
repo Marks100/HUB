@@ -1,0 +1,42 @@
+# HUB CI: builds every hardware variant (make -C APP all builds SUPER_PILL and BLUE_PILL, each with its own BM and FBL),
+# runs the unit and software tests, builds the function documentation and commits the badges.
+# The steps live in the reusable workflow in the BuildEnv repo; this file only says what HUB builds and tests.
+name: CI
+
+on:
+  push:
+    paths-ignore:
+      - '**.md'
+      - 'Docs/**'
+      - 'Tool_cfg/**'
+      - 'scripts/**'
+      - '.github/badges/**'
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      manual_release:
+        description: 'Create a release from this branch?'
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  ci:
+    uses: Marks100/build_env/.github/workflows/embedded-ci.yml@master
+    with:
+      build_dir: APP
+      build_target: all
+      test_targets: test_unit_all test_sw_all
+      # Not yet run on the Linux runner: reported, but does not fail the run. Set to true once both are green there.
+      tests_gate: false
+      coverage_dir: APP/test/build/artifacts/gcov/
+      elf_path: APP/Build/SUPER_PILL/APP.elf
+      # The build writes the memory badges itself (.github/badges/memory_*), so no memory analyser here
+      memory_analyser: ''
+      release_name: HUB
+      # A release only on request until the release package has been built on CI once
+      create_release: ${{ inputs.manual_release == true }}
+    secrets:
+      SUBMODULE_PAT: ${{ secrets.SUBMODULE_PAT }}
