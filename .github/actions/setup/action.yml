@@ -1,0 +1,50 @@
+name: 'Setup Build Environment'
+description: 'Installs ARM GCC, system tools, Ruby gems and configures build paths'
+
+inputs:
+  arm_gcc_version:
+    description: 'GNU Arm Embedded toolchain release'
+    required: false
+    default: '10.3-2021.10'
+  extra_apt:
+    description: 'Extra apt packages to install (space-separated)'
+    required: false
+    default: ''
+
+runs:
+  using: composite
+  steps:
+    - name: Install ARM GCC toolchain
+      shell: bash
+      env:
+        ARM_GCC_VERSION: ${{ inputs.arm_gcc_version }}
+      run: |
+        wget -q "https://developer.arm.com/-/media/Files/downloads/gnu-rm/${ARM_GCC_VERSION}/gcc-arm-none-eabi-${ARM_GCC_VERSION}-x86_64-linux.tar.bz2"
+        sudo tar xjf "gcc-arm-none-eabi-${ARM_GCC_VERSION}-x86_64-linux.tar.bz2" -C /opt/
+        echo "/opt/gcc-arm-none-eabi-${ARM_GCC_VERSION}/bin" >> "$GITHUB_PATH"
+
+    - name: Install system tools
+      shell: bash
+      env:
+        EXTRA_APT: ${{ inputs.extra_apt }}
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y srecord p7zip-full doxygen $EXTRA_APT
+        pip install gcovr --quiet
+
+    - name: Set up Ruby
+      uses: ruby/setup-ruby@v1
+      with:
+        ruby-version: '3.1'
+
+    - name: Install Ruby gems
+      shell: bash
+      run: gem install docopt terminal-table ceedling
+
+    - name: Configure build environment
+      shell: bash
+      run: |
+        echo "${{ github.workspace }}/BuildEnv/xBuildEnv/bin" >> "$GITHUB_PATH"
+        echo "PTLD=${{ github.workspace }}" >> "$GITHUB_ENV"
+        chmod +x BuildEnv/xBuildEnv/bin/*
+        chmod +x xCOMMON_MODULES/BuildEnv/xBuildEnv/bin/* 2>/dev/null || true

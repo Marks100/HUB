@@ -1,6 +1,11 @@
 # HUB CI: builds every hardware variant (make -C APP all builds SUPER_PILL and BLUE_PILL, each with its own BM and FBL),
 # runs the unit and software tests, builds the function documentation and commits the badges.
-# The steps live in the reusable workflow in the BuildEnv repo; this file only says what HUB builds and tests.
+#
+# This is the whole workflow in the repo, like AUTOCFG_HUB and Sleepy_sensor. The shared version in the build_env repo
+# (.github/workflows/embedded-ci.yml) is a private repo's workflow, which a public repo such as HUB cannot call.
+#
+# The build gates the run. Tests, docs and badges are reported but do not fail it yet: they have not run on the Linux
+# runner before. Once they are green, remove their `continue-on-error`.
 name: CI
 
 on:
@@ -22,21 +27,161 @@ on:
 permissions:
   contents: write
 
+env:
+  BUILD_DIR: APP
+
 jobs:
-  ci:
-    uses: Marks100/build_env/.github/workflows/embedded-ci.yml@master
-    with:
-      build_dir: APP
-      build_target: all
-      test_targets: test_unit_all test_sw_all
-      # Not yet run on the Linux runner: reported, but does not fail the run. Set to true once both are green there.
-      tests_gate: false
-      coverage_dir: APP/test/build/artifacts/gcov/
-      elf_path: APP/Build/SUPER_PILL/APP.elf
-      # The build writes the memory badges itself (.github/badges/memory_*), so no memory analyser here
-      memory_analyser: ''
-      release_name: HUB
-      # A release only on request until the release package has been built on CI once
-      create_release: ${{ inputs.manual_release == true }}
-    secrets:
-      SUBMODULE_PAT: ${{ secrets.SUBMODULE_PAT }}
+  build_and_test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
+          token: ${{ secrets.SUBMODULE_PAT || github.token }}
+
+      - uses: ./.github/actions/setup
+
+      - name: Build every variant
+        env:
+          CI_BUILD_SHA: ${{ github.sha }}
+        run: make -C "$BUILD_DIR" all
+
+      - name: Upload build output
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-output-${{ github.sha }}
+          path: |
+            APP/Build/**/*.hex
+            APP/Build/**/*.elf
+            APP/Build/**/*.map
+            BM/Build/**/*.hex
+            FBL/Build/**/*.hex
+          if-no-files-found: warn
+          retention-days: 60
+
+      - name: Run unit and software tests
+        continue-on-error: true
+        run: |
+          # Every target runs, so one failure does not hide the other; the step fails if either did
+          rc=0
+          for target in test_unit_all test_sw_all; do
+            make -C "$BUILD_DIR" "$target" || rc=1
+          done
+          exit $rc
+
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports-${{ github.sha }}
+          path: |
+            APP/test/build/artifacts/
+            APP/test/CodeCoverage/
+          if-no-files-found: ignore
+          retention-days: 60
+
+      - name: Generate function documentation
+        if: always()
+        continue-on-error: true
+        run: |
+          make -C "$BUILD_DIR" doc_functions
+          mkdir -p function_docs
+          find APP/Src Common_Src xCOMMON_MODULES/Src -name '*_Documentation.html' -exec cp {} function_docs/ \; 2>/dev/null || true
+          echo "Collected $(ls function_docs/*.html 2>/dev/null | wc -l) doc files"
+
+      - name: Upload function documentation
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: function-documentation-${{ github.sha }}
+          path: function_docs/
+          if-no-files-found: ignore
+          retention-days: 60
+
+      - name: Generate and commit badges
+        if: always() && github.event_name != 'pull_request'
+        continue-on-error: true
+        run: |
+          mkdir -p .github/badges
+
+          ruby BuildEnv/xBuildEnv/bin/badge_creator --version-badge --output .github/badges/version.svg
+
+          if [ -f APP/Build/SUPER_PILL/APP.elf ]; then
+            ruby BuildEnv/xBuildEnv/bin/badge_creator build passing --value-color 44cc11 --output .github/badges/build.svg
+          else
+            ruby BuildEnv/xBuildEnv/bin/badge_creator build failing --value-color e05d44 --output .github/badges/build.svg
+          fi
+
+          git config --unset-all http.https://github.com/.extraheader || true
+          git config http.https://github.com/.extraheader \
+            "AUTHORIZATION: basic $(echo -n x-access-token:${{ github.token }} | base64)"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add .github/badges/*.svg
+          if ! git diff --cached --quiet; then
+            git commit -m "Update CI badges [skip ci]"
+            git push
+          else
+            echo "No badge changes to commit"
+          fi
+
+  release_package:
+    needs: build_and_test
+    if: github.event_name == 'workflow_dispatch' && inputs.manual_release == true
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
+          token: ${{ secrets.SUBMODULE_PAT || github.token }}
+
+      - uses: ./.github/actions/setup
+
+      - name: Build release package
+        env:
+          CI_BUILD_SHA: ${{ github.sha }}
+          CI_IS_RC: "true"
+        run: make -C "$BUILD_DIR" release_package
+
+      - name: Read version
+        id: version
+        env:
+          CI_BUILD_SHA: ${{ github.sha }}
+          CI_IS_RC: "true"
+        run: |
+          VER=$(sVersion -l 2>/dev/null || echo "0.0.0.$(echo '${{ github.sha }}' | cut -c1-7)")
+          echo "version=${VER}" >> "$GITHUB_OUTPUT"
+          echo "tag=v${VER}"    >> "$GITHUB_OUTPUT"
+
+      - name: Locate release ZIP
+        id: zip
+        run: |
+          ZIP_PATH=$(find Release_package -name "*.zip" | head -1)
+          echo "path=${ZIP_PATH}" >> "$GITHUB_OUTPUT"
+          ls -lh "${ZIP_PATH}"
+
+      - name: Download build output
+        uses: actions/download-artifact@v4
+        with:
+          name: build-output-${{ github.sha }}
+          path: release_assets/
+
+      - name: Add release ZIP to assets
+        run: cp "${{ steps.zip.outputs.path }}" release_assets/
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: "HUB ${{ steps.version.outputs.version }}"
+          body: |
+            **Branch:** `${{ github.ref_name }}` | **Commit:** `${{ github.sha }}`
+          draft: false
+          prerelease: ${{ contains(steps.version.outputs.version, 'RC') }}
+          files: release_assets/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
