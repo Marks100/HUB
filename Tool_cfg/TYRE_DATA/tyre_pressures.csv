@@ -1,0 +1,459 @@
+# Recommended tyre pressures -> DATASET0 (see APP/Src/TYRE_DATA/TYRE_DATA.h).
+# Build with `make dataset` in APP/, download Build/DATASET0_signed.hex through FBL.
+#
+# PLACEHOLDER VALUES - pressures are made up from a vehicle class (city car, SUV, van, ...) for bench
+# testing, NOT real placard data, and year ranges only approximate each model's generations. Check
+# the door-pillar placard / owner's manual before trusting any of these.
+#
+# make/model: max 20 characters. Years inclusive. Pressures in bar, 0.1 resolution, normal load.
+make,model,year_from,year_to,front_bar,rear_bar
+Abarth,595,2012,2024,2.2,2.1
+Alfa Romeo,Giulia,2016,2025,2.3,2.2
+Alfa Romeo,Giulietta,2010,2020,2.3,2.2
+Alfa Romeo,MiTo,2008,2018,2.2,2.1
+Alfa Romeo,Stelvio,2017,2025,2.4,2.4
+Alfa Romeo,Tonale,2022,2025,2.4,2.4
+Alpine,A110,2017,2025,2.4,2.8
+Aston Martin,DBX,2020,2025,2.6,2.8
+Aston Martin,Vantage,2018,2025,2.4,2.8
+Audi,A1,2010,2018,2.2,2.1
+Audi,A1,2019,2025,2.3,2.2
+Audi,A3,2003,2012,2.3,2.2
+Audi,A3,2013,2020,2.4,2.3
+Audi,A3,2021,2025,2.5,2.4
+Audi,A4,2001,2007,2.3,2.2
+Audi,A4,2008,2015,2.4,2.3
+Audi,A4,2016,2025,2.5,2.4
+Audi,A5,2007,2016,2.3,2.2
+Audi,A5,2017,2025,2.4,2.3
+Audi,A6,2004,2010,2.4,2.5
+Audi,A6,2011,2018,2.5,2.6
+Audi,A6,2019,2025,2.6,2.7
+Audi,e-tron,2019,2025,2.8,2.8
+Audi,Q2,2016,2025,2.4,2.4
+Audi,Q3,2011,2018,2.4,2.4
+Audi,Q3,2019,2025,2.5,2.5
+Audi,Q5,2008,2016,2.4,2.4
+Audi,Q5,2017,2025,2.5,2.5
+Audi,Q7,2006,2015,2.6,2.8
+Audi,Q7,2016,2025,2.7,2.9
+Audi,TT,2006,2014,2.4,2.8
+Audi,TT,2015,2023,2.5,2.9
+Bentley,Bentayga,2016,2025,2.6,2.8
+Bentley,Continental GT,2011,2017,2.4,2.8
+Bentley,Continental GT,2018,2025,2.5,2.9
+BMW,1 Series,2004,2011,2.2,2.1
+BMW,1 Series,2012,2019,2.3,2.2
+BMW,1 Series,2020,2025,2.4,2.3
+BMW,2 Series,2014,2021,2.3,2.2
+BMW,2 Series,2022,2025,2.4,2.3
+BMW,3 Series,1998,2004,2.3,2.2
+BMW,3 Series,2005,2011,2.4,2.3
+BMW,3 Series,2012,2018,2.5,2.4
+BMW,3 Series,2019,2025,2.5,2.4
+BMW,4 Series,2014,2020,2.3,2.2
+BMW,4 Series,2021,2025,2.4,2.3
+BMW,5 Series,2003,2009,2.4,2.5
+BMW,5 Series,2010,2016,2.5,2.6
+BMW,5 Series,2017,2023,2.6,2.7
+BMW,5 Series,2024,2025,2.6,2.7
+BMW,i3,2013,2022,2.8,2.8
+BMW,X1,2009,2015,2.4,2.4
+BMW,X1,2016,2022,2.5,2.5
+BMW,X1,2023,2025,2.6,2.6
+BMW,X3,2011,2017,2.4,2.4
+BMW,X3,2018,2025,2.5,2.5
+BMW,X5,2007,2013,2.6,2.8
+BMW,X5,2014,2018,2.7,2.9
+BMW,X5,2019,2025,2.8,3.0
+BMW,Z4,2009,2016,2.4,2.8
+BMW,Z4,2019,2025,2.5,2.9
+BYD,Atto 3,2022,2025,2.8,2.8
+BYD,Dolphin,2023,2025,2.8,2.8
+BYD,Seal,2023,2025,2.8,2.8
+Citroen,Berlingo,2008,2018,2.3,2.2
+Citroen,Berlingo,2019,2025,2.4,2.3
+Citroen,C1,2005,2014,2.2,2.1
+Citroen,C1,2015,2022,2.3,2.2
+Citroen,C3,2002,2008,2.2,2.1
+Citroen,C3,2009,2016,2.3,2.2
+Citroen,C3,2017,2025,2.4,2.3
+Citroen,C4,2010,2018,2.3,2.2
+Citroen,C4,2020,2025,2.4,2.3
+Citroen,C5 Aircross,2018,2025,2.4,2.4
+Cupra,Born,2021,2025,2.8,2.8
+Cupra,Formentor,2020,2025,2.4,2.4
+Cupra,Leon,2020,2025,2.3,2.2
+Dacia,Duster,2010,2017,2.4,2.4
+Dacia,Duster,2018,2023,2.5,2.5
+Dacia,Duster,2024,2025,2.6,2.6
+Dacia,Jogger,2022,2025,2.3,2.2
+Dacia,Logan,2013,2020,2.2,2.1
+Dacia,Logan,2021,2025,2.3,2.2
+Dacia,Sandero,2013,2020,2.2,2.1
+Dacia,Sandero,2021,2025,2.3,2.2
+Dacia,Spring,2021,2025,2.8,2.8
+DS,DS 3,2010,2019,2.2,2.1
+DS,DS 7,2018,2025,2.4,2.4
+Fiat,500,2007,2025,2.2,2.1
+Fiat,500X,2014,2025,2.4,2.4
+Fiat,Panda,2003,2011,2.2,2.1
+Fiat,Panda,2012,2025,2.3,2.2
+Fiat,Punto,1999,2004,2.2,2.1
+Fiat,Punto,2005,2018,2.3,2.2
+Fiat,Tipo,2016,2025,2.3,2.2
+Ford,Fiesta,2002,2007,2.2,2.1
+Ford,Fiesta,2008,2016,2.3,2.2
+Ford,Fiesta,2017,2023,2.4,2.3
+Ford,Focus,1998,2004,2.3,2.2
+Ford,Focus,2005,2010,2.4,2.3
+Ford,Focus,2011,2018,2.5,2.4
+Ford,Focus,2019,2025,2.5,2.4
+Ford,Galaxy,2006,2014,2.3,2.2
+Ford,Galaxy,2015,2023,2.4,2.3
+Ford,Ka,2009,2016,2.2,2.1
+Ford,Ka,2017,2020,2.3,2.2
+Ford,Kuga,2008,2012,2.4,2.4
+Ford,Kuga,2013,2019,2.5,2.5
+Ford,Kuga,2020,2025,2.6,2.6
+Ford,Mondeo,2000,2006,2.3,2.2
+Ford,Mondeo,2007,2014,2.4,2.3
+Ford,Mondeo,2015,2022,2.5,2.4
+Ford,Mustang,2015,2023,2.4,2.8
+Ford,Mustang,2024,2025,2.5,2.9
+Ford,Puma,2019,2025,2.4,2.4
+Ford,Ranger,2012,2022,2.5,2.8
+Ford,Ranger,2023,2025,2.6,2.9
+Ford,S-Max,2006,2014,2.3,2.2
+Ford,S-Max,2015,2023,2.4,2.3
+Ford,Transit Custom,2012,2023,3.2,3.6
+Ford,Transit Custom,2024,2025,3.3,3.7
+Genesis,GV70,2021,2025,2.4,2.4
+Honda,Civic,2001,2005,2.3,2.2
+Honda,Civic,2006,2011,2.4,2.3
+Honda,Civic,2012,2016,2.5,2.4
+Honda,Civic,2017,2021,2.5,2.4
+Honda,Civic,2022,2025,2.5,2.4
+Honda,CR-V,2007,2012,2.4,2.4
+Honda,CR-V,2013,2018,2.5,2.5
+Honda,CR-V,2019,2025,2.6,2.6
+Honda,e,2020,2024,2.8,2.8
+Honda,HR-V,2015,2020,2.4,2.4
+Honda,HR-V,2021,2025,2.5,2.5
+Honda,Jazz,2002,2007,2.2,2.1
+Honda,Jazz,2008,2014,2.3,2.2
+Honda,Jazz,2015,2019,2.4,2.3
+Honda,Jazz,2020,2025,2.4,2.3
+Hyundai,i10,2008,2013,2.2,2.1
+Hyundai,i10,2014,2019,2.3,2.2
+Hyundai,i10,2020,2025,2.4,2.3
+Hyundai,i20,2009,2014,2.2,2.1
+Hyundai,i20,2015,2020,2.3,2.2
+Hyundai,i20,2021,2025,2.4,2.3
+Hyundai,i30,2007,2011,2.3,2.2
+Hyundai,i30,2012,2016,2.4,2.3
+Hyundai,i30,2017,2025,2.5,2.4
+Hyundai,Ioniq 5,2021,2025,2.8,2.8
+Hyundai,Kona,2017,2022,2.4,2.4
+Hyundai,Kona,2023,2025,2.5,2.5
+Hyundai,Santa Fe,2013,2018,2.6,2.8
+Hyundai,Santa Fe,2019,2023,2.7,2.9
+Hyundai,Santa Fe,2024,2025,2.8,3.0
+Hyundai,Tucson,2004,2009,2.4,2.4
+Hyundai,Tucson,2015,2020,2.5,2.5
+Hyundai,Tucson,2021,2025,2.6,2.6
+Ineos,Grenadier,2022,2025,2.6,2.8
+Isuzu,D-Max,2012,2019,2.5,2.8
+Isuzu,D-Max,2020,2025,2.6,2.9
+Jaguar,E-Pace,2017,2025,2.4,2.4
+Jaguar,F-Pace,2016,2025,2.4,2.4
+Jaguar,F-Type,2013,2024,2.4,2.8
+Jaguar,I-Pace,2018,2025,2.8,2.8
+Jaguar,XE,2015,2024,2.3,2.2
+Jaguar,XF,2008,2015,2.4,2.5
+Jaguar,XF,2016,2024,2.5,2.6
+Jeep,Compass,2017,2025,2.4,2.4
+Jeep,Renegade,2014,2025,2.4,2.4
+Jeep,Wrangler,2007,2017,2.6,2.8
+Jeep,Wrangler,2018,2025,2.7,2.9
+Kia,Ceed,2007,2012,2.3,2.2
+Kia,Ceed,2013,2018,2.4,2.3
+Kia,Ceed,2019,2025,2.5,2.4
+Kia,EV6,2021,2025,2.8,2.8
+Kia,Niro,2016,2021,2.4,2.4
+Kia,Niro,2022,2025,2.5,2.5
+Kia,Picanto,2011,2016,2.2,2.1
+Kia,Picanto,2017,2025,2.3,2.2
+Kia,Rio,2011,2016,2.2,2.1
+Kia,Rio,2017,2023,2.3,2.2
+Kia,Sorento,2015,2019,2.6,2.8
+Kia,Sorento,2020,2025,2.7,2.9
+Kia,Sportage,2004,2009,2.4,2.4
+Kia,Sportage,2010,2015,2.5,2.5
+Kia,Sportage,2016,2021,2.6,2.6
+Kia,Sportage,2022,2025,2.6,2.6
+Kia,XCeed,2019,2025,2.4,2.4
+Lamborghini,Urus,2018,2025,2.6,2.8
+Land Rover,Defender,2020,2025,2.6,2.8
+Land Rover,Discovery,2004,2008,2.6,2.8
+Land Rover,Discovery,2009,2016,2.7,2.9
+Land Rover,Discovery,2017,2025,2.8,3.0
+Land Rover,Discovery Sport,2015,2025,2.4,2.4
+Land Rover,Evoque,2011,2018,2.4,2.4
+Land Rover,Evoque,2019,2025,2.5,2.5
+Land Rover,Range Rover,2013,2021,2.6,2.8
+Land Rover,Range Rover,2022,2025,2.7,2.9
+Land Rover,Range Rover Sport,2013,2021,2.6,2.8
+Land Rover,Range Rover Sport,2022,2025,2.7,2.9
+Land Rover,Velar,2017,2025,2.4,2.4
+Lexus,CT,2011,2022,2.3,2.2
+Lexus,IS,2013,2025,2.3,2.2
+Lexus,NX,2014,2021,2.4,2.4
+Lexus,NX,2022,2025,2.5,2.5
+Lexus,RX,2009,2015,2.6,2.8
+Lexus,RX,2016,2022,2.7,2.9
+Lexus,RX,2023,2025,2.8,3.0
+Lexus,UX,2019,2025,2.4,2.4
+Lotus,Emira,2022,2025,2.4,2.8
+Maserati,Ghibli,2013,2024,2.4,2.5
+Maserati,Levante,2016,2024,2.6,2.8
+Mazda,CX-3,2015,2021,2.4,2.4
+Mazda,CX-30,2019,2025,2.4,2.4
+Mazda,CX-5,2012,2016,2.4,2.4
+Mazda,CX-5,2017,2025,2.5,2.5
+Mazda,Mazda2,2007,2014,2.2,2.1
+Mazda,Mazda2,2015,2025,2.3,2.2
+Mazda,Mazda3,2003,2008,2.3,2.2
+Mazda,Mazda3,2009,2013,2.4,2.3
+Mazda,Mazda3,2014,2018,2.5,2.4
+Mazda,Mazda3,2019,2025,2.5,2.4
+Mazda,Mazda6,2013,2023,2.3,2.2
+Mazda,MX-5,2005,2014,2.4,2.8
+Mazda,MX-5,2015,2025,2.5,2.9
+Mercedes-Benz,A-Class,2012,2018,2.2,2.1
+Mercedes-Benz,A-Class,2019,2025,2.3,2.2
+Mercedes-Benz,B-Class,2012,2018,2.3,2.2
+Mercedes-Benz,B-Class,2019,2025,2.4,2.3
+Mercedes-Benz,C-Class,2000,2006,2.3,2.2
+Mercedes-Benz,C-Class,2007,2014,2.4,2.3
+Mercedes-Benz,C-Class,2015,2021,2.5,2.4
+Mercedes-Benz,C-Class,2022,2025,2.5,2.4
+Mercedes-Benz,CLA,2013,2019,2.3,2.2
+Mercedes-Benz,CLA,2020,2025,2.4,2.3
+Mercedes-Benz,E-Class,2009,2016,2.4,2.5
+Mercedes-Benz,E-Class,2017,2023,2.5,2.6
+Mercedes-Benz,E-Class,2024,2025,2.6,2.7
+Mercedes-Benz,GLA,2014,2019,2.4,2.4
+Mercedes-Benz,GLA,2020,2025,2.5,2.5
+Mercedes-Benz,GLC,2015,2022,2.4,2.4
+Mercedes-Benz,GLC,2023,2025,2.5,2.5
+Mercedes-Benz,GLE,2015,2018,2.6,2.8
+Mercedes-Benz,GLE,2019,2025,2.7,2.9
+Mercedes-Benz,Sprinter,2006,2017,3.2,3.6
+Mercedes-Benz,Sprinter,2018,2025,3.3,3.7
+MG,HS,2019,2025,2.4,2.4
+MG,MG4,2022,2025,2.8,2.8
+MG,ZS,2017,2025,2.4,2.4
+Mini,Clubman,2007,2014,2.3,2.2
+Mini,Clubman,2015,2024,2.4,2.3
+Mini,Convertible,2009,2015,2.2,2.1
+Mini,Convertible,2016,2025,2.3,2.2
+Mini,Countryman,2010,2016,2.4,2.4
+Mini,Countryman,2017,2023,2.5,2.5
+Mini,Countryman,2024,2025,2.6,2.6
+Mini,Hatch,2001,2006,2.2,2.1
+Mini,Hatch,2007,2013,2.3,2.2
+Mini,Hatch,2014,2024,2.4,2.3
+Mini,Hatch,2025,2025,2.4,2.3
+Mitsubishi,ASX,2010,2022,2.4,2.4
+Mitsubishi,L200,2015,2025,2.5,2.8
+Mitsubishi,Outlander,2013,2021,2.6,2.8
+Nissan,Juke,2010,2019,2.4,2.4
+Nissan,Juke,2020,2025,2.5,2.5
+Nissan,Leaf,2011,2017,2.8,2.8
+Nissan,Leaf,2018,2025,2.9,2.9
+Nissan,Micra,2003,2010,2.2,2.1
+Nissan,Micra,2011,2016,2.3,2.2
+Nissan,Micra,2017,2023,2.4,2.3
+Nissan,Navara,2015,2025,2.5,2.8
+Nissan,Note,2013,2017,2.2,2.1
+Nissan,Qashqai,2007,2013,2.4,2.4
+Nissan,Qashqai,2014,2020,2.5,2.5
+Nissan,Qashqai,2021,2025,2.6,2.6
+Nissan,X-Trail,2014,2021,2.4,2.4
+Nissan,X-Trail,2022,2025,2.5,2.5
+Peugeot,108,2014,2021,2.2,2.1
+Peugeot,2008,2013,2019,2.4,2.4
+Peugeot,2008,2020,2025,2.5,2.5
+Peugeot,208,2012,2019,2.2,2.1
+Peugeot,208,2020,2025,2.3,2.2
+Peugeot,3008,2009,2016,2.4,2.4
+Peugeot,3008,2017,2023,2.5,2.5
+Peugeot,3008,2024,2025,2.6,2.6
+Peugeot,308,2008,2013,2.3,2.2
+Peugeot,308,2014,2020,2.4,2.3
+Peugeot,308,2021,2025,2.5,2.4
+Peugeot,5008,2010,2016,2.4,2.4
+Peugeot,5008,2017,2023,2.5,2.5
+Peugeot,5008,2024,2025,2.6,2.6
+Peugeot,508,2011,2017,2.3,2.2
+Peugeot,508,2018,2025,2.4,2.3
+Polestar,2,2020,2025,2.8,2.8
+Porsche,911,2012,2018,2.4,2.8
+Porsche,911,2019,2025,2.5,2.9
+Porsche,Boxster,2012,2016,2.4,2.8
+Porsche,Boxster,2017,2025,2.5,2.9
+Porsche,Cayenne,2011,2017,2.6,2.8
+Porsche,Cayenne,2018,2025,2.7,2.9
+Porsche,Macan,2014,2023,2.4,2.4
+Porsche,Macan,2024,2025,2.5,2.5
+Porsche,Panamera,2010,2016,2.4,2.5
+Porsche,Panamera,2017,2023,2.5,2.6
+Porsche,Panamera,2024,2025,2.6,2.7
+Porsche,Taycan,2020,2025,2.8,2.8
+Renault,Arkana,2021,2025,2.4,2.4
+Renault,Captur,2013,2019,2.4,2.4
+Renault,Captur,2020,2025,2.5,2.5
+Renault,Clio,1998,2004,2.2,2.1
+Renault,Clio,2005,2012,2.3,2.2
+Renault,Clio,2013,2019,2.4,2.3
+Renault,Clio,2020,2025,2.4,2.3
+Renault,Kadjar,2015,2022,2.4,2.4
+Renault,Megane,2008,2015,2.3,2.2
+Renault,Megane,2016,2023,2.4,2.3
+Renault,Megane E-Tech,2022,2025,2.8,2.8
+Renault,Zoe,2013,2024,2.8,2.8
+Rolls-Royce,Cullinan,2018,2025,2.6,2.8
+Rolls-Royce,Ghost,2010,2019,2.4,2.5
+Rolls-Royce,Ghost,2020,2025,2.5,2.6
+SEAT,Arona,2017,2025,2.4,2.4
+SEAT,Ateca,2016,2025,2.4,2.4
+SEAT,Ibiza,2008,2016,2.2,2.1
+SEAT,Ibiza,2017,2025,2.3,2.2
+SEAT,Leon,2005,2012,2.3,2.2
+SEAT,Leon,2013,2019,2.4,2.3
+SEAT,Leon,2020,2025,2.5,2.4
+SEAT,Tarraco,2018,2025,2.6,2.8
+Skoda,Enyaq,2021,2025,2.8,2.8
+Skoda,Fabia,2007,2014,2.2,2.1
+Skoda,Fabia,2015,2021,2.3,2.2
+Skoda,Fabia,2022,2025,2.4,2.3
+Skoda,Kamiq,2019,2025,2.4,2.4
+Skoda,Karoq,2017,2025,2.4,2.4
+Skoda,Kodiaq,2017,2023,2.6,2.8
+Skoda,Kodiaq,2024,2025,2.7,2.9
+Skoda,Octavia,1996,2003,2.3,2.2
+Skoda,Octavia,2004,2012,2.4,2.3
+Skoda,Octavia,2013,2019,2.5,2.4
+Skoda,Octavia,2020,2025,2.5,2.4
+Skoda,Scala,2019,2025,2.3,2.2
+Skoda,Superb,2008,2015,2.4,2.5
+Skoda,Superb,2016,2023,2.5,2.6
+Skoda,Superb,2024,2025,2.6,2.7
+Skoda,Yeti,2009,2017,2.4,2.4
+Smart,ForTwo,2007,2014,2.2,2.1
+Smart,ForTwo,2015,2024,2.3,2.2
+SsangYong,Korando,2011,2018,2.4,2.4
+SsangYong,Korando,2019,2025,2.5,2.5
+SsangYong,Rexton,2017,2025,2.6,2.8
+Subaru,Forester,2013,2018,2.4,2.4
+Subaru,Forester,2019,2025,2.5,2.5
+Subaru,Outback,2015,2020,2.4,2.4
+Subaru,Outback,2021,2025,2.5,2.5
+Subaru,XV,2012,2017,2.4,2.4
+Subaru,XV,2018,2023,2.5,2.5
+Suzuki,Ignis,2016,2025,2.2,2.1
+Suzuki,Jimny,2018,2025,2.4,2.4
+Suzuki,Swift,2010,2017,2.2,2.1
+Suzuki,Swift,2018,2024,2.3,2.2
+Suzuki,Swift,2025,2025,2.4,2.3
+Suzuki,Vitara,2015,2025,2.4,2.4
+Tesla,Model 3,2019,2023,2.8,2.8
+Tesla,Model 3,2024,2025,2.9,2.9
+Tesla,Model S,2014,2020,2.8,2.8
+Tesla,Model S,2021,2025,2.9,2.9
+Tesla,Model X,2016,2020,2.8,2.8
+Tesla,Model X,2021,2025,2.9,2.9
+Tesla,Model Y,2021,2024,2.8,2.8
+Tesla,Model Y,2025,2025,2.9,2.9
+Toyota,Auris,2007,2012,2.3,2.2
+Toyota,Auris,2013,2018,2.4,2.3
+Toyota,Aygo,2005,2013,2.2,2.1
+Toyota,Aygo,2014,2021,2.3,2.2
+Toyota,Aygo X,2022,2025,2.2,2.1
+Toyota,C-HR,2016,2023,2.4,2.4
+Toyota,C-HR,2024,2025,2.5,2.5
+Toyota,Corolla,2002,2006,2.3,2.2
+Toyota,Corolla,2019,2025,2.4,2.3
+Toyota,Hilux,2005,2015,2.5,2.8
+Toyota,Hilux,2016,2025,2.6,2.9
+Toyota,Land Cruiser,2010,2023,2.6,2.8
+Toyota,Land Cruiser,2024,2025,2.7,2.9
+Toyota,Prius,2009,2015,2.3,2.2
+Toyota,Prius,2016,2022,2.4,2.3
+Toyota,Prius,2023,2025,2.5,2.4
+Toyota,RAV4,2000,2005,2.4,2.4
+Toyota,RAV4,2006,2012,2.5,2.5
+Toyota,RAV4,2013,2018,2.6,2.6
+Toyota,RAV4,2019,2025,2.6,2.6
+Toyota,Yaris,1999,2005,2.2,2.1
+Toyota,Yaris,2006,2010,2.3,2.2
+Toyota,Yaris,2011,2019,2.4,2.3
+Toyota,Yaris,2020,2025,2.4,2.3
+Toyota,Yaris Cross,2021,2025,2.4,2.4
+Vauxhall,Astra,1998,2003,2.3,2.2
+Vauxhall,Astra,2004,2009,2.4,2.3
+Vauxhall,Astra,2010,2015,2.5,2.4
+Vauxhall,Astra,2016,2021,2.5,2.4
+Vauxhall,Astra,2022,2025,2.5,2.4
+Vauxhall,Corsa,2000,2005,2.2,2.1
+Vauxhall,Corsa,2006,2014,2.3,2.2
+Vauxhall,Corsa,2015,2019,2.4,2.3
+Vauxhall,Corsa,2020,2025,2.4,2.3
+Vauxhall,Crossland,2017,2024,2.4,2.4
+Vauxhall,Grandland,2017,2024,2.4,2.4
+Vauxhall,Grandland,2025,2025,2.5,2.5
+Vauxhall,Insignia,2009,2016,2.3,2.2
+Vauxhall,Insignia,2017,2022,2.4,2.3
+Vauxhall,Mokka,2012,2019,2.4,2.4
+Vauxhall,Mokka,2021,2025,2.5,2.5
+Vauxhall,Zafira,2005,2013,2.3,2.2
+Vauxhall,Zafira,2014,2019,2.4,2.3
+Volkswagen,Arteon,2017,2024,2.3,2.2
+Volkswagen,Caddy,2004,2020,2.3,2.2
+Volkswagen,Caddy,2021,2025,2.4,2.3
+Volkswagen,Golf,1998,2003,2.3,2.2
+Volkswagen,Golf,2004,2008,2.4,2.3
+Volkswagen,Golf,2009,2012,2.5,2.4
+Volkswagen,Golf,2013,2019,2.5,2.4
+Volkswagen,Golf,2020,2025,2.5,2.4
+Volkswagen,ID.3,2020,2025,2.8,2.8
+Volkswagen,ID.4,2021,2025,2.8,2.8
+Volkswagen,Passat,2000,2004,2.3,2.2
+Volkswagen,Passat,2005,2010,2.4,2.3
+Volkswagen,Passat,2011,2014,2.5,2.4
+Volkswagen,Passat,2015,2023,2.5,2.4
+Volkswagen,Passat,2024,2025,2.5,2.4
+Volkswagen,Polo,2002,2008,2.2,2.1
+Volkswagen,Polo,2009,2017,2.3,2.2
+Volkswagen,Polo,2018,2025,2.4,2.3
+Volkswagen,T-Roc,2017,2025,2.4,2.4
+Volkswagen,Tiguan,2007,2015,2.4,2.4
+Volkswagen,Tiguan,2016,2023,2.5,2.5
+Volkswagen,Tiguan,2024,2025,2.6,2.6
+Volkswagen,Touareg,2010,2017,2.6,2.8
+Volkswagen,Touareg,2018,2025,2.7,2.9
+Volkswagen,Transporter,2003,2015,3.2,3.6
+Volkswagen,Transporter,2016,2024,3.3,3.7
+Volkswagen,Transporter,2025,2025,3.4,3.8
+Volkswagen,up!,2012,2023,2.2,2.1
+Volvo,EX30,2024,2025,2.8,2.8
+Volvo,V40,2012,2019,2.3,2.2
+Volvo,V60,2011,2018,2.3,2.2
+Volvo,V60,2019,2025,2.4,2.3
+Volvo,V90,2016,2025,2.4,2.5
+Volvo,XC40,2017,2025,2.4,2.4
+Volvo,XC60,2008,2017,2.4,2.4
+Volvo,XC60,2018,2025,2.5,2.5
+Volvo,XC90,2002,2014,2.6,2.8
+Volvo,XC90,2015,2025,2.7,2.9
