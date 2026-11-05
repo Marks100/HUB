@@ -31,6 +31,15 @@
 
 #ifdef UNITY_INCLUDE_EXEC_TIME
 
+/* Unity keeps a test's start and stop time as a plain count on Windows and as a struct timespec on Linux and macOS */
+#if defined( __unix__ ) || defined( __APPLE__ )
+#define TEST_TIMING_ELAPSED_MS()                                                                    \
+    ( (unsigned)( ( Unity.CurrentTestStopTime.tv_sec  - Unity.CurrentTestStartTime.tv_sec ) * 1000L \
+                + ( Unity.CurrentTestStopTime.tv_nsec - Unity.CurrentTestStartTime.tv_nsec ) / 1000000L ) )
+#else
+#define TEST_TIMING_ELAPSED_MS()    ( (unsigned)( Unity.CurrentTestStopTime - Unity.CurrentTestStartTime ) )
+#endif
+
 #define TEST_TIMING_START()    UNITY_EXEC_TIME_START()
 
 #define TEST_TIMING_STOP()                                                                          \
@@ -40,7 +49,7 @@
         unsigned elapsed_ms;                                                                        \
                                                                                                     \
         UNITY_EXEC_TIME_STOP();                                                                     \
-        elapsed_ms = (unsigned)( Unity.CurrentTestStopTime - Unity.CurrentTestStartTime );          \
+        elapsed_ms = TEST_TIMING_ELAPSED_MS();                                                      \
         printf( "[TIMING] %s : %u ms\n", Unity.CurrentTestName, elapsed_ms );                       \
                                                                                                     \
         timing_file_p = fopen( TEST_TIMING_CSV_PATH, "a" );                                         \
