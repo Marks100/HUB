@@ -151,17 +151,19 @@
     - "HUB_APP_x86#{ENV['HUB_COVERAGE'] == 'y' ? '_cov' : ''}"
   :release: []
 
+# The host toolchain. On Windows it is the 32-bit MinGW under TTLD. Anywhere else (CI, Linux) SW_TEST_CC, SW_TEST_MAKE and
+# SW_TEST_AR name the tools: the tests need a 32-bit host build (they cast pointers to u32_t), so SW_TEST_CC is a gcc -m32.
 # Build the library before every Ceedling build. Incremental: a no-op once built.
 :command_hooks:
   :pre_build:
-    :executable: "#{ENV['TTLD']}/MinGW/mingw32_v15.2/bin/make.exe"
+    :executable: "#{ENV['SW_TEST_MAKE'] || ENV['TTLD'] + '/MinGW/mingw32_v15.2/bin/make.exe'}"
     :arguments:
       - -C
       - build_system
       - -j8
       - "COVERAGE=#{ENV['HUB_COVERAGE']}"
-      - "MINGW_CC=#{ENV['TTLD']}/MinGW/mingw32_v15.2/bin/gcc.exe"
-      - "MINGW_AR=#{ENV['TTLD']}/MinGW/mingw32_v15.2/bin/ar.exe"
+      - "MINGW_CC=#{ENV['SW_TEST_CC'] || ENV['TTLD'] + '/MinGW/mingw32_v15.2/bin/gcc.exe'}"
+      - "MINGW_AR=#{ENV['SW_TEST_AR'] || ENV['TTLD'] + '/MinGW/mingw32_v15.2/bin/ar.exe'}"
     :logging: TRUE
 
 :environment:
@@ -171,11 +173,11 @@
 
 :tools:
   :test_compiler:
-    :executable: "#{ENV['TTLD']}/MinGW/mingw32_v15.2/bin/gcc.exe"
+    :executable: "#{ENV['SW_TEST_CC'] || ENV['TTLD'] + '/MinGW/mingw32_v15.2/bin/gcc.exe'}"
     :name: GCC
     :optional: FALSE
   :test_linker:
-    :executable: "#{ENV['TTLD']}/MinGW/mingw32_v15.2/bin/gcc.exe"
+    :executable: "#{ENV['SW_TEST_CC'] || ENV['TTLD'] + '/MinGW/mingw32_v15.2/bin/gcc.exe'}"
     :name: GCC
     :optional: FALSE
 ...
