@@ -107,30 +107,17 @@ jobs:
         if: always() && github.event_name != 'pull_request'
         continue-on-error: true
         run: |
-          mkdir -p .github/badges
+          badge=BuildEnv/xBuildEnv/bin/badge_creator
+          ruby $badge --version-badge --yml "$BUILD_DIR/project.yml" --output .github/badges/version.svg
+          ruby $badge --build-badge APP/Build/SUPER_PILL/APP.elf --output .github/badges/build.svg
 
-          # badge_creator --version-badge looks for project.yml above BuildEnv, i.e. the repo root; HUB's is in APP
-          VERSION=$(cd "$BUILD_DIR" && sVersion -l --yml project.yml)
-          ruby BuildEnv/xBuildEnv/bin/badge_creator sw_version "$VERSION" --value-color 007ec6 --output .github/badges/version.svg
-
-          if [ -f APP/Build/SUPER_PILL/APP.elf ]; then
-            ruby BuildEnv/xBuildEnv/bin/badge_creator build passing --value-color 44cc11 --output .github/badges/build.svg
-          else
-            ruby BuildEnv/xBuildEnv/bin/badge_creator build failing --value-color e05d44 --output .github/badges/build.svg
-          fi
-
+          # checkout left the read-only submodule token as the git credential: push as the workflow token instead
           git config --unset-all http.https://github.com/.extraheader || true
           git config http.https://github.com/.extraheader \
             "AUTHORIZATION: basic $(echo -n x-access-token:${{ github.token }} | base64 -w0)"
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add .github/badges/*.svg
-          if ! git diff --cached --quiet; then
-            git commit -m "Update CI badges [skip ci]"
-            git push
-          else
-            echo "No badge changes to commit"
-          fi
+          ruby $badge --commit .github/badges
 
   release_package:
     needs: build_and_test
