@@ -77,19 +77,22 @@ jobs:
           if-no-files-found: warn
           retention-days: 60
 
-      # The software tests are built for a 32-bit host (they cast pointers to u32_t), so they need gcc -m32. sw_test_project.yml
-      # takes the tools from SW_TEST_CC / SW_TEST_MAKE / SW_TEST_AR when TTLD (the Windows MinGW) is not set.
+      # The software tests are built for a 32-bit host (they cast pointers to u32_t), so they need gcc -m32 everywhere: the
+      # library, the tests and the coverage link. A gcc wrapper first on the PATH gives every tool that calls gcc the 32-bit one.
+      # sw_test_project.yml takes SW_TEST_CC / SW_TEST_MAKE / SW_TEST_AR when TTLD (the Windows MinGW) is not set.
       - name: Prepare the 32-bit host compiler
         run: |
           sudo apt-get install -y gcc-multilib
-          printf '#!/bin/sh\nexec gcc -m32 "$@"\n' | sudo tee /usr/local/bin/gcc32 > /dev/null
-          sudo chmod +x /usr/local/bin/gcc32
+          mkdir -p "$RUNNER_TEMP/gcc32"
+          printf '#!/bin/sh\nexec /usr/bin/gcc -m32 "$@"\n' > "$RUNNER_TEMP/gcc32/gcc"
+          chmod +x "$RUNNER_TEMP/gcc32/gcc"
+          echo "$RUNNER_TEMP/gcc32" >> "$GITHUB_PATH"
 
       # HUB's tests are the software tests (APP/test/sw_tests). Its unit tests live in common_modules, which runs them.
       - name: Run software tests
         continue-on-error: true
         env:
-          SW_TEST_CC: gcc32
+          SW_TEST_CC: gcc
           SW_TEST_MAKE: make
           SW_TEST_AR: ar
         run: make -C "$BUILD_DIR" test_sw_all
