@@ -1,5 +1,5 @@
 -std=gnu11
--O1
+-O0
 -g
 -Wall
 -Wno-unknown-pragmas
@@ -7,3 +7,5 @@
 -Wno-incompatible-pointer-types
 -ffunction-sections
 -fdata-sections
+-fprofile-arcs
+-ftest-coverage

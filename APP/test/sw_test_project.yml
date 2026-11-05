@@ -30,7 +30,7 @@
   :load_paths: []
   :enabled:
     - command_hooks                 # builds the library before any build - see :command_hooks: below
-    - gcov                          # coverage - needs HUB_COVERAGE=y so the library is the instrumented one, see :libraries:
+    - gcov                          # coverage - the library is always the instrumented one, see :libraries:
     - report_tests_pretty_stdout
     - report_tests_log_factory
 
@@ -123,6 +123,8 @@
       # A test may define a function the library or the virtual hardware also defines: the first definition in link
       # order, the test's, wins. weak does not work for this on MinGW. The cost is that a real duplicate is no longer an error.
       - -Wl,--allow-multiple-definition
+      # The library is instrumented, so a plain test: build needs libgcov as well as the gcov: one
+      - --coverage
   :gcov:
     :compile:
       - -std=gnu11
@@ -140,7 +142,7 @@
 :gcov:
   :summaries: TRUE
 
-# HUB_COVERAGE=y links the library built with coverage instrumentation, so the modules in it are measured too
+# The library is always built with coverage instrumentation (and at -O0), so the modules in it are measured too
 :libraries:
   :placement: :end
   :flag: "-l${1}"
@@ -148,22 +150,21 @@
   :system:
     - m
   :test:
-    - "HUB_APP_x86#{ENV['HUB_COVERAGE'] == 'y' ? '_cov' : ''}"
+    - HUB_APP_x86
   :release: []
 
-# The host toolchain. On Windows it is the 32-bit MinGW under TTLD. Anywhere else (CI, Linux) SW_TEST_CC, SW_TEST_MAKE and
-# SW_TEST_AR name the tools: the tests need a 32-bit host build (they cast pointers to u32_t), so SW_TEST_CC is a gcc -m32.
+# The host toolchain is whatever gcc, make and ar are first on the PATH: the 32-bit MinGW on Windows (the :environment: block below
+# puts it first), a gcc -m32 wrapper on CI. The tests need a 32-bit host build, since they cast pointers to u32_t.
 # Build the library before every Ceedling build. Incremental: a no-op once built.
 :command_hooks:
   :pre_build:
-    :executable: "#{ENV['SW_TEST_MAKE'] || ENV['TTLD'] + '/MinGW/mingw32_v15.2/bin/make.exe'}"
+    :executable: make
     :arguments:
       - -C
       - build_system
       - -j8
-      - "COVERAGE=#{ENV['HUB_COVERAGE']}"
-      - "MINGW_CC=#{ENV['SW_TEST_CC'] || ENV['TTLD'] + '/MinGW/mingw32_v15.2/bin/gcc.exe'}"
-      - "MINGW_AR=#{ENV['SW_TEST_AR'] || ENV['TTLD'] + '/MinGW/mingw32_v15.2/bin/ar.exe'}"
+      - MINGW_CC=gcc
+      - MINGW_AR=ar
     :logging: TRUE
 
 :environment:
@@ -173,11 +174,11 @@
 
 :tools:
   :test_compiler:
-    :executable: "#{ENV['SW_TEST_CC'] || ENV['TTLD'] + '/MinGW/mingw32_v15.2/bin/gcc.exe'}"
+    :executable: gcc
     :name: GCC
     :optional: FALSE
   :test_linker:
-    :executable: "#{ENV['SW_TEST_CC'] || ENV['TTLD'] + '/MinGW/mingw32_v15.2/bin/gcc.exe'}"
+    :executable: gcc
     :name: GCC
     :optional: FALSE
 ...

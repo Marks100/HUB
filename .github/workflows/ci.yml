@@ -77,8 +77,8 @@ jobs:
           retention-days: 60
 
       # The software tests are built for a 32-bit host (they cast pointers to u32_t), so they need gcc -m32 everywhere: the
-      # library, the tests and the coverage link. A gcc wrapper first on the PATH gives every tool that calls gcc the 32-bit one.
-      # sw_test_project.yml takes SW_TEST_CC / SW_TEST_MAKE / SW_TEST_AR when TTLD (the Windows MinGW) is not set.
+      # library, the tests and the coverage link. sw_test_project.yml calls plain gcc, make and ar, so a gcc wrapper first on the
+      # PATH gives every tool that calls gcc the 32-bit one.
       - name: Prepare the 32-bit host compiler
         run: |
           sudo apt-get install -y gcc-multilib
@@ -89,10 +89,6 @@ jobs:
 
       # HUB's tests are the software tests (APP/test/sw_tests). Its unit tests live in common_modules, which runs them.
       - name: Run software tests
-        env:
-          SW_TEST_CC: gcc
-          SW_TEST_MAKE: make
-          SW_TEST_AR: ar
         run: make -C "$BUILD_DIR" test_sw_all
 
       - name: Upload test reports

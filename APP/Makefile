@@ -422,9 +422,8 @@ force_ceedling_relink:
 UNIT_TEST_YML 	:= unit_project.yml
 SW_TEST_YML 	:= sw_test_project.yml
 
-# The software tests link libHUB_APP_x86.a, built by test/build_system. HUB_COVERAGE=y makes the Ceedling project
-# build and link the one with coverage instrumentation, which the coverage targets below set
-SW_COVERAGE_ENV := HUB_COVERAGE=y
+# The software tests link libHUB_APP_x86.a, built by test/build_system with coverage instrumentation at -O0, so every
+# test run is a coverage run (gcov:)
 
 # Various test reports
 CEEDLING_COV_DIR					  := test/CodeCoverage
@@ -438,7 +437,7 @@ EXCLUDE_TEST_DIR := --exclude '.*/test/.*'
 GCOVR_EXCLUDES  := $(EXCLUDE_TEST) $(EXCLUDE_TMD) $(EXCLUDE_UNITY) $(EXCLUDE_TEST_DIR)
 
 # Where gcovr looks for coverage data: Ceedling's own build, and the instrumented library's objects when there are any
-GCOVR_SEARCH    := test/build $(wildcard test/build_system/build_cov)
+GCOVR_SEARCH    := test/build $(wildcard test/build_system/build)
 
 # Function to detect test type based on file location: unit_tests/ or sw_tests/, anywhere else is unknown
 define detect_test_type
@@ -450,16 +449,10 @@ define get_test_yml
 $(if $(filter unit,$(call detect_test_type,$(1))),$(UNIT_TEST_YML),$(SW_TEST_YML))
 endef
 
-# The coverage environment a test type needs: only the software tests link a prebuilt library
-define get_test_env
-$(if $(filter software,$(call detect_test_type,$(1))),$(SW_COVERAGE_ENV),)
-endef
-
 define set_test_vars
   	$(eval TEST_FILE := $(1))
   	$(eval TEST_TYPE := $(call detect_test_type,$(basename $(1))))
   	$(eval TEST_YML := $(call get_test_yml,$(basename $(1))))
-  	$(eval TEST_ENV := $(call get_test_env,$(basename $(1))))
   	$(if $(filter unknown,$(TEST_TYPE)),$(error $(TEST_FILE) is in neither test/unit_tests nor test/sw_tests))
   	$(info --> Detected $(TEST_TYPE) test: $(TEST_FILE))
 	$(info --> Using config: $(TEST_YML))
@@ -506,15 +499,16 @@ test_clean:
 %.test_cov:
 	@$(MAKE) $*_cov
 
-# Universal test runner - automatically detects a unit test (test/unit_tests) from a software test (test/sw_tests)
+# Universal test runner - automatically detects a unit test (test/unit_tests) from a software test (test/sw_tests).
+# Every run is a coverage run: a software test links the instrumented library, so the modules in it are measured
 test_%:
 	@$(call set_test_vars,test_$*.c)
-	@cd test && ceedling --project=$(TEST_YML) test:$(TEST_FILE)
+	@cd test && ceedling --project=$(TEST_YML) gcov:$(TEST_FILE)
 
-# Universal test with coverage. A software test links the instrumented library, so the modules in it are measured
+# The same, then the coverage report
 test_%_cov: $(CEEDLING_COV_DIR)
 	@$(call set_test_vars,test_$(patsubst %_cov,%,$*).c)
-	@cd test && $(TEST_ENV) ceedling --project=$(TEST_YML) gcov:$(TEST_FILE)
+	@cd test && ceedling --project=$(TEST_YML) gcov:$(TEST_FILE)
 	@$(MAKE) cov_report
 
 # All unit tests
@@ -526,7 +520,7 @@ test_unit_all: test_clean $(CEEDLING_COV_DIR)
 # All software tests, with coverage
 test_sw_all: test_clean $(CEEDLING_COV_DIR)
 	@echo "Running all software tests"
-	@cd test && $(SW_COVERAGE_ENV) ceedling --project=$(SW_TEST_YML) gcov:all
+	@cd test && ceedling --project=$(SW_TEST_YML) gcov:all
 	@$(MAKE) cov_report
 
 # user fn check overall test result for Pass \ Fail.  Exits with error code on failure
