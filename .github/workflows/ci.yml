@@ -71,6 +71,7 @@ jobs:
             APP/Build/**/*.hex
             APP/Build/**/*.elf
             APP/Build/**/*.map
+            APP/Build/**/*.flashpack
             BM/Build/**/*.hex
             FBL/Build/**/*.hex
           if-no-files-found: warn
