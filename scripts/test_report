@@ -1,0 +1,186 @@
+#!/usr/bin/env ruby
+
+#===================================================================================
+# Test Report
+#===================================================================================
+# Purpose: Turn Ceedling's JUnit report into a dark HTML page that says PASS or FAIL
+#          at the top: a banner with the counts, a table per test file, the failures
+#          with their messages, then every test as a PASS/FAIL row with its time.
+#
+# It is written next to Ceedling's own tests_report.html, which stays as it is, and
+# reads the JUnit file the same report_tests_log_factory plugin writes:
+#
+#   test/build/artifacts/gcov/junit_tests_report.xml
+#   test/build/artifacts/gcov/tests_report.html          (Ceedling)
+#   test/build/artifacts/gcov/tests_report_banner.html   (this script)
+#
+# Standard library only (REXML and ERB), so there is nothing to install locally or in CI.
+#
+# Usage:
+#   test_report JUNIT_XML [--output FILE] [--title TITLE]
+#
+# Exit code: 0 once the page is written, whatever the tests did - the build's own exit
+# code is what fails a run. 1 if the JUnit file is missing or cannot be read.
+#===================================================================================
+
+require 'rexml/document'
+require 'erb'
+require 'optparse'
+
+include ERB::Util
+
+TestCase = Struct.new(:name, :time, :status, :message, :detail)
+Suite    = Struct.new(:name, :time, :tests) do
+  def count(status) tests.count { |t| t.status == status } end
+end
+
+#-----------------------------------------------------------------------------------
+# Read the JUnit file: one Suite per <testsuite>, one TestCase per <testcase>.
+# A <failure> makes the test FAIL, a <skipped> makes it SKIP, anything else PASS.
+#-----------------------------------------------------------------------------------
+def read_suites(path)
+  doc = REXML::Document.new(File.read(path, encoding: 'utf-8'))
+
+  doc.elements.to_a('//testsuite').map do |s|
+    tests = s.elements.to_a('testcase').map do |c|
+      failure = c.elements['failure']
+      skipped = c.elements['skipped']
+      status  = failure ? 'FAIL' : (skipped ? 'SKIP' : 'PASS')
+      TestCase.new(c.attributes['name'].to_s, c.attributes['time'].to_f, status,
+                   failure ? failure.attributes['message'].to_s : '',
+                   failure ? failure.text.to_s.strip : '')
+    end
+
+    Suite.new(s.attributes['name'].to_s, s.attributes['time'].to_f, tests)
+  end
+end
+
+#-----------------------------------------------------------------------------------
+# The page. The colours are CSS variables at the top of the style block.
+#-----------------------------------------------------------------------------------
+TEMPLATE = <<~'HTML'
+  <!DOCTYPE html>
+  <html lang="en">
+  <head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title><%= h(title) %></title>
+  <style>
+  :root { --bg:#14181d; --fg:#e4e8ec; --card:#1c222a; --head:#252d37; --line:#323c48; --dim:#8b97a5; --pass:#2fb36d; --fail:#e5534b; --skip:#d19a1f; --none:#5b6673; --failbg:#3a2022; --skipbg:#392f17; --code:#12161b; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: "Segoe UI", system-ui, sans-serif; background: var(--bg); color: var(--fg); }
+  .page { max-width: 1100px; margin: 0 auto; padding: 24px 20px 80px; }
+  h1 { margin: 0 0 14px; font-size: 1.1em; font-weight: 600; color: var(--dim); }
+  h2 { margin: 34px 0 10px; font-size: 1.15em; }
+  .banner { border-radius: 10px; padding: 22px 26px; display: flex; align-items: center; gap: 30px; flex-wrap: wrap; color: #fff; }
+  .banner.pass { background: var(--pass); } .banner.fail { background: var(--fail); } .banner.none { background: var(--none); }
+  .verdict { font-size: 3.4em; font-weight: 800; letter-spacing: .04em; line-height: 1; }
+  .counts { display: flex; gap: 22px; flex-wrap: wrap; font-size: 1.05em; }
+  .counts b { font-size: 1.5em; }
+  table.grid { width: 100%; border-collapse: collapse; background: var(--card); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; font-size: .93em; }
+  table.grid th { text-align: left; background: var(--head); padding: 9px 12px; border-bottom: 1px solid var(--line); }
+  table.grid td { padding: 7px 12px; border-bottom: 1px solid var(--line); }
+  table.grid tr:last-child td { border-bottom: 0; }
+  .n { text-align: right; font-variant-numeric: tabular-nums; }
+  .dim { color: var(--dim); }
+  .badge { display: inline-block; min-width: 3.6em; text-align: center; padding: 2px 8px; border-radius: 4px; font-size: .8em; font-weight: 700; color: #fff; }
+  .b-pass { background: var(--pass); } .b-fail { background: var(--fail); } .b-skip { background: var(--skip); }
+  tr.row-fail td { background: var(--failbg); } tr.row-skip td { background: var(--skipbg); }
+  .failure { background: var(--card); border: 1px solid var(--fail); border-left-width: 6px; border-radius: 6px; padding: 12px 16px; margin: 12px 0; }
+  .failure .fmsg { color: var(--fail); margin: 6px 0; font-weight: 600; }
+  .failure pre { background: var(--code); padding: 10px; border-radius: 4px; overflow-x: auto; margin: 6px 0 0; }
+  .footer { text-align: right; color: var(--dim); font-size: .8em; margin-top: 40px; }
+  </style>
+  </head>
+  <body>
+  <div class="page">
+  <h1><%= h(title) %> &middot; <%= h(generated) %></h1>
+  <div class="banner <%= verdict_class %>">
+    <div class="verdict"><%= verdict %></div>
+    <div class="counts">
+      <span><b><%= total %></b> tests</span>
+      <span><b><%= passed %></b> passed</span>
+      <span><b><%= failed %></b> failed</span>
+      <span><b><%= skipped %></b> skipped</span>
+      <span><b><%= format('%.1f', duration) %></b> s</span>
+    </div>
+  </div>
+
+  <h2>By test file</h2>
+  <table class="grid">
+  <tr><th>Result</th><th>File</th><th class="n">Tests</th><th class="n">Passed</th><th class="n">Failed</th><th class="n">Skipped</th><th class="n">Time</th></tr>
+  <% suites.each do |s| -%>
+  <tr class="<%= s.count('FAIL') > 0 ? 'row-fail' : 'row-pass' %>">
+    <td><span class="badge <%= s.count('FAIL') > 0 ? 'b-fail' : 'b-pass' %>"><%= s.count('FAIL') > 0 ? 'FAIL' : 'PASS' %></span></td>
+    <td><%= h(s.name) %></td>
+    <td class="n"><%= s.tests.size %></td><td class="n"><%= s.count('PASS') %></td><td class="n"><%= s.count('FAIL') %></td><td class="n"><%= s.count('SKIP') %></td>
+    <td class="n"><%= format('%.2f', s.time) %> s</td>
+  </tr>
+  <% end -%>
+  </table>
+  <% if failed > 0 -%>
+
+  <h2>Failures (<%= failed %>)</h2>
+  <% suites.each do |s| s.tests.select { |t| t.status == 'FAIL' }.each do |t| -%>
+  <div class="failure">
+    <div><span class="badge b-fail">FAIL</span> <%= h(s.name) %> : <b><%= h(t.name) %></b></div>
+    <% unless t.message.empty? -%><div class="fmsg"><%= h(t.message) %></div><% end -%>
+    <% unless t.detail.empty? -%><pre><%= h(t.detail) %></pre><% end -%>
+  </div>
+  <% end end -%>
+  <% end -%>
+
+  <h2>All tests</h2>
+  <table class="grid">
+  <tr><th>Result</th><th>Test</th><th>File</th><th class="n">Time</th></tr>
+  <% suites.each do |s| s.tests.each do |t| -%>
+  <tr class="<%= { 'FAIL' => 'row-fail', 'SKIP' => 'row-skip' }.fetch(t.status, 'row-pass') %>">
+    <td><span class="badge <%= { 'FAIL' => 'b-fail', 'SKIP' => 'b-skip' }.fetch(t.status, 'b-pass') %>"><%= t.status %></span></td>
+    <td><%= h(t.name) %></td>
+    <td class="dim"><%= h(s.name) %></td>
+    <td class="n"><%= format('%.2f', t.time) %> s</td>
+  </tr>
+  <% end end -%>
+  </table>
+  <p class="footer">Generated from <%= h(source) %> by scripts/test_report. Ceedling's own report is tests_report.html beside this one.</p>
+  </div>
+  </body>
+  </html>
+HTML
+
+#-----------------------------------------------------------------------------------
+# Main
+#-----------------------------------------------------------------------------------
+options = { output: nil, title: 'Test report' }
+parser  = OptionParser.new do |o|
+  o.banner = 'Usage: test_report JUNIT_XML [--output FILE] [--title TITLE]'
+  o.on('-o', '--output FILE', 'HTML to write (default: tests_report_banner.html beside the XML)') { |v| options[:output] = v }
+  o.on('-t', '--title TITLE', 'Heading shown above the banner') { |v| options[:title] = v }
+end
+parser.parse!
+
+source = ARGV.shift
+abort(parser.to_s) if source.nil?
+abort("test_report: #{source} not found - run the tests first") unless File.exist?(source)
+
+begin
+  suites = read_suites(source)
+rescue StandardError => e
+  abort("test_report: could not read #{source}: #{e.message}")
+end
+
+all      = suites.flat_map(&:tests)
+total    = all.size
+failed   = all.count { |t| t.status == 'FAIL' }
+skipped  = all.count { |t| t.status == 'SKIP' }
+passed   = total - failed - skipped
+duration = suites.sum(&:time)
+
+verdict       = total.zero? ? 'NO TESTS' : (failed.zero? ? 'PASS' : 'FAIL')
+verdict_class = total.zero? ? 'none'     : (failed.zero? ? 'pass' : 'fail')
+title         = options[:title]
+generated     = Time.now.strftime('%Y-%m-%d %H:%M')
+output        = options[:output] || File.join(File.dirname(source), 'tests_report_banner.html')
+
+File.write(output, ERB.new(TEMPLATE, trim_mode: '-').result(binding), encoding: 'utf-8')
+puts "--> #{verdict}: #{passed}/#{total} passed, #{failed} failed, #{skipped} skipped - #{output}"

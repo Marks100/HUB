@@ -477,6 +477,13 @@ cov_report: $(CEEDLING_COV_DIR)
 	@echo "--> Launching HTML..."
 	@-cd $(CEEDLING_COV_DIR) && $(OPEN_CMD) coverage.html 2>/dev/null || true
 
+# The dark PASS/FAIL page, written beside Ceedling's own tests_report.html from the same run's JUnit file
+# (scripts/test_report). A problem making it never fails the tests: the run's exit code is the tests' own.
+TEST_JUNIT_XML := test/build/artifacts/gcov/junit_tests_report.xml
+.PHONY: test_report
+test_report:
+	@ruby ../scripts/test_report $(TEST_JUNIT_XML) --title "HUB software tests" || echo "--> test_report failed"
+
 # Parse test_report.html and generate test count badges
 .PHONY: test_badges
 test_badges:
@@ -503,12 +510,12 @@ test_clean:
 # Every run is a coverage run: a software test links the instrumented library, so the modules in it are measured
 test_%:
 	@$(call set_test_vars,test_$*.c)
-	@cd test && ceedling --project=$(TEST_YML) gcov:$(TEST_FILE)
+	@rc=0; ( cd test && ceedling --project=$(TEST_YML) gcov:$(TEST_FILE) ) || rc=$$?; $(MAKE) --no-print-directory test_report; exit $$rc
 
 # The same, then the coverage report
 test_%_cov: $(CEEDLING_COV_DIR)
 	@$(call set_test_vars,test_$(patsubst %_cov,%,$*).c)
-	@cd test && ceedling --project=$(TEST_YML) gcov:$(TEST_FILE)
+	@rc=0; ( cd test && ceedling --project=$(TEST_YML) gcov:$(TEST_FILE) ) || rc=$$?; $(MAKE) --no-print-directory test_report; if [ $$rc -ne 0 ]; then exit $$rc; fi
 	@$(MAKE) cov_report
 
 # All unit tests
@@ -520,7 +527,7 @@ test_unit_all: test_clean $(CEEDLING_COV_DIR)
 # All software tests, with coverage
 test_sw_all: test_clean $(CEEDLING_COV_DIR)
 	@echo "Running all software tests"
-	@cd test && ceedling --project=$(SW_TEST_YML) gcov:all
+	@rc=0; ( cd test && ceedling --project=$(SW_TEST_YML) gcov:all ) || rc=$$?; $(MAKE) --no-print-directory test_report; if [ $$rc -ne 0 ]; then exit $$rc; fi
 	@$(MAKE) cov_report
 
 # user fn check overall test result for Pass \ Fail.  Exits with error code on failure
