@@ -4,11 +4,11 @@
   <g font-family="Segoe UI, system-ui, -apple-system, Helvetica, Arial, sans-serif">
     <circle cx="70" cy="70" r="44" fill="none" stroke="#383835" stroke-width="14"/>
     <circle cx="70" cy="70" r="44" fill="none" stroke="#0ca30c" stroke-width="14"
-            stroke-dasharray="115.05 276.46" transform="rotate(-90 70 70)"/>
+            stroke-dasharray="115.07 276.46" transform="rotate(-90 70 70)"/>
     <text x="70" y="76" text-anchor="middle" font-size="17" font-weight="600" fill="#f0efec">41.6%</text>
     <text x="140" y="42" font-size="15" font-weight="600" fill="#f0efec">APP ROM (Flash)</text>
-    <text x="140" y="70" font-size="13" fill="#c3c2b7">38,352 / 92,160 B</text>
-    <text x="140" y="90" font-size="12" fill="#898781">53,808 B free</text>
+    <text x="140" y="70" font-size="13" fill="#c3c2b7">38,360 / 92,160 B</text>
+    <text x="140" y="90" font-size="12" fill="#898781">53,800 B free</text>
     <text x="140" y="116" font-size="13" fill="#c3c2b7"><tspan fill="#0ca30c">&#9679;</tspan> Healthy</text>
   </g>
 </svg>
