@@ -97,6 +97,19 @@ jobs:
           SW_TEST_AR: ar
         run: make -C "$BUILD_DIR" test_sw_all
 
+      - name: DIAGNOSTIC - run one test executable by hand (temporary)
+        if: always()
+        continue-on-error: true
+        run: |
+          f=$(find APP/test/build -name 'test_NVM.out' | head -1)
+          echo "executable: $f"
+          file "$f"
+          ldd "$f" || true
+          echo "---- run"
+          "$f"; echo "exit code: $?"
+          echo "---- 32-bit loader present?"
+          ls -l /lib/ld-linux.so.2 /lib32/ld-linux.so.2 2>&1 || true
+
       - name: Upload test reports
         if: always()
         uses: actions/upload-artifact@v4
