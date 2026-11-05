@@ -1,5 +1,5 @@
 # HUB CI: builds every hardware variant (make -C APP all builds SUPER_PILL and BLUE_PILL, each with its own BM and FBL),
-# runs the unit and software tests, builds the function documentation and commits the badges.
+# runs the software tests, builds the function documentation and commits the badges.
 #
 # This is the whole workflow in the repo, like AUTOCFG_HUB and Sleepy_sensor. The shared version in the build_env repo
 # (.github/workflows/embedded-ci.yml) is a private repo's workflow, which a public repo such as HUB cannot call.
@@ -28,6 +28,7 @@ permissions:
 
 env:
   BUILD_DIR: APP
+  CI_BUILD_SHA: ${{ github.sha }}
 
 jobs:
   build_and_test:
@@ -40,7 +41,10 @@ jobs:
           submodules: recursive
           token: ${{ secrets.SUBMODULE_PAT || github.token }}
 
+      # gcc-multilib: the software tests are a 32-bit host build (-m32 in sw_test_project.yml)
       - uses: ./.github/actions/setup
+        with:
+          extra_apt: gcc-multilib
 
       # The secure boot HMAC secret is gitignored, so a fresh clone has none: the images are signed with the HMAC_SECRET
       # repository secret.
@@ -50,8 +54,6 @@ jobs:
         run: printf '%s' "$HMAC_SECRET" > Tool_cfg/SigningKeys/hmac_secret.txt
 
       - name: Build every variant
-        env:
-          CI_BUILD_SHA: ${{ github.sha }}
         run: make -C "$BUILD_DIR" all
 
       - name: Upload build output
@@ -67,10 +69,6 @@ jobs:
             FBL/Build/**/*.hex
           if-no-files-found: warn
           retention-days: 60
-
-      # The software tests are a 32-bit host build (-m32 in sw_test_project.yml), which the system gcc needs the multilib for
-      - name: Install the 32-bit host libraries
-        run: sudo apt-get install -y gcc-multilib
 
       # HUB's tests are the software tests (APP/test/sw_tests). Its unit tests live in common_modules, which runs them.
       - name: Run software tests
@@ -158,14 +156,12 @@ jobs:
 
       - name: Build release package
         env:
-          CI_BUILD_SHA: ${{ github.sha }}
           CI_IS_RC: "true"
         run: make -C "$BUILD_DIR" release_package
 
       - name: Read version
         id: version
         env:
-          CI_BUILD_SHA: ${{ github.sha }}
           CI_IS_RC: "true"
         run: |
           VER=$(cd "$BUILD_DIR" && sVersion -l --yml project.yml 2>/dev/null || echo "0.0.0.$(echo '${{ github.sha }}' | cut -c1-7)")
