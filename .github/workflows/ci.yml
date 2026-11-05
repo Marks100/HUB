@@ -106,17 +106,12 @@ jobs:
       - name: Generate and commit badges
         if: always() && github.event_name != 'pull_request'
         continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ github.token }}   # --commit pushes with this, not the read-only submodule token checkout left
         run: |
           badge=BuildEnv/xBuildEnv/bin/badge_creator
           ruby $badge --version-badge --yml "$BUILD_DIR/project.yml" --output .github/badges/version.svg
           ruby $badge --build-badge APP/Build/SUPER_PILL/APP.elf --output .github/badges/build.svg
-
-          # checkout left the read-only submodule token as the git credential: push as the workflow token instead
-          git config --unset-all http.https://github.com/.extraheader || true
-          git config http.https://github.com/.extraheader \
-            "AUTHORIZATION: basic $(echo -n x-access-token:${{ github.token }} | base64 -w0)"
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
           ruby $badge --commit .github/badges
 
   release_package:
