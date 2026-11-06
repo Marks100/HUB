@@ -9,31 +9,31 @@ High-level ROM/RAM usage per image, written by the memory stats step of each bui
 <!-- MEMORY:APP:START -->
 ### APP
 
-_Built 2026-11-04 from `APP.map`_
+_Built 2026-11-06 from `APP.map`_
 
 | Region | Used | Free | Used % |
 |---|---:|---:|---:|
-| ROM (Flash) | 37,900 B | 54,260 B | 41.1% |
-| RAM | 10,416 B | 10,032 B | 50.9% |
+| ROM (Flash) | 38,352 B | 53,808 B | 41.6% |
+| RAM | 10,480 B | 9,968 B | 51.3% |
 
 <p>
-  <img src=".github/badges/memory_APP_rom.svg" alt="APP ROM (Flash): 41.1% used" width="320">
-  <img src=".github/badges/memory_APP_ram.svg" alt="APP RAM: 50.9% used" width="320">
+  <img src=".github/badges/memory_APP_rom.svg" alt="APP ROM (Flash): 41.6% used" width="320">
+  <img src=".github/badges/memory_APP_ram.svg" alt="APP RAM: 51.3% used" width="320">
 </p>
 <!-- MEMORY:APP:END -->
 
 <!-- MEMORY:FBL:START -->
 ### FBL
 
-_Built 2026-11-04 from `FBL.map`_
+_Built 2026-11-06 from `FBL.map`_
 
 | Region | Used | Free | Used % |
 |---|---:|---:|---:|
-| ROM (Flash) | 23,508 B | 44 B | 99.8% |
+| ROM (Flash) | 23,508 B | 1,068 B | 95.7% |
 | RAM | 5,928 B | 14,520 B | 29.0% |
 
 <p>
-  <img src=".github/badges/memory_FBL_rom.svg" alt="FBL ROM (Flash): 99.8% used" width="320">
+  <img src=".github/badges/memory_FBL_rom.svg" alt="FBL ROM (Flash): 95.7% used" width="320">
   <img src=".github/badges/memory_FBL_ram.svg" alt="FBL RAM: 29.0% used" width="320">
 </p>
 <!-- MEMORY:FBL:END -->
@@ -41,15 +41,15 @@ _Built 2026-11-04 from `FBL.map`_
 <!-- MEMORY:BM:START -->
 ### BM
 
-_Built 2026-11-04 from `BM.map`_
+_Built 2026-11-06 from `BM.map`_
 
 | Region | Used | Free | Used % |
 |---|---:|---:|---:|
-| ROM (Flash) | 5,388 B | 3,828 B | 58.5% |
+| ROM (Flash) | 5,388 B | 2,804 B | 65.8% |
 | RAM | 1,088 B | 19,360 B | 5.3% |
 
 <p>
-  <img src=".github/badges/memory_BM_rom.svg" alt="BM ROM (Flash): 58.5% used" width="320">
+  <img src=".github/badges/memory_BM_rom.svg" alt="BM ROM (Flash): 65.8% used" width="320">
   <img src=".github/badges/memory_BM_ram.svg" alt="BM RAM: 5.3% used" width="320">
 </p>
 <!-- MEMORY:BM:END -->
