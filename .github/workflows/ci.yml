@@ -112,7 +112,7 @@ jobs:
           badge=BuildEnv/xBuildEnv/bin/badge_creator
           ruby $badge --version-badge --yml "$BUILD_DIR/project.yml" --output .github/badges/version.svg
           ruby $badge --build-badge APP/Build/SUPER_PILL/APP.elf --output .github/badges/build.svg
-          ruby $badge --commit .github/badges
+          ruby $badge --commit .github/badges --also README.md   # the build writes the memory tables into the README
 
   release_package:
     needs: build_and_test
