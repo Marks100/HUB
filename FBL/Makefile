@@ -235,11 +235,15 @@ fbl_clean:
 
 $(FBL_MAP_FILE): $(FBL_ELF_FILE)
 
+# The README memory tables and the memory badges are written by CI, which commits them: a local build leaves them alone.
+# UPDATE_README=y refreshes them locally.
+README_ARGS := $(if $(or $(CI),$(UPDATE_README)),--readme ../README.md --tag FBL)
+
 basic_memory_stats: $(FBL_ELF_FILE)
-	@$(BUILD_ENV_BIN)/memory_analyser_stm32 $(FBL_MAP_FILE) $(FBL_ELF_FILE) $(FBL_LINKER_SCRIPT) --out $(FBL_MEM_OUTPUT_FILE) --csv $(FBL_MEM_CSV_FILE) --readme ../README.md --tag FBL
+	@$(BUILD_ENV_BIN)/memory_analyser_stm32 $(FBL_MAP_FILE) $(FBL_ELF_FILE) $(FBL_LINKER_SCRIPT) --out $(FBL_MEM_OUTPUT_FILE) --csv $(FBL_MEM_CSV_FILE) $(README_ARGS)
 
 full_memory_stats: $(FBL_MAP_FILE)
-	@$(BUILD_ENV_BIN)/memory_analyser_stm32 $(FBL_MAP_FILE) $(FBL_ELF_FILE) $(FBL_LINKER_SCRIPT) --out $(FBL_MEM_OUTPUT_FILE) --csv $(FBL_MEM_CSV_FILE) --readme ../README.md --tag FBL
+	@$(BUILD_ENV_BIN)/memory_analyser_stm32 $(FBL_MAP_FILE) $(FBL_ELF_FILE) $(FBL_LINKER_SCRIPT) --out $(FBL_MEM_OUTPUT_FILE) --csv $(FBL_MEM_CSV_FILE) $(README_ARGS)
 
 memory_stats: basic_memory_stats
 

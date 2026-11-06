@@ -171,11 +171,15 @@ bm_clean:
 
 $(BM_MAP_FILE): $(BM_ELF_FILE)
 
+# The README memory tables and the memory badges are written by CI, which commits them: a local build leaves them alone.
+# UPDATE_README=y refreshes them locally.
+README_ARGS := $(if $(or $(CI),$(UPDATE_README)),--readme ../README.md --tag BM)
+
 basic_memory_stats: $(BM_ELF_FILE)
-	@$(BUILD_ENV_BIN)/memory_analyser_stm32 $(BM_MAP_FILE) $(BM_ELF_FILE) $(BM_LINKER_SCRIPT) --out $(BM_MEM_OUTPUT_FILE) --csv $(BM_MEM_CSV_FILE) --readme ../README.md --tag BM
+	@$(BUILD_ENV_BIN)/memory_analyser_stm32 $(BM_MAP_FILE) $(BM_ELF_FILE) $(BM_LINKER_SCRIPT) --out $(BM_MEM_OUTPUT_FILE) --csv $(BM_MEM_CSV_FILE) $(README_ARGS)
 
 full_memory_stats: $(BM_MAP_FILE)
-	@$(BUILD_ENV_BIN)/memory_analyser_stm32 $(BM_MAP_FILE) $(BM_ELF_FILE) $(BM_LINKER_SCRIPT) --out $(BM_MEM_OUTPUT_FILE) --csv $(BM_MEM_CSV_FILE) --readme ../README.md --tag BM
+	@$(BUILD_ENV_BIN)/memory_analyser_stm32 $(BM_MAP_FILE) $(BM_ELF_FILE) $(BM_LINKER_SCRIPT) --out $(BM_MEM_OUTPUT_FILE) --csv $(BM_MEM_CSV_FILE) $(README_ARGS)
 
 # Legacy alias - this is what tasks.json's "BM_memory_stats" task already calls
 memory_stats: basic_memory_stats

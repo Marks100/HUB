@@ -585,11 +585,15 @@ total_clean: test_clean build_clean doxygen_clean
 warnings_parser: $(APP_ELF_FILE)
 	@cc_warning_parser $(APP_COMPILER_OUTPUT)
 
+# The README memory tables and the memory badges are written by CI, which commits them: a local build leaves them alone.
+# UPDATE_README=y refreshes them locally.
+README_ARGS := $(if $(or $(CI),$(UPDATE_README)),--readme ../README.md --tag APP)
+
 basic_memory_stats: $(APP_ELF_FILE)
-	@$(BUILD_ENV_BIN)/memory_analyser_stm32 $(APP_MAP_FILE) $(APP_ELF_FILE) $(APP_LINKER_SCRIPT) --out $(APP_MEM_OUTPUT_FILE) --csv $(APP_MEM_CSV_FILE) --readme ../README.md --tag APP
+	@$(BUILD_ENV_BIN)/memory_analyser_stm32 $(APP_MAP_FILE) $(APP_ELF_FILE) $(APP_LINKER_SCRIPT) --out $(APP_MEM_OUTPUT_FILE) --csv $(APP_MEM_CSV_FILE) $(README_ARGS)
 
 full_memory_stats: $(APP_MAP_FILE)
-	@$(BUILD_ENV_BIN)/memory_analyser_stm32 $(APP_MAP_FILE) $(APP_ELF_FILE) $(APP_LINKER_SCRIPT) --out $(APP_MEM_OUTPUT_FILE) --csv $(APP_MEM_CSV_FILE) --readme ../README.md --tag APP
+	@$(BUILD_ENV_BIN)/memory_analyser_stm32 $(APP_MAP_FILE) $(APP_ELF_FILE) $(APP_LINKER_SCRIPT) --out $(APP_MEM_OUTPUT_FILE) --csv $(APP_MEM_CSV_FILE) $(README_ARGS)
 
 		
 release_package:
