@@ -3,8 +3,8 @@
 **
 ** Flash layout (128 KB total - confirmed via live F_SIZE register read at 0x1FFFF7E0; this part
 ** is a "C8" (64 KB nominal) that's physically 128 KB silicon, a known STM32F103 binning quirk):
-**   BM   : 0x08000000 - 0x080023FF    9 KB
-**   FBL  : 0x08002400 - 0x08007FFF   23 KB
+**   BM   : 0x08000000 - 0x08001FFF    8 KB
+**   FBL  : 0x08002000 - 0x08007FFF   24 KB
 **   APP  : 0x08008000 - 0x0801E7FF   90 KB  <- this image
 **   DATASET0 : 0x0801E800 - 0x0801F7FF   4 KB  (field-downloadable via FBL_download_request().
 **                                               Same header fields as APP but a 96 B header - no

@@ -3,12 +3,12 @@
 **
 ** Flash layout (128 KB total - confirmed via live F_SIZE register read at 0x1FFFF7E0; this part
 ** is a "C8" (64 KB nominal) that's physically 128 KB silicon, a known STM32F103 binning quirk):
-**   BM   : 0x08000000 - 0x080023FF    9 KB
-**   FBL  : 0x08002400 - 0x08007FFF   23 KB  <- this image
-**     .app_header : 0x08002400 - 0x080024FF  256 B  (presence pattern + CRC, see HEADER.h -
+**   BM   : 0x08000000 - 0x08001FFF    8 KB
+**   FBL  : 0x08002000 - 0x08007FFF   24 KB  <- this image
+**     .app_header : 0x08002000 - 0x080020FF  256 B  (presence pattern + CRC, see HEADER.h -
 **                                                     BM validates this before jumping here,
 **                                                     same tooling/layout as APP's header)
-**     .isr_vector : 0x08002500 ...            code start
+**     .isr_vector : 0x08002100 ...            code start
 **   APP  : 0x08008000 - 0x0801E7FF   90 KB
 **   DATASET0 : 0x0801E800 - 0x0801F7FF   4 KB  (field-downloadable via FBL_download_request() -
 **                                               same header fields as APP, 96 B header. BM
@@ -52,7 +52,7 @@ __dataset0_code_end__     = 0x0801F7FF;
 
 MEMORY
 {
-    FLASH          (rx)  : ORIGIN = 0x08002400, LENGTH = 23K
+    FLASH          (rx)  : ORIGIN = 0x08002000, LENGTH = 24K
     m_data_shared  (xrw) : ORIGIN = 0x20000000, LENGTH = 0x20
     RAM            (xrw) : ORIGIN = 0x20000020, LENGTH = 0x4FE0
 }
@@ -67,7 +67,7 @@ SECTIONS
     {
         . = ALIGN(4);
         KEEP(*(.app_header))
-        . = ALIGN(0x100);   /* pad to 256-byte boundary -> next addr = 0x08002500 */
+        . = ALIGN(0x100);   /* pad to 256-byte boundary -> next addr = 0x08002100 */
     } >FLASH
 
     .isr_vector :

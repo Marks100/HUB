@@ -27,14 +27,14 @@ AUTOVERSION_FILE      := Src/autoversion.h
 BUILD_ENV_BIN         := ../BuildEnv/xBuildEnv/bin
 
 # FBL carries the same header/CRC/signature layout as APP (see xCOMMON_MODULES/Src/HEADER/
-# HEADER.h) at the start of its own 23K region - BM validates it the same way before jumping
+# HEADER.h) at the start of its own 24K region - BM validates it the same way before jumping
 # here (see BM.c's BM_jump_to_fbl()). Must match FBL/linker_script/STM32F103C8_FBL_flash.ld and
-# APP/Makefile's FBL_FLASH_START (0x08002400). FBL_CODE_END in particular must exactly match
+# APP/Makefile's FBL_FLASH_START (0x08002000). FBL_CODE_END in particular must exactly match
 # BM's __fbl_code_end__ (BM/linker_script/STM32F103C8_BM_flash.ld) - that's the range
 # app_crc_injector/app_signer actually sign over, so a mismatch makes a legitimately-signed FBL
 # image fail BM's validation.
-FBL_HEADER_ADDR := 0x08002400
-FBL_CODE_START  := 0x08002500
+FBL_HEADER_ADDR := 0x08002000
+FBL_CODE_START  := 0x08002100
 FBL_CODE_END    := 0x08007FFF
 # One past FBL_CODE_END - the exclusive upper bound srec_cat's -fill wants. The built hex is padded
 # from FBL_HEADER_ADDR to here, see the padding step in $(FBL_ELF_FILE)'s recipe below.
@@ -168,7 +168,7 @@ else
 endif
 MCAL_OPTIMISATION := -Os
 
-# FBL's vector table sits at FBL_CODE_START (0x08002500), not FLASH_BASE (0x08000000).
+# FBL's vector table sits at FBL_CODE_START (0x08002100), not FLASH_BASE (0x08000000).
 CFLAGS += -DVECT_TAB_OFFSET=$(FBL_CODE_START)
 
 LDFLAGS := \

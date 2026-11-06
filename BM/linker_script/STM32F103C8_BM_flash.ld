@@ -3,10 +3,10 @@
 **
 ** Flash layout (128 KB total - confirmed via live F_SIZE register read at 0x1FFFF7E0; this part
 ** is a "C8" (64 KB nominal) that's physically 128 KB silicon, a known STM32F103 binning quirk):
-**   BM   : 0x08000000 - 0x080023FF    9 KB  <- this image
-**   FBL  : 0x08002400 - 0x08007FFF   23 KB
-**     .app_header : 0x08002400 - 0x080024FF  256 B
-**     code start  : 0x08002500               (FBL_CODE_START)
+**   BM   : 0x08000000 - 0x08001FFF    8 KB  <- this image
+**   FBL  : 0x08002000 - 0x08007FFF   24 KB
+**     .app_header : 0x08002000 - 0x080020FF  256 B
+**     code start  : 0x08002100               (FBL_CODE_START)
 **   APP  : 0x08008000 - 0x0801E7FF   90 KB
 **     .app_header : 0x08008000 - 0x080080FF  256 B
 **     code start  : 0x08008100               (APP_CODE_START)
@@ -53,8 +53,8 @@ _Min_Stack_Size = 0x400;   /* 1 KB */
    app_signer's hardcoded offsets, +20 B reserved for future fields. The dataset hex is built by
    APP/Makefile's `dataset` target with these addresses - no image compiles a dataset
    .app_header section. */
-__fbl_header_start__  = 0x08002400;
-__fbl_code_start__    = 0x08002500;
+__fbl_header_start__  = 0x08002000;
+__fbl_code_start__    = 0x08002100;
 __fbl_code_end__      = 0x08007FFF;
 __app_header_start__  = 0x08008000;
 __app_code_start__    = 0x08008100;
@@ -65,7 +65,7 @@ __dataset0_code_end__     = 0x0801F7FF;
 
 MEMORY
 {
-    FLASH          (rx)  : ORIGIN = 0x08000000, LENGTH = 9K
+    FLASH          (rx)  : ORIGIN = 0x08000000, LENGTH = 8K
     m_data_shared  (xrw) : ORIGIN = 0x20000000, LENGTH = 0x20
     RAM            (xrw) : ORIGIN = 0x20000020, LENGTH = 0x4FE0
 }

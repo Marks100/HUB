@@ -68,11 +68,11 @@ RELEASE_PACKAGE_NAME         := $(RELEASE_PACKAGE_BASE_DIR)/$(PROJECT_TYPE)_$(VE
 # DATASET0 is field-downloadable via FBL (FBL_download_request() in xCOMMON_MODULES/Src/FBL/FBL.c)
 # and validated by BM at boot (BM_run()'s dataset step in xCOMMON_MODULES/Src/BM/BM.c).
 BM_FLASH_START               := 0x08000000
-BM_FLASH_SIZE                := 0x2400
+BM_FLASH_SIZE                := 0x2000
 BM_FLASH_END                 := $(shell printf '0x%08X' $$(( $(BM_FLASH_START) + $(BM_FLASH_SIZE) - 1 )))
 
 FBL_FLASH_START               := $(shell printf '0x%08X' $$(( $(BM_FLASH_START) + $(BM_FLASH_SIZE) )))
-FBL_FLASH_SIZE                := 0x5C00
+FBL_FLASH_SIZE                := 0x6000
 FBL_FLASH_END                 := $(shell printf '0x%08X' $$(( $(BM_FLASH_START) + $(BM_FLASH_SIZE) + $(FBL_FLASH_SIZE) - 1 )))
 
 APP_FLASH_START               := $(shell printf '0x%08X' $$(( $(BM_FLASH_START) + $(BM_FLASH_SIZE) + $(FBL_FLASH_SIZE) )))
