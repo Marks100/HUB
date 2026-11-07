@@ -437,7 +437,7 @@ EXCLUDE_TEST_DIR := --exclude '.*/test/.*'
 GCOVR_EXCLUDES  := $(EXCLUDE_TEST) $(EXCLUDE_TMD) $(EXCLUDE_UNITY) $(EXCLUDE_TEST_DIR)
 
 # Where gcovr looks for coverage data: Ceedling's own build, and the instrumented library's objects when there are any
-GCOVR_SEARCH    := test/build $(wildcard test/build_system/build)
+GCOVR_SEARCH    := test/build
 
 # Function to detect test type based on file location: unit_tests/ or sw_tests/, anywhere else is unknown
 define detect_test_type
@@ -498,13 +498,11 @@ test_clean:
 	@rm -fr $(CEEDLING_COV_XML_TEST_REPORT_DEST) $(CEEDLING_COV_DIR)
 	@echo "--> Test Cleaned!"
 
-# make test_X.test and make test_X.test_cov do what make test_X and make test_X_cov do - the form the VS Code tasks use.
+# make test_X.test runs one test and its coverage report - the form the VS Code task uses.
+# A common-module unit test is run by xCOMMON_MODULES' own Makefile, a software test by test_X_cov below.
 # Before the test_% rules: the stems tie in length for some names, and the earlier rule wins
 %.test:
-	@$(MAKE) $*
-
-%.test_cov:
-	@$(MAKE) $*_cov
+	@if [ -f ../xCOMMON_MODULES/test/unit_tests/$*.c ]; then $(MAKE) -C ../xCOMMON_MODULES $@; else $(MAKE) $*_cov; fi
 
 # Universal test runner - automatically detects a unit test (test/unit_tests) from a software test (test/sw_tests).
 # Every run is a coverage run: a software test links the instrumented library, so the modules in it are measured

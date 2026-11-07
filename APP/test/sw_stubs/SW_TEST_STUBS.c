@@ -50,122 +50,20 @@ u32_t __isr_vector_start = 0u;
 ***************************************************************************************************/
 static void        sw_test_models_init( void );
 static void        sw_test_models_tick( void );
-static void        sw_test_virgin_init( void );
 static void        sw_test_ecu_start( void );
-static u8_t        sw_test_find_erx( u8_t iso_position );
-static u8_t        sw_test_find_free_slot( u8_t port );
-static u8_t        sw_test_port_of( u8_t iso_position );
-
-/* The ISO position of the ERX in each slot of the model, SW_TEST_FREE_SLOT while the slot has none */
-static u8_t sw_test_erx_position_s[TMD_ERX_MAX_INSTANCES];
 
 const TMD_INIT_cfg_st sw_test_init_cfg_g =
 {
-    .power_on_func_p    = vhw_reset,
+    .power_on_func_p    = vhw_power_on,
     .models_init_func_p = sw_test_models_init,
-    .virgin_init_func_p = sw_test_virgin_init,
     .ecu_main_func_p    = sw_test_ecu_start
 };
 
 /***************************************************************************************************
 **                                  Public Functions                                              **
 ***************************************************************************************************/
-/*!
-****************************************************************************************************
-*
-*   \brief         Plug an ERX in at an ISO position, onto the next free slot of the model
-*
-*   \author        mstewart
-*
-*   \param[in]     iso_position - One of APP_ISO_POSITIONS.h: its heartbeat ID is 0x400 plus it, its UDS response ID 0x600
-*                                 plus it and its UDS request ID 0x700 plus it
-*
-*   \return        none
-*
-*   \note          The one place a test sets an ERX's position, and the only one that knows which slot of the model holds it.
-*                  It never powers the ERX: the HUB does, by driving its port's supply pin HIGH (ERX_PORT_0_PWR_PIN /
-*                  ERX_PORT_1_PWR_PIN, which it does at start-up for the ports the init has an ERX on), and the ERX starts when
-*                  the model sees that. An ERX goes on the port that app_autocfg_init_s puts its position on (port 0 for a
-*                  position it does not list), in the next free slot of that port. At most one ERX per position.
-*
-*****************************************************************************************************/
-void sw_test_place_erx( u8_t iso_position )
-{
-    TMD_ERX_config_st config;
-    u8_t              instance = sw_test_find_free_slot( sw_test_port_of( iso_position ) );
+/* None */
 
-    if( instance != SW_TEST_NO_ERX )
-    {
-        TMD_ERX_get_configuration( instance, &config );
-
-        config.iso_position = iso_position;
-
-        TMD_ERX_configure_instance( instance, &config );
-
-        sw_test_erx_position_s[instance] = iso_position;
-    }
-}
-
-/*!
-****************************************************************************************************
-*
-*   \brief         Unplug the ERX at an ISO position: it is off the bus, so it sends and answers nothing
-*
-*   \author        mstewart
-*
-*   \param[in]     iso_position - The position it was placed at
-*
-*   \return        none
-*
-*****************************************************************************************************/
-void sw_test_unplug_erx( u8_t iso_position )
-{
-    u8_t instance = sw_test_find_erx( iso_position );
-
-    if( instance != SW_TEST_NO_ERX )
-    {
-        TMD_ERX_unplug_instance( instance );
-    }
-}
-
-/*!
-****************************************************************************************************
-*
-*   \brief         Plug the ERX at an ISO position back in: the HUB's supply is still on, so it starts again
-*
-*   \author        mstewart
-*
-*   \param[in]     iso_position - The position it was placed at
-*
-*   \return        none
-*
-*****************************************************************************************************/
-void sw_test_plug_in_erx( u8_t iso_position )
-{
-    u8_t instance = sw_test_find_erx( iso_position );
-
-    if( instance != SW_TEST_NO_ERX )
-    {
-        TMD_ERX_plug_in_instance( instance );
-    }
-}
-
-/*!
-****************************************************************************************************
-*
-*   \brief         The slot of the model that holds the ERX at an ISO position
-*
-*   \author        mstewart
-*
-*   \param[in]     iso_position - The position it was placed at
-*
-*   \return        The slot, for the models that talk about an ERX by it (TMD_ERX_UDS_*). SW_TEST_NO_ERX if none is there.
-*
-*****************************************************************************************************/
-u8_t sw_test_erx_slot( u8_t iso_position )
-{
-    return( sw_test_find_erx( iso_position ) );
-}
 /***************************************************************************************************
 **                                  Private Functions                                             **
 ***************************************************************************************************/
@@ -213,7 +111,6 @@ static void sw_test_models_init( void )
     TMD_NVM_init( &nvm_cfg );
     TMD_ERX_UDS_init();                  /* no ERX on the buses: a test adds the ones it needs */
     TMD_ERX_init();
-    STDC_memset( sw_test_erx_position_s, 0x00, sizeof( sw_test_erx_position_s ) );
     TMD_CANTP_init( &tester_cfg );       /* the tester on CAN1, at the ECU's own UDS server: a test points it at another node with TMD_CANTP_set_ids() */
     TMD_UDS_init();
     TMD_UDS_set_timeout( SW_TEST_TESTER_TIMEOUT_MS );
@@ -262,94 +159,6 @@ static void sw_test_models_tick( void )
 /*!
 ****************************************************************************************************
 *
-*   \brief         The slot of the model whose ERX is at an ISO position
-*
-*   \author        mstewart
-*
-*   \param[in]     iso_position - The position, or SW_TEST_FREE_SLOT for the first slot that has no ERX yet
-*
-*   \return        The slot, SW_TEST_NO_ERX if there is none
-*
-*****************************************************************************************************/
-static u8_t sw_test_find_erx( u8_t iso_position )
-{
-    u8_t found = SW_TEST_NO_ERX;
-    u8_t slot;
-
-    for( slot = 0u; slot < TMD_ERX_MAX_INSTANCES; slot++ )
-    {
-        if( sw_test_erx_position_s[slot] == iso_position )
-        {
-            found = slot;
-            break;
-        }
-    }
-
-    return( found );
-}
-
-/*!
-****************************************************************************************************
-*
-*   \brief         The first slot of a port of the model that has no ERX yet
-*
-*   \author        mstewart
-*
-*   \param[in]     port - The port: its slots are port * (TMD_ERX_MAX_INSTANCES / TMD_ERX_MAX_PORTS) and the ones after it
-*
-*   \return        The slot, SW_TEST_NO_ERX if the port is full
-*
-*****************************************************************************************************/
-static u8_t sw_test_find_free_slot( u8_t port )
-{
-    u8_t first = port * ( TMD_ERX_MAX_INSTANCES / TMD_ERX_MAX_PORTS );
-    u8_t found = SW_TEST_NO_ERX;
-    u8_t slot;
-
-    for( slot = first; slot < ( first + ( TMD_ERX_MAX_INSTANCES / TMD_ERX_MAX_PORTS ) ); slot++ )
-    {
-        if( sw_test_erx_position_s[slot] == SW_TEST_FREE_SLOT )
-        {
-            found = slot;
-            break;
-        }
-    }
-
-    return( found );
-}
-
-/*!
-****************************************************************************************************
-*
-*   \brief         The port app_autocfg_init_s puts an ISO position on
-*
-*   \author        mstewart
-*
-*   \param[in]     iso_position - The position
-*
-*   \return        Its port, 0 if the init does not list the position
-*
-*****************************************************************************************************/
-static u8_t sw_test_port_of( u8_t iso_position )
-{
-    u8_t port = 0u;
-    u8_t row;
-
-    for( row = 0u; row < AUTOCFG_V2_MAX_ERXS; row++ )
-    {
-        if( ( app_autocfg_init_s.erx_locations[row].iso_position == iso_position ) && ( app_autocfg_init_s.erx_locations[row].port < TMD_ERX_MAX_PORTS ) )
-        {
-            port = app_autocfg_init_s.erx_locations[row].port;
-            break;
-        }
-    }
-
-    return( port );
-}
-
-/*!
-****************************************************************************************************
-*
 *   \brief         The ECU's start: app_main(), and then the virtual STM32 carries what it did to the pins to their models
 *
 *   \author        mstewart
@@ -364,20 +173,6 @@ static void sw_test_ecu_start( void )
 {
     app_main();
     vhw_sync();
-}
-/*!
-****************************************************************************************************
-*
-*   \brief         A first start is a blank ECU: no NVM yet. A restart that keeps its NVM does not run this.
-*
-*   \author        mstewart
-*
-*   \return        none
-*
-*****************************************************************************************************/
-static void sw_test_virgin_init( void )
-{
-    FLASH_SIM_erase_all();
 }
 
 /****************************** END OF FILE *******************************************************/

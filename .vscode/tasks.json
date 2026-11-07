@@ -69,18 +69,7 @@
             "type": "shell",
             "options": { "cwd": "${workspaceFolder}/APP" },
             "command": "mingw32-make.exe ${fileBasenameNoExtension}.test",
-        },
-        {
-            "label": "test_specific_bl",
-            "type": "shell",
-            "options": { "cwd": "${workspaceFolder}/BM" },
-            "command": "mingw32-make.exe ${fileBasenameNoExtension}.test",
-        },
-        {
-            "label": "test_specific_cov_report",
-            "type": "shell",
-            "options": { "cwd": "${workspaceFolder}/APP" },
-            "command": "mingw32-make.exe ${fileBasenameNoExtension}.test_cov",
+            "group": { "kind": "test", "isDefault": true },
         },
         {
             "label": "test_all",

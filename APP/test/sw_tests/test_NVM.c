@@ -30,6 +30,10 @@
 #define TEST_SAVED_WELD_TIME_MS     ( 1234u )    /* neither the default (40) nor the value a test overwrites it with */
 #define TEST_OVERWRITTEN_WELD_TIME  ( 0u )
 
+/* A test case leaves a saved block in the flash and sets this: the next case looks for the block, and clears it. It is
+   not reset by setUp(), which is the point - only the flash must not carry over. */
+static false_true_et test_block_left_for_next_case_s = FALSE;
+
 /*!
 ****************************************************************************************************
 *
@@ -160,6 +164,57 @@ void test_a_virgin_restart_loses_a_saved_block( void )
     TMD_INIT_restart_ecu( VIRGIN );
 
     TEST_ASSERT_EQUAL_UINT16( APP_GENERIC_DEFAULT_DATA_BLK_s.weld_time_ms, app_generic_data_blk_g.weld_time_ms );
+}
+
+/*!
+****************************************************************************************************
+*
+*   \brief         Leave a saved block in the flash at the end of this test case, for the next one to look for. Verify it was
+*                  there while this case ran.
+*
+*   \author        mstewart
+*
+*   \return        none
+*
+*   \note          Half of a pair with test_a_new_test_does_not_find_the_block_of_the_one_before(), which has to follow it
+*
+*****************************************************************************************************/
+void test_a_test_leaves_a_saved_block_in_the_flash_for_the_next( void )
+{
+    test_save_generic_block();
+
+    TEST_ASSERT_TRUE( NVM_GEN2_get_block_info( APP_GENERIC_BLOCK_ID )->latest_offset != NVM_GEN2_OFFSET_NONE );
+
+    test_block_left_for_next_case_s = TRUE;
+}
+
+/*!
+****************************************************************************************************
+*
+*   \brief         Verify the NVM does not persist into the start of a new test case: the block the one before left in the
+*                  flash is not there, and the block holds its defaults
+*
+*   \author        mstewart
+*
+*   \return        none
+*
+*   \note          Ignored unless test_a_test_leaves_a_saved_block_in_the_flash_for_the_next() ran just before it: run on its
+*                  own there would be no block to lose. A new test case starts with TMD_INIT_init() in setUp(), a virgin ECU.
+*
+*****************************************************************************************************/
+void test_a_new_test_does_not_find_the_block_of_the_one_before( void )
+{
+    if( test_block_left_for_next_case_s == FALSE )
+    {
+        TEST_IGNORE_MESSAGE( "the case that leaves a block in the flash did not run before this one" );
+    }
+    else
+    {
+        test_block_left_for_next_case_s = FALSE;
+
+        TEST_ASSERT_EQUAL_HEX32( NVM_GEN2_OFFSET_NONE, NVM_GEN2_get_block_info( APP_GENERIC_BLOCK_ID )->latest_offset );
+        TEST_ASSERT_EQUAL_UINT16( APP_GENERIC_DEFAULT_DATA_BLK_s.weld_time_ms, app_generic_data_blk_g.weld_time_ms );
+    }
 }
 
 /*!

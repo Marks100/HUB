@@ -10,7 +10,7 @@
       "showDevDebugOutput": "raw",
       "gdbPath": "C:\\SVN_source\\Tools\\gcc-arm\\10.3.0\\bin\\arm-none-eabi-gdb.exe",
       "loadFiles": [
-        "APP/Build_output/APP_BM_combined.hex",
+        "APP/Build_output/APP_BM_combined.hex"
       ],
       "symbolFiles": [
         {
@@ -52,8 +52,8 @@
       "name": "Ceedling Debug",
       "type": "cppdbg",
       "request": "launch",
-      "preLaunchTask": "test_specific",
-      "program": "${workspaceFolder}/APP/test/build/test/out/${fileBasenameNoExtension}/${fileBasenameNoExtension}.exe",
+      "preLaunchTask": "",
+      "program": "${workspaceFolder}/APP/test/build/gcov/out/${fileBasenameNoExtension}/${fileBasenameNoExtension}.exe",
       "args": [],
       "stopAtEntry": false,
       "cwd": "${workspaceFolder}/APP/test",
@@ -76,8 +76,8 @@
       "args": [],
       "stopAtEntry": false,
       "externalConsole": true,
-      "cwd": "c:/Users/marks/OneDrive/Desktop/testbed/APP/Src/SENT",
-      "program": "c:/Users/marks/OneDrive/Desktop/testbed/APP/Src/SENT/build/Debug/outDebug",
+      "cwd": "c:/Users/marks/OneDrive/Desktop/Projects/HUB/APP/test/sw_tests",
+      "program": "c:/Users/marks/OneDrive/Desktop/Projects/HUB/APP/test/sw_tests/build/Debug/outDebug",
       "MIMode": "gdb",
       "miDebuggerPath": "gdb",
       "setupCommands": [

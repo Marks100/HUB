@@ -65,9 +65,9 @@ void tearDown( void )
 *****************************************************************************************************/
 void test_an_unplugged_erx_is_not_alive( void )
 {
-    sw_test_place_erx( APP_ISO_AXLE_1_CENTRE );
-    sw_test_place_erx( APP_ISO_AXLE_1_OUTER_LEFT );
-    sw_test_unplug_erx( APP_ISO_AXLE_1_CENTRE );    /* unplugged from the start */
+    TMD_ERX_place_instance( APP_ISO_AXLE_1_CENTRE, TMD_ERX_PORT_A );
+    TMD_ERX_place_instance( APP_ISO_AXLE_1_OUTER_LEFT, TMD_ERX_PORT_B );
+    TMD_ERX_unplug_instance( TMD_ERX_find_instance( APP_ISO_AXLE_1_CENTRE ) );    /* unplugged from the start */
 
     TMD_TIME_advance_time_ms( 2000u );
 
@@ -91,9 +91,9 @@ void test_an_unplugged_erx_is_not_alive( void )
 *****************************************************************************************************/
 void test_an_erx_that_is_unplugged_from_the_start_is_lost( void )
 {
-    sw_test_place_erx( APP_ISO_AXLE_1_CENTRE );
-    sw_test_place_erx( APP_ISO_AXLE_1_OUTER_LEFT );
-    sw_test_unplug_erx( APP_ISO_AXLE_1_CENTRE );    /* unplugged from the start */
+    TMD_ERX_place_instance( APP_ISO_AXLE_1_CENTRE, TMD_ERX_PORT_A );
+    TMD_ERX_place_instance( APP_ISO_AXLE_1_OUTER_LEFT, TMD_ERX_PORT_B );
+    TMD_ERX_unplug_instance( TMD_ERX_find_instance( APP_ISO_AXLE_1_CENTRE ) );    /* unplugged from the start */
 
     TMD_TIME_advance_time_ms( AUTOCFG_HEARTBEAT_TIMEOUT_MS + TEST_SETTLE_MS );
 
@@ -114,12 +114,12 @@ void test_an_erx_that_is_unplugged_from_the_start_is_lost( void )
 *****************************************************************************************************/
 void test_an_erx_that_is_lost_from_the_start_recovers_when_plugged_in( void )
 {
-    sw_test_place_erx( APP_ISO_AXLE_1_CENTRE );
-    sw_test_unplug_erx( APP_ISO_AXLE_1_CENTRE );    /* unplugged from the start */
+    TMD_ERX_place_instance( APP_ISO_AXLE_1_CENTRE, TMD_ERX_PORT_A );
+    TMD_ERX_unplug_instance( TMD_ERX_find_instance( APP_ISO_AXLE_1_CENTRE ) );    /* unplugged from the start */
     TMD_TIME_advance_time_ms( AUTOCFG_HEARTBEAT_TIMEOUT_MS + TEST_SETTLE_MS );
     TEST_ASSERT_EQUAL( TRUE, AUTOCFG_is_erx_heartbeat_lost( APP_ISO_AXLE_1_CENTRE ) );
 
-    sw_test_plug_in_erx( APP_ISO_AXLE_1_CENTRE );
+    TMD_ERX_plug_in_instance( TMD_ERX_find_instance( APP_ISO_AXLE_1_CENTRE ) );
     TMD_TIME_advance_time_ms( TEST_SETTLE_MS );
 
     TEST_ASSERT_EQUAL( FALSE, AUTOCFG_is_erx_heartbeat_lost( APP_ISO_AXLE_1_CENTRE ) );
@@ -139,7 +139,7 @@ void test_an_erx_that_is_lost_from_the_start_recovers_when_plugged_in( void )
 *****************************************************************************************************/
 void test_the_ecu_does_not_run_the_autocfg_master( void )
 {
-    sw_test_place_erx( APP_ISO_AXLE_1_CENTRE );
+    TMD_ERX_place_instance( APP_ISO_AXLE_1_CENTRE, TMD_ERX_PORT_A );
 
     TMD_TIME_advance_time_ms( 2000u );
 
@@ -160,7 +160,7 @@ void test_the_ecu_does_not_run_the_autocfg_master( void )
 *****************************************************************************************************/
 void test_the_ecu_reads_the_first_heartbeat_of_an_erx( void )
 {
-    sw_test_place_erx( APP_ISO_AXLE_1_CENTRE );
+    TMD_ERX_place_instance( APP_ISO_AXLE_1_CENTRE, TMD_ERX_PORT_A );
 
     TMD_TIME_advance_time_ms( TMD_ERX_HEARTBEAT_PERIOD_MS - TEST_SETTLE_MS );
 
@@ -185,7 +185,7 @@ void test_the_ecu_reads_the_first_heartbeat_of_an_erx( void )
 *****************************************************************************************************/
 void test_the_ecu_follows_the_counter_of_an_erx( void )
 {
-    sw_test_place_erx( APP_ISO_AXLE_1_CENTRE );
+    TMD_ERX_place_instance( APP_ISO_AXLE_1_CENTRE, TMD_ERX_PORT_A );
 
     TMD_TIME_advance_time_ms( 2100u );
 
@@ -207,10 +207,10 @@ void test_the_ecu_follows_the_counter_of_an_erx( void )
 *****************************************************************************************************/
 void test_the_ecu_notices_an_erx_that_is_unplugged( void )
 {
-    sw_test_place_erx( APP_ISO_AXLE_1_CENTRE );
+    TMD_ERX_place_instance( APP_ISO_AXLE_1_CENTRE, TMD_ERX_PORT_A );
 
     TMD_TIME_advance_time_ms( 1000u );
-    sw_test_unplug_erx( APP_ISO_AXLE_1_CENTRE );    /* unplugged */
+    TMD_ERX_unplug_instance( TMD_ERX_find_instance( APP_ISO_AXLE_1_CENTRE ) );    /* unplugged */
 
     TMD_TIME_advance_time_ms( 500u );
 
@@ -237,18 +237,18 @@ void test_the_ecu_sees_an_erx_come_back_after_it_was_lost( void )
 {
     u32_t counter_before_unplugging;
 
-    sw_test_place_erx( APP_ISO_AXLE_1_CENTRE );
+    TMD_ERX_place_instance( APP_ISO_AXLE_1_CENTRE, TMD_ERX_PORT_A );
 
     TMD_TIME_advance_time_ms( 1000u );
     counter_before_unplugging = AUTOCFG_get_erx_heartbeat_counter( APP_ISO_AXLE_1_CENTRE );
 
-    sw_test_unplug_erx( APP_ISO_AXLE_1_CENTRE );    /* unplugged */
+    TMD_ERX_unplug_instance( TMD_ERX_find_instance( APP_ISO_AXLE_1_CENTRE ) );    /* unplugged */
     TMD_TIME_advance_time_ms( AUTOCFG_HEARTBEAT_TIMEOUT_MS + TEST_SETTLE_MS );
 
     TEST_ASSERT_EQUAL( FALSE, AUTOCFG_is_erx_alive( APP_ISO_AXLE_1_CENTRE ) );
     TEST_ASSERT_EQUAL( TRUE, AUTOCFG_is_erx_heartbeat_lost( APP_ISO_AXLE_1_CENTRE ) );
 
-    sw_test_plug_in_erx( APP_ISO_AXLE_1_CENTRE );    /* plugged back in: the HUB's supply is still on, so it starts again */
+    TMD_ERX_plug_in_instance( TMD_ERX_find_instance( APP_ISO_AXLE_1_CENTRE ) );    /* plugged back in: the HUB's supply is still on, so it starts again */
     TMD_TIME_advance_time_ms( TEST_SETTLE_MS );
 
     TEST_ASSERT_EQUAL( TRUE, AUTOCFG_is_erx_alive( APP_ISO_AXLE_1_CENTRE ) );
@@ -268,15 +268,15 @@ void test_the_ecu_sees_an_erx_come_back_after_it_was_lost( void )
 *****************************************************************************************************/
 void test_losing_one_erx_does_not_lose_the_other( void )
 {
-    sw_test_place_erx( APP_ISO_AXLE_1_CENTRE );
-    sw_test_place_erx( APP_ISO_AXLE_1_OUTER_LEFT );
+    TMD_ERX_place_instance( APP_ISO_AXLE_1_CENTRE, TMD_ERX_PORT_A );
+    TMD_ERX_place_instance( APP_ISO_AXLE_1_OUTER_LEFT, TMD_ERX_PORT_B );
 
     TMD_TIME_advance_time_ms( 1000u );
 
     TEST_ASSERT_EQUAL( TRUE, AUTOCFG_is_erx_alive( APP_ISO_AXLE_1_CENTRE ) );
     TEST_ASSERT_EQUAL( TRUE, AUTOCFG_is_erx_alive( APP_ISO_AXLE_1_OUTER_LEFT ) );
 
-    sw_test_unplug_erx( APP_ISO_AXLE_1_CENTRE );    /* unplugged */
+    TMD_ERX_unplug_instance( TMD_ERX_find_instance( APP_ISO_AXLE_1_CENTRE ) );    /* unplugged */
     TMD_TIME_advance_time_ms( AUTOCFG_HEARTBEAT_TIMEOUT_MS + TEST_SETTLE_MS );
 
     TEST_ASSERT_EQUAL( FALSE, AUTOCFG_is_erx_alive( APP_ISO_AXLE_1_CENTRE ) );
@@ -298,8 +298,8 @@ void test_losing_one_erx_does_not_lose_the_other( void )
 *****************************************************************************************************/
 void test_a_heartbeat_from_a_position_the_hub_does_not_follow_is_ignored( void )
 {
-    sw_test_place_erx( APP_ISO_AXLE_1_CENTRE );
-    sw_test_place_erx( APP_ISO_AXLE_2_CENTRE );
+    TMD_ERX_place_instance( APP_ISO_AXLE_1_CENTRE, TMD_ERX_PORT_A );
+    TMD_ERX_place_instance( APP_ISO_AXLE_2_CENTRE, TMD_ERX_PORT_A );
 
     TMD_TIME_advance_time_ms( 1000u );
 
@@ -329,8 +329,8 @@ void test_the_first_and_the_last_heartbeat_id_are_followed( void )
     init_cfg.erx_locations[1u].iso_position = APP_ISO_AXLE_5_OUTER_RIGHT;
 
     AUTOCFG_init( &init_cfg );
-    sw_test_place_erx( APP_ISO_AXLE_1_OUTER_LEFT );
-    sw_test_place_erx( APP_ISO_AXLE_5_OUTER_RIGHT );
+    TMD_ERX_place_instance( APP_ISO_AXLE_1_OUTER_LEFT, TMD_ERX_PORT_B );
+    TMD_ERX_place_instance( APP_ISO_AXLE_5_OUTER_RIGHT, TMD_ERX_PORT_A );
 
     TMD_TIME_advance_time_ms( 2100u );
 

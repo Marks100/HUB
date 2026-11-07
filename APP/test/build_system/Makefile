@@ -2,8 +2,8 @@
 #  build_system Makefile - builds this project's source and the xCOMMON_MODULES source into an x86 (MinGW)
 #  static library, for the end to end tests, which link it to run the real modules on the Windows host.
 #
-#    mingw32-make -C APP/test/build_system -j8       build APP/test/build_system/libHUB_APP_x86.a
-#                                           (objects in APP/test/build_system/build/obj), always built with coverage
+#    mingw32-make -C APP/test/build_system -j8       build APP/test/build/artifacts/libHUB_APP_x86.a
+#                                           (objects in APP/test/build/artifacts/obj), always built with coverage
 #                                           instrumentation and without optimisation: gcov counts lines accurately only at -O0
 #    mingw32-make -C APP/test/build_system clean            removes it
 #
@@ -37,10 +37,10 @@ ROOT := ../../..
 
 include $(ROOT)/rules.mk
 
-# The library sits in this folder, not under build/: Ceedling checks a library's folder exists when it
-# loads its project file, before any build hook could create it.
-BUILD     := build
-LIB       := libHUB_APP_x86.a
+# The output goes to ../build/artifacts, with Ceedling's own. Ceedling checks a library's folder exists when it
+# loads its project file, before any build hook could create it - see the Makefile that runs the tests.
+BUILD     := ../build/artifacts
+LIB       := $(BUILD)/libHUB_APP_x86.a
 
 SRCS    := $(file < lib_sources.txt)
 INC_REL := $(patsubst %/,%,$(sort $(dir $(SRCS)))) $(file < lib_includes.txt)
@@ -54,6 +54,7 @@ CFLAGS := $(foreach f,$(FLAGS),$f) -MMD -MP $(addprefix -I$(ROOT)/,$(INC_REL)) $
 all: $(LIB)
 
 $(LIB): $(OBJS)
+	@mkdir -p $(dir $@)
 	@rm -f $@
 	@$(MINGW_AR) rcs $@ $^
 	@echo "--> built $@ ($(words $(OBJS)) objects)"
@@ -65,7 +66,8 @@ $(BUILD)/obj/%.o: $(ROOT)/%.c Makefile lib_sources.txt lib_includes.txt lib_defi
 	@$(MINGW_CC) $(CFLAGS) -c $< -o $@
 
 clean:
-	@rm -rf build build_cov libHUB_APP_x86.a libHUB_APP_x86_cov.a    # build_cov and _cov: what an older Makefile left
+	@rm -rf $(BUILD)/obj $(BUILD)/*.a
+	@rm -rf build build_cov libHUB_APP_x86.a libHUB_APP_x86_cov.a    # where this folder's output used to go, and an older Makefile's
 	@echo "--> library cleaned"
 
 -include $(OBJS:.o=.d)

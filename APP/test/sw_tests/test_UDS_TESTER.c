@@ -63,7 +63,7 @@ void setUp( void )
 
     TMD_CANTP_set_ids( TEST_AXLE_2_INNER_RIGHT_REQUEST_ID, TEST_AXLE_2_INNER_RIGHT_RESPONSE_ID );    /* the tester talks to the ERX, not to the ECU */
 
-    sw_test_place_erx( APP_ISO_AXLE_2_INNER_RIGHT );
+    TMD_ERX_place_instance( APP_ISO_AXLE_2_INNER_RIGHT, TMD_ERX_PORT_A );
 
     TEST_TIMING_START();
 }
@@ -181,9 +181,9 @@ void test_a_negative_response_of_the_erx_reaches_the_tester( void )
 *****************************************************************************************************/
 void test_a_tester_gets_no_answer_from_an_unplugged_erx( void )
 {
-    sw_test_place_erx( APP_ISO_AXLE_2_OUTER_RIGHT );
+    TMD_ERX_place_instance( APP_ISO_AXLE_2_OUTER_RIGHT, TMD_ERX_PORT_A );
 
-    sw_test_unplug_erx( APP_ISO_AXLE_2_INNER_RIGHT );    /* the ERX at the second axle's inner right wheel is unplugged */
+    TMD_ERX_unplug_instance( TMD_ERX_find_instance( APP_ISO_AXLE_2_INNER_RIGHT ) );    /* the ERX at the second axle's inner right wheel is unplugged */
     TMD_UDS_set_timeout( TEST_SILENT_TIMEOUT_MS );
 
     TEST_ASSERT_NOT_EQUAL( TMD_UDS_RESULT_OK, TMD_UDS_diagnostic_session_control( TMD_UDS_SESSION_EXTENDED ) );    /* no answer: the model reports it as a timeout or a transport error */
@@ -212,7 +212,7 @@ void test_a_tester_reaches_the_erx_at_the_first_id_of_the_gateway_range( void )
     u8_t       part_number_len = 0u;
     u16_t      len = 0u;
 
-    sw_test_place_erx( APP_ISO_AXLE_1_OUTER_LEFT );
+    TMD_ERX_place_instance( APP_ISO_AXLE_1_OUTER_LEFT, TMD_ERX_PORT_B );
     TMD_CANTP_set_ids( TEST_AXLE_1_OUTER_LEFT_REQUEST_ID, TEST_AXLE_1_OUTER_LEFT_RESPONSE_ID );
     TMD_UDS_set_timeout( TEST_GATEWAY_HOLD_MS );
 
@@ -247,7 +247,7 @@ void test_a_tester_reaches_the_erx_at_the_last_position( void )
     u8_t       response[SW_TEST_TESTER_RESPONSE_MAX_LEN];
     u16_t      len = 0u;
 
-    sw_test_place_erx( APP_ISO_AXLE_5_OUTER_RIGHT );
+    TMD_ERX_place_instance( APP_ISO_AXLE_5_OUTER_RIGHT, TMD_ERX_PORT_A );
     TMD_CANTP_set_ids( TEST_AXLE_5_OUTER_RIGHT_REQUEST_ID, TEST_AXLE_5_OUTER_RIGHT_RESPONSE_ID );
 
     TEST_ASSERT_EQUAL( TMD_UDS_RESULT_OK, TMD_UDS_send_request( request, 2u, response, sizeof( response ), &len ) );
@@ -293,7 +293,7 @@ static void test_open_extended_session_on( u8_t iso_position )
 *****************************************************************************************************/
 static u8_t test_session_of( u8_t iso_position )
 {
-    return( TMD_ERX_UDS_get_session( sw_test_erx_slot( iso_position ) ) );
+    return( TMD_ERX_UDS_get_session( TMD_ERX_find_instance( iso_position ) ) );
 }
 
 /*!
@@ -311,8 +311,8 @@ static u8_t test_session_of( u8_t iso_position )
 *****************************************************************************************************/
 void test_a_tester_reaches_each_configured_erx_one_at_a_time( void )
 {
-    sw_test_place_erx( APP_ISO_AXLE_1_CENTRE );        /* port 0 */
-    sw_test_place_erx( APP_ISO_AXLE_1_OUTER_LEFT );    /* port 1 */
+    TMD_ERX_place_instance( APP_ISO_AXLE_1_CENTRE, TMD_ERX_PORT_A );
+    TMD_ERX_place_instance( APP_ISO_AXLE_1_OUTER_LEFT, TMD_ERX_PORT_B );
 
     test_open_extended_session_on( APP_ISO_AXLE_1_CENTRE );
 
@@ -342,8 +342,8 @@ void test_a_tester_reaches_each_configured_erx_one_at_a_time( void )
 *****************************************************************************************************/
 void test_a_tester_reaches_each_configured_erx_one_at_a_time_in_the_other_order( void )
 {
-    sw_test_place_erx( APP_ISO_AXLE_1_CENTRE );        /* port 0 */
-    sw_test_place_erx( APP_ISO_AXLE_1_OUTER_LEFT );    /* port 1 */
+    TMD_ERX_place_instance( APP_ISO_AXLE_1_CENTRE, TMD_ERX_PORT_A );
+    TMD_ERX_place_instance( APP_ISO_AXLE_1_OUTER_LEFT, TMD_ERX_PORT_B );
 
     test_open_extended_session_on( APP_ISO_AXLE_1_OUTER_LEFT );
 

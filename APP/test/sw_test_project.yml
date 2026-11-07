@@ -82,8 +82,6 @@
     - ../../xCOMMON_MODULES/test/support/models/TMD_DEBUG
     - ../../xCOMMON_MODULES/test/support/models/TMD_TJA1051
     - ../../xCOMMON_MODULES/test/support/models/TMD_MCP2515
-  :libraries:
-    - build_system                  # the folder libHUB_APP_x86.a is built into
 
 # The clock and the ECU start, one file of their folders each: the models to start and the clock's list are the project's own,
 # in sw_stubs/SW_TEST_STUBS.c
@@ -123,6 +121,9 @@
       - -Wno-incompatible-pointer-types
     :link:
       - -m32
+      # Where libHUB_APP_x86.a is (build_system/Makefile). A flag, not :paths: :libraries:, because Ceedling insists
+      # a :paths: folder exists when it loads this file, and build/ is gone after a clobber or on a fresh clone
+      - -Lbuild/artifacts
       # A test may define a function the library or the virtual hardware also defines: the first definition in link
       # order, the test's, wins. weak does not work for this on MinGW. The cost is that a real duplicate is no longer an error.
       - -Wl,--allow-multiple-definition

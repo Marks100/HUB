@@ -49,8 +49,8 @@ void setUp( void )
 {
     TMD_INIT_init( &sw_test_init_cfg_g );
 
-    sw_test_place_erx( APP_ISO_AXLE_1_OUTER_LEFT );    /* the ERX the HUB's UDS client reads by itself: request ID 0x716, the first of the gateway's range */
-    sw_test_place_erx( APP_ISO_AXLE_2_INNER_RIGHT );    /* the ERX for the tester's requests: request ID 0x729, response ID 0x629 */
+    TMD_ERX_place_instance( APP_ISO_AXLE_1_OUTER_LEFT, TMD_ERX_PORT_B );    /* the ERX the HUB's UDS client reads by itself: request ID 0x716, the first of the gateway's range */
+    TMD_ERX_place_instance( APP_ISO_AXLE_2_INNER_RIGHT, TMD_ERX_PORT_A );    /* the ERX for the tester's requests: request ID 0x729, response ID 0x629 */
 
     TEST_TIMING_START();
 }
@@ -111,8 +111,8 @@ void test_the_client_reads_a_multi_frame_part_number_from_its_node( void )
     TEST_ASSERT_NOT_NULL( value_p );
     TEST_ASSERT_EQUAL_UINT8( expected_len, len );
     TEST_ASSERT_EQUAL_HEX8_ARRAY( expected_p, value_p, expected_len );
-    TEST_ASSERT_TRUE( TMD_ERX_UDS_get_request_count( sw_test_erx_slot( APP_ISO_AXLE_1_OUTER_LEFT ) ) > 0u );
-    TEST_ASSERT_TRUE( TMD_ERX_UDS_get_response_count( sw_test_erx_slot( APP_ISO_AXLE_1_OUTER_LEFT ) ) > 0u );
+    TEST_ASSERT_TRUE( TMD_ERX_UDS_get_request_count( TMD_ERX_find_instance( APP_ISO_AXLE_1_OUTER_LEFT ) ) > 0u );
+    TEST_ASSERT_TRUE( TMD_ERX_UDS_get_response_count( TMD_ERX_find_instance( APP_ISO_AXLE_1_OUTER_LEFT ) ) > 0u );
 }
 
 /*!
@@ -129,13 +129,13 @@ void test_a_silent_node_leaves_the_client_without_a_part_number_and_it_asks_agai
 {
     u8_t len = 0u;
 
-    TMD_ERX_UDS_set_responding( sw_test_erx_slot( APP_ISO_AXLE_1_OUTER_LEFT ), FALSE );
+    TMD_ERX_UDS_set_responding( TMD_ERX_find_instance( APP_ISO_AXLE_1_OUTER_LEFT ), FALSE );
 
     TMD_TIME_advance_time_ms( TEST_NODE_INFO_MS );
 
     TEST_ASSERT_NULL( NODE_INFO_get( NODE_INFO_PART_NUMBER, &len ) );
-    TEST_ASSERT_TRUE( TMD_ERX_UDS_get_request_count( sw_test_erx_slot( APP_ISO_AXLE_1_OUTER_LEFT ) ) >= 2u );
-    TEST_ASSERT_EQUAL_UINT32( 0u, TMD_ERX_UDS_get_response_count( sw_test_erx_slot( APP_ISO_AXLE_1_OUTER_LEFT ) ) );
+    TEST_ASSERT_TRUE( TMD_ERX_UDS_get_request_count( TMD_ERX_find_instance( APP_ISO_AXLE_1_OUTER_LEFT ) ) >= 2u );
+    TEST_ASSERT_EQUAL_UINT32( 0u, TMD_ERX_UDS_get_response_count( TMD_ERX_find_instance( APP_ISO_AXLE_1_OUTER_LEFT ) ) );
 }
 
 /*!
@@ -152,12 +152,12 @@ void test_a_negative_response_leaves_the_client_without_a_part_number( void )
 {
     u8_t len = 0u;
 
-    TMD_ERX_UDS_inject_nrc( sw_test_erx_slot( APP_ISO_AXLE_1_OUTER_LEFT ), 0x22u, 0x31u );
+    TMD_ERX_UDS_inject_nrc( TMD_ERX_find_instance( APP_ISO_AXLE_1_OUTER_LEFT ), 0x22u, 0x31u );
 
     TMD_TIME_advance_time_ms( TEST_NODE_INFO_MS );
 
     TEST_ASSERT_NULL( NODE_INFO_get( NODE_INFO_PART_NUMBER, &len ) );
-    TEST_ASSERT_TRUE( TMD_ERX_UDS_get_response_count( sw_test_erx_slot( APP_ISO_AXLE_1_OUTER_LEFT ) ) > 0u );
+    TEST_ASSERT_TRUE( TMD_ERX_UDS_get_response_count( TMD_ERX_find_instance( APP_ISO_AXLE_1_OUTER_LEFT ) ) > 0u );
 }
 
 /*!
@@ -184,7 +184,7 @@ void test_the_client_writes_a_multi_frame_chassis_number_to_its_node( void )
     TEST_ASSERT_EQUAL( PASS, UDS_CLIENT_write_did( TMD_ERX_UDS_DID_CHASSIS_NUMBER, chassis, (u16_t)sizeof( chassis ), NULL_P ) );
     TMD_TIME_advance_time_ms( TEST_WRITE_MS );
 
-    written_p = TMD_ERX_UDS_get_written_value( sw_test_erx_slot( APP_ISO_AXLE_1_OUTER_LEFT ), &written_len );
+    written_p = TMD_ERX_UDS_get_written_value( TMD_ERX_find_instance( APP_ISO_AXLE_1_OUTER_LEFT ), &written_len );
 
     TEST_ASSERT_NOT_NULL( written_p );
     TEST_ASSERT_EQUAL_UINT8( sizeof( chassis ), written_len );
@@ -208,12 +208,12 @@ void test_a_node_that_refuses_the_chassis_number_keeps_nothing( void )
     u8_t       written_len  = 0u;
 
     TMD_TIME_advance_time_ms( TEST_NODE_INFO_MS );
-    TMD_ERX_UDS_inject_nrc( sw_test_erx_slot( APP_ISO_AXLE_1_OUTER_LEFT ), 0x2Eu, 0x33u );
+    TMD_ERX_UDS_inject_nrc( TMD_ERX_find_instance( APP_ISO_AXLE_1_OUTER_LEFT ), 0x2Eu, 0x33u );
 
     TEST_ASSERT_EQUAL( PASS, UDS_CLIENT_write_did( TMD_ERX_UDS_DID_CHASSIS_NUMBER, chassis, (u16_t)sizeof( chassis ), NULL_P ) );
     TMD_TIME_advance_time_ms( TEST_WRITE_MS );
 
-    TEST_ASSERT_NULL( TMD_ERX_UDS_get_written_value( sw_test_erx_slot( APP_ISO_AXLE_1_OUTER_LEFT ), &written_len ) );
+    TEST_ASSERT_NULL( TMD_ERX_UDS_get_written_value( TMD_ERX_find_instance( APP_ISO_AXLE_1_OUTER_LEFT ), &written_len ) );
     TEST_ASSERT_EQUAL( FALSE, UDS_CLIENT_is_busy() );
 }
 /*!
@@ -257,7 +257,7 @@ void test_node_info_reads_the_software_version_as_well_as_the_part_number( void 
 *****************************************************************************************************/
 void test_node_info_stops_asking_once_it_has_everything( void )
 {
-    const u8_t slot = sw_test_erx_slot( APP_ISO_AXLE_1_OUTER_LEFT );
+    const u8_t slot = TMD_ERX_find_instance( APP_ISO_AXLE_1_OUTER_LEFT );
     u32_t      requests;
 
     TMD_TIME_advance_time_ms( TEST_NODE_INFO_MS );
@@ -282,7 +282,7 @@ void test_node_info_stops_asking_once_it_has_everything( void )
 *****************************************************************************************************/
 void test_tester_present_ends_when_sent_without_waiting_for_a_response( void )
 {
-    const u8_t slot = sw_test_erx_slot( APP_ISO_AXLE_1_OUTER_LEFT );
+    const u8_t slot = TMD_ERX_find_instance( APP_ISO_AXLE_1_OUTER_LEFT );
     u32_t      requests;
     u32_t      responses;
 
@@ -323,7 +323,7 @@ void test_a_request_straight_after_a_reply_is_not_refused( void )
     TEST_ASSERT_EQUAL( PASS, UDS_CLIENT_write_did( TMD_ERX_UDS_DID_CHASSIS_NUMBER, chassis, (u16_t)sizeof( chassis ), NULL_P ) );
     TMD_TIME_advance_time_ms( TEST_TESTER_ANSWER_MS );
 
-    written_p = TMD_ERX_UDS_get_written_value( sw_test_erx_slot( APP_ISO_AXLE_1_OUTER_LEFT ), &written_len );
+    written_p = TMD_ERX_UDS_get_written_value( TMD_ERX_find_instance( APP_ISO_AXLE_1_OUTER_LEFT ), &written_len );
     TEST_ASSERT_NOT_NULL( written_p );
     TEST_ASSERT_EQUAL_HEX8_ARRAY( chassis, written_p, sizeof( chassis ) );
 }
@@ -365,13 +365,13 @@ void test_nothing_is_sent_to_a_node_that_is_not_configured( void )
 *****************************************************************************************************/
 void test_nothing_is_sent_to_a_node_that_is_unplugged( void )
 {
-    sw_test_unplug_erx( APP_ISO_AXLE_1_OUTER_LEFT );
+    TMD_ERX_unplug_instance( TMD_ERX_find_instance( APP_ISO_AXLE_1_OUTER_LEFT ) );
 
     TMD_TIME_advance_time_ms( TEST_NODE_INFO_MS );
 
     TEST_ASSERT_EQUAL( FALSE, app_node_is_available( 0u ) );
     TEST_ASSERT_EQUAL( 0u, TMD_CAN_get_message_count_from_ecu( TEST_BUS_NODES, APP_NODE_REQUEST_BASE_ID ) );
-    TEST_ASSERT_EQUAL( 0u, TMD_ERX_UDS_get_request_count( sw_test_erx_slot( APP_ISO_AXLE_1_OUTER_LEFT ) ) );
+    TEST_ASSERT_EQUAL( 0u, TMD_ERX_UDS_get_request_count( TMD_ERX_find_instance( APP_ISO_AXLE_1_OUTER_LEFT ) ) );
     TEST_ASSERT_NULL( NODE_INFO_get( NODE_INFO_PART_NUMBER, NULL_P ) );
 }
 
@@ -390,7 +390,7 @@ void test_a_write_to_a_node_that_is_not_there_is_refused( void )
 {
     const u8_t chassis[4u] = { 'A', 'B', 'C', 'D' };
 
-    sw_test_unplug_erx( APP_ISO_AXLE_1_OUTER_LEFT );
+    TMD_ERX_unplug_instance( TMD_ERX_find_instance( APP_ISO_AXLE_1_OUTER_LEFT ) );
     TMD_TIME_advance_time_ms( TEST_NODE_INFO_MS );
 
     TEST_ASSERT_EQUAL( FAIL, UDS_CLIENT_write_did( TMD_ERX_UDS_DID_CHASSIS_NUMBER, chassis, (u16_t)sizeof( chassis ), NULL_P ) );
@@ -447,7 +447,7 @@ void test_a_tester_session_request_is_answered_by_the_node_through_the_gateway( 
     TMD_CAN_inject_frame_to_ecu( TEST_BUS_TESTER, &request );
     TMD_TIME_advance_time_ms( TEST_TESTER_ANSWER_MS );
 
-    TEST_ASSERT_EQUAL_UINT8( 0x03u, TMD_ERX_UDS_get_session( sw_test_erx_slot( APP_ISO_AXLE_2_INNER_RIGHT ) ) );
+    TEST_ASSERT_EQUAL_UINT8( 0x03u, TMD_ERX_UDS_get_session( TMD_ERX_find_instance( APP_ISO_AXLE_2_INNER_RIGHT ) ) );
     TEST_ASSERT_EQUAL( 1u, TMD_CAN_get_message_count_from_ecu( TEST_BUS_TESTER, TEST_TESTER_RESPONSE_ID ) );
     TEST_ASSERT_EQUAL( TRUE, TMD_CAN_consume_message_from_ecu( TEST_BUS_TESTER, TEST_TESTER_RESPONSE_ID, &answer ) );
     TEST_ASSERT_EQUAL_HEX8_ARRAY( response_data, answer.data, 8u );
@@ -500,14 +500,14 @@ void test_an_unplugged_erx_does_not_answer_the_tester( void )
     const u8_t         request_data[ 2u ] = { 0x10u, 0x03u };
     TMD_CAN_message_st request;
 
-    sw_test_unplug_erx( APP_ISO_AXLE_2_INNER_RIGHT );
+    TMD_ERX_unplug_instance( TMD_ERX_find_instance( APP_ISO_AXLE_2_INNER_RIGHT ) );
 
     test_make_request( &request, request_data, 2u );
 
     TMD_CAN_inject_frame_to_ecu( TEST_BUS_TESTER, &request );
     TMD_TIME_advance_time_ms( TEST_TESTER_ANSWER_MS );
 
-    TEST_ASSERT_EQUAL_UINT32( 0u, TMD_ERX_UDS_get_request_count( sw_test_erx_slot( APP_ISO_AXLE_2_INNER_RIGHT ) ) );
+    TEST_ASSERT_EQUAL_UINT32( 0u, TMD_ERX_UDS_get_request_count( TMD_ERX_find_instance( APP_ISO_AXLE_2_INNER_RIGHT ) ) );
     TEST_ASSERT_EQUAL( 0u, TMD_CAN_get_message_count_from_ecu( TEST_BUS_TESTER, TEST_TESTER_RESPONSE_ID ) );
 }
 
