@@ -9,7 +9,7 @@ High-level ROM/RAM usage per image, written by the memory stats step of each bui
 <!-- MEMORY:APP:START -->
 ### APP
 
-_Built 2026-11-06 from `APP.map`_
+_Built 2026-11-07 from `APP.map`_
 
 | Region | Used | Free | Used % |
 |---|---:|---:|---:|
@@ -25,7 +25,7 @@ _Built 2026-11-06 from `APP.map`_
 <!-- MEMORY:FBL:START -->
 ### FBL
 
-_Built 2026-11-06 from `FBL.map`_
+_Built 2026-11-07 from `FBL.map`_
 
 | Region | Used | Free | Used % |
 |---|---:|---:|---:|
@@ -41,7 +41,7 @@ _Built 2026-11-06 from `FBL.map`_
 <!-- MEMORY:BM:START -->
 ### BM
 
-_Built 2026-11-06 from `BM.map`_
+_Built 2026-11-07 from `BM.map`_
 
 | Region | Used | Free | Used % |
 |---|---:|---:|---:|
