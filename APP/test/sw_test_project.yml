@@ -170,6 +170,8 @@
       - -j8
       - MINGW_CC=gcc
       - MINGW_AR=ar
+      - MINGW_OBJCOPY=objcopy
+      - MINGW_OBJDUMP=objdump
     :logging: TRUE
 
 :environment:
