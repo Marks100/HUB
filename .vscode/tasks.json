@@ -8,7 +8,7 @@
             "label": "flash_with_jlink",
             "type": "shell",
             "options": { "cwd": "${workspaceFolder}/APP" },
-            "command": "JFlash.exe -openprj\"${workspaceFolder}/APP/Tool_cfg/Jflash/jflash_proj.jflash\" -open\"./APP/Build_output/STM32_RF_HUB_APP.elf\" -auto -min -exit",
+            "command": "JFlash.exe -openprj\"${workspaceFolder}/Tool_cfg/Jflash/jflash_proj.jflash\" -open\"./Build/SUPER_PILL/APP_signed.hex\" -auto -min -exit",
         },
         {
             "label": "all",
@@ -21,6 +21,25 @@
             "type": "shell",
             "options": { "cwd": "${workspaceFolder}/APP" },
             "command": "mingw32-make.exe app_build",
+            "group": { "kind": "build", "isDefault": true },
+        },
+        {
+            "label": "variant_super_pill",
+            "type": "shell",
+            "options": { "cwd": "${workspaceFolder}/APP" },
+            "command": "mingw32-make.exe variant_super_pill",
+        },
+        {
+            "label": "variant_blue_pill",
+            "type": "shell",
+            "options": { "cwd": "${workspaceFolder}/APP" },
+            "command": "mingw32-make.exe variant_blue_pill",
+        },
+        {
+            "label": "dataset",
+            "type": "shell",
+            "options": { "cwd": "${workspaceFolder}/APP" },
+            "command": "mingw32-make.exe dataset",
         },
         {
             "label": "APP_rebuild",
@@ -51,12 +70,6 @@
             "type": "shell",
             "options": { "cwd": "${workspaceFolder}/FBL" },
             "command": "mingw32-make.exe fbl_rebuild",
-        },
-        {
-            "label": "Combined_image",
-            "type": "shell",
-            "options": { "cwd": "${workspaceFolder}/APP" },
-            "command": "mingw32-make.exe full_image",
         },
         {
             "label": "total_clean",
@@ -111,7 +124,13 @@
             "label": "APP_memory_stats",
             "type": "shell",
             "options": { "cwd": "${workspaceFolder}/APP" },
-            "command": "mingw32-make.exe full_memory_stats",
+            "command": "mingw32-make.exe memory_stats",
+        },
+        {
+            "label": "APP_object_stats",
+            "type": "shell",
+            "options": { "cwd": "${workspaceFolder}/APP" },
+            "command": "mingw32-make.exe object_stats",
         },
         {
             "label": "BM_memory_stats",

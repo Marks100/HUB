@@ -57,6 +57,7 @@
     - ../Src/**
     - ../../Common_Src/**
     - ../../xCOMMON_MODULES/Src/**
+    - ../../xCOMMON_MODULES/cfg
     - -:../../xCOMMON_MODULES/Src/MCAL/s32k/**
     - -:../../xCOMMON_MODULES/Src/MCAL/stm32/stm32f0x0/**
     - -:../../xCOMMON_MODULES/Src/MCAL/stm32/stm32f4xx/**
@@ -65,7 +66,16 @@
     - -:../../xCOMMON_MODULES/Src/CRYPTO/BearSSL/**
     - -:../../xCOMMON_MODULES/Src/CRYPTO/micro-ecc/**
     - -:../../xCOMMON_MODULES/Src/CRYPTO/ED25519/**
-    - ../../xCOMMON_MODULES/cfg
+  # Linked into every test, and on the include path: sw_stubs (the clock's list and the models every test's setUp() starts a
+  # virgin ECU with are the project's own, in SW_TEST_STUBS.c) and the test models of xCOMMON_MODULES: the CAN bus with
+  # its debug prints, the transceiver and controller models, and the clock, ECU start and diagnostic models.
+  # The virtual STM32 (xCOMMON VHW_STM32F10X) is in the library
+  :support:
+    - sw_stubs
+    - ../../xCOMMON_MODULES/test/support/models/TMD_CAN
+    - ../../xCOMMON_MODULES/test/support/models/TMD_DEBUG
+    - ../../xCOMMON_MODULES/test/support/models/TMD_TJA1051
+    - ../../xCOMMON_MODULES/test/support/models/TMD_MCP2515
     - ../../xCOMMON_MODULES/test/support/models/TMD_TIME
     - ../../xCOMMON_MODULES/test/support/models/TMD_SYSTICK
     - ../../xCOMMON_MODULES/test/support/models/TMD_NVM
@@ -74,28 +84,6 @@
     - ../../xCOMMON_MODULES/test/support/models/TMD_INIT
     - ../../xCOMMON_MODULES/test/support/models/TMD_CANTP
     - ../../xCOMMON_MODULES/test/support/models/TMD_UDS
-  # Linked into every test: the CAN bus (TMD_CAN, with TMD_DEBUG for its prints), the TJA1051 and MCP2515 models, and sw_stubs
-  # (the TMD_INIT_cfg_st every test's setUp() starts a virgin ECU with). The virtual STM32 (xCOMMON VHW_STM32F10X) is in the library
-  :support:
-    - sw_stubs
-    - ../../xCOMMON_MODULES/test/support/models/TMD_CAN
-    - ../../xCOMMON_MODULES/test/support/models/TMD_DEBUG
-    - ../../xCOMMON_MODULES/test/support/models/TMD_TJA1051
-    - ../../xCOMMON_MODULES/test/support/models/TMD_MCP2515
-
-# The clock and the ECU start, one file of their folders each: the models to start and the clock's list are the project's own,
-# in sw_stubs/SW_TEST_STUBS.c
-:files:
-  :support:
-    - ../../xCOMMON_MODULES/test/support/models/TMD_TIME/TMD_TIME.c
-    - ../../xCOMMON_MODULES/test/support/models/TMD_SYSTICK/TMD_SYSTICK.c
-    - ../../xCOMMON_MODULES/test/support/models/TMD_NVM/TMD_NVM.c
-    - ../../xCOMMON_MODULES/test/support/models/TMD_ERX/TMD_ERX_UDS.c
-    - ../../xCOMMON_MODULES/test/support/models/TMD_ERX/TMD_ERX.c
-    - ../../xCOMMON_MODULES/test/support/models/TMD_GPIO/TMD_GPIO.c
-    - ../../xCOMMON_MODULES/test/support/models/TMD_INIT/TMD_INIT.c
-    - ../../xCOMMON_MODULES/test/support/models/TMD_CANTP/TMD_CANTP.c
-    - ../../xCOMMON_MODULES/test/support/models/TMD_UDS/TMD_UDS.c
 
 # Must match COMMON_CFLAGS and APP_CFLAGS in rules.mk, which the library is built with. TEST is not defined: the library is built without it, so STATIC is static
 # in the library and a test that saw it empty would disagree about the headers

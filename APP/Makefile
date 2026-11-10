@@ -84,10 +84,9 @@ DATASET0_FLASH_END            := $(shell printf '0x%08X' $$(( $(DATASET0_FLASH_S
 DATASET0_HEADER_SIZE          := 0x60
 DATASET0_CODE_START           := $(shell printf '0x%08X' $$(( $(DATASET0_FLASH_START) + $(DATASET0_HEADER_SIZE) )))
 
-# TODO: Set APP_HEADER_ADDR and APP_CODE_START to match your linker script APP section layout
-APP_HEADER_ADDR              := $(APP_FLASH_START)
-APP_CODE_START               := $(shell printf '0x%08X' $$(( $(APP_FLASH_START) + 0x100 )))
-APP_CODE_END                 := $(APP_FLASH_END)
+APP_HEADER_ADDR               := $(APP_FLASH_START)
+APP_CODE_START                := $(shell printf '0x%08X' $$(( $(APP_FLASH_START) + 0x100 )))
+APP_CODE_END                  := $(APP_FLASH_END)
 
 # Must match what BM's hardware CRC peripheral actually computes, not just be "a CRC32" - see
 # app_crc_injector's --crc-type help text and xCOMMON_MODULES/Src/CHKSUM/CRC_HW_STM32F103.c.
@@ -107,7 +106,7 @@ EOL_INJECTOR                 := ../Tool_cfg/EOL/inject_eol_data
 # (see BuildEnv/xBuildEnv/bin/app_signer --help for the ecdsa-p256/ed25519/hmac-sha256 options).
 # BM currently verifies with HMAC-SHA256 (see BM/Src/bm_main.c/secure_boot_hmac_secret.h) - these
 # two must stay in lockstep, or every APP build signs with a scheme BM will reject at boot.
-SIGN_ALGORITHM                := hmac-sha256
+SIGN_ALGORITHM               := hmac-sha256
 SIGNING_KEY                  := ../Tool_cfg/SigningKeys/hmac_secret.txt
 FINAL_IMAGE_WITH_EOL         := $(BUILD_OUT_DIR)/BM_FBL_APP_with_EOL.hex
 
@@ -176,7 +175,6 @@ endif
 # linker's __isr_vector_start symbol, which always tracks the linker script correctly regardless
 # of this define. Kept in sync anyway so it doesn't sit there silently wrong.
 CFLAGS += -DVECT_TAB_OFFSET=$(APP_CODE_START)
-
 CFLAGS += $(APP_CFLAGS)
 
 # Linker flags configuration
@@ -193,14 +191,14 @@ LDFLAGS := \
 ####################################################################################################
 #                                  Phony Targets Declaration                                       #
 ####################################################################################################
-.PHONY: all rebuild build_clean total_clean app_build app_rebuild test_all gen_lcov_report
-.PHONY: $(BM_IMAGE) $(FBL_IMAGE) full_image full_image_with_eol
-.PHONY: test_clean test_unit_all test_sw_all
+.PHONY: all rebuild build_clean total_clean app_build app_rebuild gen_lcov_report
+.PHONY: $(BM_IMAGE) $(FBL_IMAGE) full_image_with_eol
+.PHONY: test_clean test_unit_all test_sw_all cov_report test_badges
 .PHONY: doxygen doxygen_clean
 .PHONY: doc_functions doc_functions_clean
 .PHONY: list analyse_app_mapfile tree files
-.PHONY: warnings_parser basic_memory_stats full_memory_stats test_badges
-.PHONY: release_package force_ceedling_relink mux_dbc dataset
+.PHONY: build_banner autoversion warnings_parser memory_stats object_stats
+.PHONY: release_package mux_dbc dataset
 
 ####################################################################################################
 #                      All (Default) Target and other Build Targets                                #
@@ -208,17 +206,25 @@ LDFLAGS := \
 MUX_DBC_SCRIPT  := ../scripts/generate_mux_dbc.rb
 MUX_DBC_OUTPUT  := ../Tool_cfg/DBC/mux_debug.dbc
 
-app_build: $(APP_ELF_FILE) basic_memory_stats warnings_parser
-app_rebuild: build_clean app_build
-
 ####################################################################################################
 #                                  Hardware Variant Targets                                        #
 ####################################################################################################
-# Each builds the whole image (BM, FBL and APP, all for the variant) into Build/<VARIANT> of each. A plain make or
-# make app_build is the default variant, SUPER_PILL.
-.PHONY: variant_super_pill variant_blue_pill build_all_variants variant_image
+# Each variant builds into its own Build/<VARIANT> of APP, BM and FBL.
+#   app_build            APP only, every variant
+#   all                  everything for every variant: BM, FBL, APP, the dataset, the combined image and the flash pack
+#   variant_<name>       everything for the one variant
+#   app_variant          APP only for the variant of this make (SUPER_PILL unless HW_VARIANT is given)
+HW_VARIANTS := SUPER_PILL BLUE_PILL
+.PHONY: app_variant variant_super_pill variant_blue_pill variant_image
 
-all: build_all_variants
+app_variant: $(APP_ELF_FILE) memory_stats warnings_parser
+
+app_build:
+	@for v in $(HW_VARIANTS); do $(MAKE) app_variant HW_VARIANT=$$v || exit 1; done
+
+app_rebuild: build_clean app_build
+
+all: variant_super_pill variant_blue_pill
 
 variant_super_pill:
 	$(MAKE) variant_image HW_VARIANT=SUPER_PILL
@@ -226,24 +232,19 @@ variant_super_pill:
 variant_blue_pill:
 	$(MAKE) variant_image HW_VARIANT=BLUE_PILL
 
-build_all_variants:
-	$(MAKE) variant_super_pill
-	$(MAKE) variant_blue_pill
-
 gen_lcov_report: cov_report
 
 mux_dbc:
 	@ruby $(MUX_DBC_SCRIPT) Src ../xCOMMON_MODULES/Src --ids Src/cfg/MUX_ids.h --output $(MUX_DBC_OUTPUT)
 
-rebuild: build_clean
-	$(MAKE) app_build
+rebuild: app_rebuild
 
 # Build BM first to ensure it's available before APP links/combines
 $(BM_IMAGE):
-	@$(MAKE) $(MAKE_FLAGS) -C ../BM bm_build
+	@$(MAKE) -C ../BM bm_build
 
 $(FBL_IMAGE):
-	@$(MAKE) $(MAKE_FLAGS) -C ../FBL fbl_build
+	@$(MAKE) -C ../FBL fbl_build
 
 # Tyre pressure table -> signed DATASET0 hex, downloadable on its own through FBL. Same CRC and
 # signing steps as APP, over the dataset's own header/payload addresses. The generator already
@@ -257,7 +258,7 @@ dataset:
 	@echo "   $(notdir $(DATASET0_HEX_SIGNED_FILE))   (DATASET0 signed - download via FBL)"
 
 # The full image of the one variant this make is for: BM, FBL, APP and the dataset, the combined image and the flash pack
-variant_image: $(BM_IMAGE) $(FBL_IMAGE) app_build dataset
+variant_image: $(BM_IMAGE) $(FBL_IMAGE) app_variant dataset
 	@$(SREC) $(BM_IMAGE) -Intel --multiple $(FBL_IMAGE) -Intel --multiple $(APP_HEX_SIGNED_FILE) -Intel --multiple $(DATASET0_HEX_SIGNED_FILE) -Intel --multiple -o $(COMBINED_IMAGE) -intel
 	@echo "--> Combined image created: $(COMBINED_IMAGE)"
 	@echo "    Contains: BM ($(BM_FLASH_START)-$(BM_FLASH_END)) + FBL ($(FBL_FLASH_START)-$(FBL_FLASH_END)) + APP ($(APP_FLASH_START)-$(APP_FLASH_END)) + DATASET0 ($(DATASET0_FLASH_START)-$(DATASET0_FLASH_END))"
@@ -269,7 +270,7 @@ variant_image: $(BM_IMAGE) $(FBL_IMAGE) app_build dataset
 		|| echo "WARNING: create_flash_pack failed — pack not generated"
 	@echo "   $(notdir $(FLASH_PACK_OUTPUT))  (flash pack)"
 
-full_image_with_eol: full_image
+full_image_with_eol: variant_image
 	@echo "--> Injecting EOL data from $(EOL_CONFIG)..."
 	@ruby $(EOL_INJECTOR) inject $(COMBINED_IMAGE) $(EOL_CONFIG) --output=$(FINAL_IMAGE_WITH_EOL)
 	@echo "--> Final production image: $(realpath $(FINAL_IMAGE_WITH_EOL))"
@@ -307,20 +308,20 @@ $(APP_OBJ_DIR):
 build_banner:
 	@echo ""
 	@echo "======================================================================"
-	@echo "                    Building APP (Application) $(JOBS) cores "
+	@echo "                    Building APP for $(HW_VARIANT), $(JOBS) cores "
 	@echo "======================================================================"
 	@echo ""
 	
 $(APP_ELF_FILE): build_banner autoversion $(APP_OBJ_DIR)
 	@mkdir -p $(BUILD_OUT_DIR)
 	@echo Compiler warnings generated by $(CC) for $(PROJECT_NAME) > $(APP_COMPILER_OUTPUT)
-	@$(MAKE) -j$(JOBS) $(MAKE_FLAGS) all_objects
+	@$(MAKE) -j$(JOBS) all_objects
 	@printf '\n--> Linking Object Files...\n'
 	@$(file >$(LINK_OBJECT_LIST),$(APP_C_OBJS) $(APP_S_OBJS) $(COMMON_OBJS) $(MCAL_C_OBJS) $(MCAL_S_OBJS))
 	@$(LD) $(LDFLAGS) @$(LINK_OBJECT_LIST)
-	@$(OBJCOPY) -O binary $(APP_ELF_FILE) $(BUILD_OUT_DIR)/$(PROJECT_NAME).bin
+	@$(OBJCOPY) -O binary $(APP_ELF_FILE) $(APP_BIN_FILE)
 	@$(OBJCOPY) -O ihex $(APP_ELF_FILE) $(APP_HEX_FILE)
-	@$(SREC) $(APP_HEX_FILE) -Intel -o $(BUILD_OUT_DIR)/$(PROJECT_NAME).srec -Motorola
+	@$(SREC) $(APP_HEX_FILE) -Intel -o $(APP_SREC_FILE) -Motorola
 	@printf '\n--> Padding HEX to the whole APP region (0xFF fill)...\n'
 # BM's CRC and signature cover the whole region [APP_CODE_START, APP_CODE_END]. A hex that stops short
 # leaves the previous build's bytes in the tail pages when the flasher rewrites only the pages a hex
@@ -339,30 +340,16 @@ $(APP_ELF_FILE): build_banner autoversion $(APP_OBJ_DIR)
 	@echo ""
 	
 build_clean:
-	@rm -fr $(BUILD_OUT_DIR) $(AUTOVERSION_FILE)
+	@rm -fr Build $(AUTOVERSION_FILE)
 	@echo "--> $(PROJECT_NAME) Build Cleaned..."
 
 ####################################################################################################
 #                                  Ceedling test target & rules                                    #
 ####################################################################################################
-# Library timestamp tracking - forces Ceedling to relink test executables when libraries change
-LIBRARY_TIMESTAMP_FILE := test/support/library_timestamp.h
-
-# Update timestamp to force test relink
-force_ceedling_relink:
-	@mkdir -p $(dir $(LIBRARY_TIMESTAMP_FILE))
-	@touch $(LIBRARY_TIMESTAMP_FILE)
-
 # YML FILES for test configuration - run from test/
-UNIT_TEST_YML 	:= unit_project.yml
-SW_TEST_YML 	:= sw_test_project.yml
-
-# The software tests link libHUB_APP_x86.a, built by test/build_system with coverage instrumentation at -O0, so every
-# test run is a coverage run (gcov:)
-
-# Various test reports
-CEEDLING_COV_DIR					  := test/CodeCoverage
-CEEDLING_COV_XML_TEST_REPORT_DEST     := test/$(CEEDLING_COV_DIR)
+UNIT_TEST_YML 	 := unit_project.yml
+SW_TEST_YML 	 := sw_test_project.yml
+CEEDLING_COV_DIR := test/CodeCoverage
 
 # Define unwanted file patterns for coverage exclusion (as separate excludes)
 EXCLUDE_TEST     := --exclude '.*test_.*'
@@ -372,17 +359,13 @@ EXCLUDE_TEST_DIR := --exclude '.*/test/.*'
 GCOVR_EXCLUDES   := $(EXCLUDE_TEST) $(EXCLUDE_TMD) $(EXCLUDE_UNITY) $(EXCLUDE_TEST_DIR)
 
 # Where gcovr looks for coverage data: Ceedling's own build, and the instrumented library's objects when there are any
-GCOVR_SEARCH    := test/build
-
-$(CEEDLING_COV_XML_TEST_REPORT_DEST):
-	@mkdir -p $(CEEDLING_COV_XML_TEST_REPORT_DEST)
-
-$(CEEDLING_COV_DIR):
-	@mkdir -p $(CEEDLING_COV_DIR)
-
+GCOVR_SEARCH     := test/build
 # Ceedling's test report for the last coverage run (report_tests_log_factory)
 TEST_REPORT_HTML      := test/build/artifacts/gcov/tests_report.html
 BADGE_OUTPUT_DIR      := ../.github/badges
+
+$(CEEDLING_COV_DIR):
+	@mkdir -p $(CEEDLING_COV_DIR)
 
 # Coverage report generation - works for both single tests and all tests
 cov_report: $(CEEDLING_COV_DIR)
@@ -394,7 +377,6 @@ cov_report: $(CEEDLING_COV_DIR)
 	@-cd $(CEEDLING_COV_DIR) && $(OPEN_CMD) coverage.html 2>/dev/null || true
 
 # Parse test_report.html and generate test count badges
-.PHONY: test_badges
 test_badges:
 	@ruby ../scripts/generate_test_badge.rb $(TEST_REPORT_HTML) $(BADGE_OUTPUT_DIR) || echo "--> test_badges failed"
 
@@ -403,8 +385,8 @@ test_clean:
 	@echo "--> Cleaning test artifacts..."
 	@-cd test && ceedling --project=$(UNIT_TEST_YML) clobber > /dev/null 2>&1
 	@-cd test && ceedling --project=$(SW_TEST_YML) clobber > /dev/null 2>&1
-	@$(MAKE) $(MAKE_FLAGS) -C test/build_system clean
-	@rm -fr $(CEEDLING_COV_XML_TEST_REPORT_DEST) $(CEEDLING_COV_DIR)
+	@$(MAKE) -C test/build_system clean
+	@rm -fr $(CEEDLING_COV_DIR)
 	@echo "--> Test Cleaned!"
 
 # make test_X.test runs one test and its coverage report - the form the VS Code task uses.
@@ -434,16 +416,10 @@ test_sw_all: test_clean $(CEEDLING_COV_DIR)
 	@cd test && ceedling --project=$(SW_TEST_YML) gcov:all
 	@$(MAKE) cov_report
 
-# user fn check overall test result for Pass \ Fail.  Exits with error code on failure
-define check_test_result
-    @grep -q "Overall Test Result: PASS" $(CEEDLING_COV_XML_TEST_REPORT_DEST)SoftwareCeedlingTestReport.html \
-    && echo "--> Overall Test Result: PASS" || { echo "--> Overall Test Result: FAIL"; exit 1; }
-endef
-
 ####################################################################################################
 #                                  Doxygen targets & rules                                         #
 ####################################################################################################
-DOXYGEN_CONFIG := ../Tool_Cfg/Doxygen/Doxygen_config
+DOXYGEN_CONFIG := ../Tool_cfg/Doxygen/Doxygen_config
 DOXYGEN_EXE    := doxygen
 DOXYGEN_OUTPUT := doc/doxygen
 
@@ -465,7 +441,7 @@ doxygen_clean:
 # Every target named in the makefiles, pattern rules like %.test included
 list:
 	@echo "--> Available Targets:"
-	@grep -hoiE '^[a-z%][a-z0-9_.%-]*:' $(MAKEFILE_LIST) | tr -d : | sort -u
+	@grep -hoiE '^[a-z%][a-z0-9_.%-]*:' $(filter-out %.d,$(MAKEFILE_LIST)) | tr -d : | sort -u
 
 analyse_app_mapfile: $(APP_MAP_FILE)
 	@sed '/debug/d' $(APP_MAP_FILE) > $(APP_MAP_FILE)_stripped
@@ -484,8 +460,8 @@ autoversion:
 $(APP_MAP_FILE): $(APP_ELF_FILE)
 
 total_clean: test_clean build_clean doxygen_clean
-	@$(MAKE) $(MAKE_FLAGS) -C ../BM bm_clean
-	@$(MAKE) $(MAKE_FLAGS) -C ../FBL fbl_clean
+	@$(MAKE) -C ../BM bm_clean
+	@$(MAKE) -C ../FBL fbl_clean
 	@rm -fr Build ../BM/Build ../FBL/Build
 	@echo "--> Total clean complete!"
 
@@ -496,44 +472,43 @@ warnings_parser: $(APP_ELF_FILE)
 # UPDATE_README=y refreshes them locally.
 README_ARGS := $(if $(or $(CI),$(UPDATE_README)),--readme ../README.md --tag APP)
 
-basic_memory_stats: $(APP_ELF_FILE)
+memory_stats: $(APP_ELF_FILE)
 	@$(BUILD_ENV_BIN)/memory_analyser_stm32 $(APP_MAP_FILE) $(APP_ELF_FILE) $(APP_LINKER_SCRIPT) --out $(APP_MEM_OUTPUT_FILE) --csv $(APP_MEM_CSV_FILE) $(README_ARGS)
 
-full_memory_stats: $(APP_MAP_FILE)
-	@$(BUILD_ENV_BIN)/memory_analyser_stm32 $(APP_MAP_FILE) $(APP_ELF_FILE) $(APP_LINKER_SCRIPT) --out $(APP_MEM_OUTPUT_FILE) --csv $(APP_MEM_CSV_FILE) $(README_ARGS)
+# A table per object file listing every function and its size. Separate from memory_stats as it adds several seconds.
+object_stats: $(APP_ELF_FILE)
+	@$(BUILD_ENV_BIN)/obj_size_analyser $(APP_OBJ_DIR) --out $(OBJECT_SIZE_FILE) > /dev/null
+	@echo "--> Per-function sizes written to $(OBJECT_SIZE_FILE)"
 
 release_package:
 	@echo "======================================================================"
-	@echo "--> Creating release package $(SW_VER)..."
+	@echo "--> Creating release package $(VERSION)..."
 	@echo "======================================================================"
 	@-rm -fr $(RELEASE_PACKAGE_BASE_DIR)
 	@mkdir -p $(RELEASE_PACKAGE_NAME) $(RELEASE_PACKAGE_NAME)/reports $(RELEASE_PACKAGE_NAME)/function_docs
 	@echo "--> Step 1/8: Clean build environment..." 
-	@$(MAKE) $(MAKE_FLAGS) total_clean
+	@$(MAKE) total_clean
 	@echo ""
-	@echo "--> Step 2/8: Building full firmware image..."
-	@$(MAKE) $(MAKE_FLAGS) full_image
+	@echo "--> Step 2/8: Building every variant (BM, FBL, APP, dataset, images)..."
+	@$(MAKE) all
 	@echo ""
-	@echo "--> Step 3/8: Generating FULL memory statistics (with object file data)..."
-	@$(MAKE) $(MAKE_FLAGS) full_memory_stats >/dev/null 2>&1
+	@echo "--> Step 3/8: Generating memory statistics..."
+	@$(MAKE) memory_stats >/dev/null 2>&1
 	@echo ""
-	@echo "--> Step 4/8: Generating test coverage reports..."
-	#@$(MAKE) $(MAKE_FLAGS) gen_overall_cov_report
+	@echo "--> Step 4/8: Generating Doxygen documentation..."
+	@-$(MAKE) doxygen || echo "Warning: doxygen step failed - skipping"
 	@echo ""
-	@echo "--> Step 5/9: Generating Doxygen documentation..."
-	@-$(MAKE) $(MAKE_FLAGS) doxygen || echo "Warning: doxygen step failed - skipping"
+	@echo "--> Step 5/8: Generating function documentation..."
+	@-$(MAKE) doc_functions || echo "Warning: doc_functions step failed - skipping"
 	@echo ""
-	@echo "--> Step 6/9: Generating function documentation..."
-	@-$(MAKE) $(MAKE_FLAGS) doc_functions || echo "Warning: doc_functions step failed - skipping"
-	@echo ""
-	@echo "--> Step 7/9: Generating cyclomatic complexity analysis..."
+	@echo "--> Step 6/8: Generating cyclomatic complexity analysis..."
 	@ruby -S complexity_scanner . --threshold=0 --sort --html=$(RELEASE_PACKAGE_NAME)/reports/complexity_report.html --csv=$(RELEASE_PACKAGE_NAME)/reports/complexity_report.csv --exclude=test,FREERTOS,Build,build 2>&1 || echo "Warning: complexity_scanner not available"
 	@echo ""
-	@echo "--> Step 8/9: Copying build artifacts..."
+	@echo "--> Step 7/8: Copying build artifacts..."
 	@cp -r $(BUILD_OUT_DIR)/. $(RELEASE_PACKAGE_NAME) 2>/dev/null || echo "Warning: build artifact copy failed (build may have been incomplete)"
 	@-find $(RELEASE_PACKAGE_NAME)/object_files/ -type f -name '*.d' -delete -o -name '*.su' -delete 2>/dev/null || true
 	@-cp -r $(DOXYGEN_OUTPUT) $(RELEASE_PACKAGE_NAME)
-	@echo "--> Step 9/9: Generating comprehensive analysis reports..."
+	@echo "--> Step 8/8: Generating comprehensive analysis reports..."
 	@echo "   --> Source code statistics..."
 	@ruby -S source_line_counter --dir Src ../Common_Src ../xCOMMON_MODULES/Src > $(RELEASE_PACKAGE_NAME)/reports/source_statistics.txt 2>&1 || echo "Warning: source_line_counter not available"
 	@echo "   --> TODO/FIXME analysis..."
@@ -564,20 +539,12 @@ release_package:
 ####################################################################################################
 # Documentation Generation
 ####################################################################################################
-.PHONY: doc_functions doc_functions_clean
-
 # Find all C source files in multiple source directories (excluding test and FREERTOS)
 DOCUMENTABLE_C_FILES := $(shell find Src ../Common_Src ../xCOMMON_MODULES/Src -name '*.c' ! -path '*/test/*' ! -path '*/FREERTOS/*' 2>/dev/null)
 
 doc_functions:
-	@echo "======================================================================"
 	@echo "Generating function documentation for all C files..."
-	@echo "======================================================================"
 	@c_function_documenter $(DOCUMENTABLE_C_FILES)
-	@echo ""
-	@echo "======================================================================"
-	@echo "Documentation generation complete!"
-	@echo "======================================================================"
 
 doc_functions_clean:
 	@echo "--> Cleaning function documentation files..."
@@ -585,4 +552,4 @@ doc_functions_clean:
 	@find Src ../Common_Src ../xCOMMON_MODULES/Src -name '*_Documentation.docx' -delete 2>/dev/null
 	@echo "--> Documentation files cleaned!"
 
--include $(TARGET_DEPS) $(CEEDLING_LIB_DEPS)
+-include $(TARGET_DEPS)
