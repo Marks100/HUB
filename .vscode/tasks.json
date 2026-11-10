@@ -72,6 +72,18 @@
             "group": { "kind": "test", "isDefault": true },
         },
         {
+            "label": "test_unit_all",
+            "type": "shell",
+            "options": { "cwd": "${workspaceFolder}/APP" },
+            "command": "mingw32-make.exe test_unit_all",
+        },
+        {
+            "label": "test_sw_all",
+            "type": "shell",
+            "options": { "cwd": "${workspaceFolder}/APP" },
+            "command": "mingw32-make.exe test_sw_all",
+        },
+        {
             "label": "test_all",
             "type": "shell",
             "options": { "cwd": "${workspaceFolder}/APP" },

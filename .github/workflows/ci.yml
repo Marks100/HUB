@@ -1,10 +1,13 @@
-# HUB CI: builds every hardware variant (make -C APP all builds SUPER_PILL and BLUE_PILL, each with its own BM and FBL),
-# runs the software tests, builds the function documentation and commits the badges.
+# HUB CI, three jobs that run side by side:
+#   build        every hardware variant (make -C APP all builds SUPER_PILL and BLUE_PILL, each with its own BM and FBL),
+#                then the function documentation and the badges
+#   unit_tests   make -C APP test_unit_all: all the unit tests, the common modules' (xCOMMON_MODULES/test/unit_tests)
+#   sw_tests     make -C APP test_sw_all: all the software tests, HUB's own end to end tests (APP/test/sw_tests)
 #
 # This is the whole workflow in the repo, like AUTOCFG_HUB and Sleepy_sensor. The shared version in the build_env repo
 # (.github/workflows/embedded-ci.yml) is a private repo's workflow, which a public repo such as HUB cannot call.
 #
-# The build and the software tests gate the run. The function docs and the badges are reported but do not fail it.
+# All three gate the run, and a release needs all three. The function docs and the badges are reported but do not fail it.
 name: CI
 
 on:
@@ -31,7 +34,8 @@ env:
   CI_BUILD_SHA: ${{ github.sha }}
 
 jobs:
-  build_and_test:
+  build:
+    name: Build
     runs-on: ubuntu-latest
 
     steps:
@@ -41,10 +45,7 @@ jobs:
           submodules: recursive
           token: ${{ secrets.SUBMODULE_PAT || github.token }}
 
-      # gcc-multilib: the software tests are a 32-bit host build (-m32 in sw_test_project.yml)
       - uses: ./.github/actions/setup
-        with:
-          extra_apt: gcc-multilib
 
       # The secure boot HMAC secret is gitignored, so a fresh clone has none: the images are signed with the HMAC_SECRET
       # repository secret.
@@ -68,21 +69,6 @@ jobs:
             BM/Build/**/*.hex
             FBL/Build/**/*.hex
           if-no-files-found: warn
-          retention-days: 60
-
-      # HUB's tests are the software tests (APP/test/sw_tests). Its unit tests live in common_modules, which runs them.
-      - name: Run software tests
-        run: make -C "$BUILD_DIR" test_sw_all
-
-      - name: Upload test reports
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: test-reports-${{ github.sha }}
-          path: |
-            APP/test/build/artifacts/
-            APP/test/CodeCoverage/
-          if-no-files-found: ignore
           retention-days: 60
 
       - name: Generate function documentation
@@ -114,8 +100,72 @@ jobs:
           ruby $badge --build-badge APP/Build/SUPER_PILL/APP.elf --output .github/badges/build.svg
           ruby $badge --commit .github/badges --also README.md   # the build writes the memory tables into the README
 
+  # All the unit tests. They are the common modules' and run on the 32-bit host build in xCOMMON_MODULES/test/project.yml.
+  # No firmware build and no signing secret: they need only the host compiler.
+  unit_tests:
+    name: Unit tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          token: ${{ secrets.SUBMODULE_PAT || github.token }}
+
+      # gcc-multilib: the unit tests are a 32-bit host build (-m32 in xCOMMON_MODULES/test/project.yml)
+      - uses: ./.github/actions/setup
+        with:
+          extra_apt: gcc-multilib
+
+      - name: Run unit tests
+        run: make -C "$BUILD_DIR" test_unit_all
+
+      - name: Upload unit test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-test-reports-${{ github.sha }}
+          path: |
+            xCOMMON_MODULES/test/build/artifacts/
+            xCOMMON_MODULES/test/CodeCoverage/
+            APP/test/build/unit/artifacts/
+            APP/test/CodeCoverage/
+          if-no-files-found: ignore
+          retention-days: 60
+
+  # All the software tests: HUB's own end to end tests (APP/test/sw_tests), run against the x86 build of the APP and
+  # the common modules. No firmware build and no signing secret: they need only the host compiler.
+  sw_tests:
+    name: Software tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          token: ${{ secrets.SUBMODULE_PAT || github.token }}
+
+      # gcc-multilib: the software tests are a 32-bit host build (-m32 in sw_test_project.yml)
+      - uses: ./.github/actions/setup
+        with:
+          extra_apt: gcc-multilib
+
+      - name: Run software tests
+        run: make -C "$BUILD_DIR" test_sw_all
+
+      - name: Upload software test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sw-test-reports-${{ github.sha }}
+          path: |
+            APP/test/build/artifacts/
+            APP/test/CodeCoverage/
+          if-no-files-found: ignore
+          retention-days: 60
+
   release_package:
-    needs: build_and_test
+    needs: [build, unit_tests, sw_tests]
     if: github.event_name == 'workflow_dispatch' && inputs.manual_release == true
     runs-on: ubuntu-latest
 

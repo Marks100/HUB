@@ -52,21 +52,12 @@ LINK_OBJECT_LIST             := $(BUILD_OUT_DIR)/link_objects.rsp
 AUTOVERSION_FILE             := Src/autoversion.h
 RELEASE_PACKAGE_NAME         := $(RELEASE_PACKAGE_BASE_DIR)/$(PROJECT_TYPE)_$(VERSION)
 
-# Flash memory partition layout — must match the linker scripts in BM/, FBL/, APP/
-# STM32F103C8T6: 128KB total flash (0x20000) starting at 0x08000000, 1KB pages — confirmed via a
-# live F_SIZE register read (0x1FFFF7E0): this "C8" (64KB nominal) part is physically 128KB
-# silicon, a known STM32F103 binning quirk. The top 2KB (0x0801F800-0x0801FFFF) is reserved for
-# the NVM emulation pages - fixed by NVM_BASE_ADDRESS/NVM_TOTAL_SIZE in
-# Common_Src/PROJ_CONFIG/PROJ_config.h, so APP must not grow into it. Both pages belong to
-# NVM_GEN2 as its two flip-flop partitions, and FBL and APP SHARE both rather than taking a page
-# each: blocks are packed into an append-only log keyed by block ID, the two images own separate
-# ID ranges (NVM_GEN2_BLOCK_ID_FBL_* / _APP_*), and compaction copies any record it has no config
-# for across verbatim, so neither image can overwrite the other's data.
-# See xCOMMON_MODULES/Src/NVM_GEN2/README.md.
-# BM=9KB  FBL=23KB  APP=90KB  DATASET0=4KB (+ 2KB reserved for NVM) — adjust sizes and update all
-# three linker scripts accordingly, and keep DATASET0_FLASH_END below the reserved NVM pages.
-# DATASET0 is field-downloadable via FBL (FBL_download_request() in xCOMMON_MODULES/Src/FBL/FBL.c)
-# and validated by BM at boot (BM_run()'s dataset step in xCOMMON_MODULES/Src/BM/BM.c).
+# Flash layout - must match the linker scripts in BM/, FBL/, APP/. Change a size in all three.
+# STM32F103C8T6: 128KB at 0x08000000 (a "C8" is 64KB nominal but 128KB silicon, confirmed by reading
+# F_SIZE at 0x1FFFF7E0). BM=8KB  FBL=24KB  APP=90KB  DATASET0=4KB  NVM=2KB.
+# The top 2KB (0x0801F800-0x0801FFFF) is the NVM_GEN2 pages, fixed in Common_Src/PROJ_CONFIG/PROJ_config.h:
+# APP and DATASET0 must stay below them. FBL and APP share those pages, see NVM_GEN2/README.md.
+# DATASET0 is downloaded through FBL and validated by BM at boot.
 BM_FLASH_START               := 0x08000000
 BM_FLASH_SIZE                := 0x2000
 BM_FLASH_END                 := $(shell printf '0x%08X' $$(( $(BM_FLASH_START) + $(BM_FLASH_SIZE) - 1 )))
@@ -83,15 +74,10 @@ APP_FLASH_END                 := $(shell printf '0x%08X' $$(( $(BM_FLASH_START) 
 # $(APP_ELF_FILE)'s recipe below for why the built hex is padded to the whole region.
 APP_FLASH_LIMIT               := $(shell printf '0x%08X' $$(( $(APP_FLASH_START) + $(APP_FLASH_SIZE) )))
 
-# DATASET0 - one 4KB slot immediately after APP, before the reserved NVM pages. Header(96B) +
-# payload(4000B) - same APP_header_st fields/tooling as APP/FBL/BM's own headers (see
-# xCOMMON_MODULES/Src/HEADER/HEADER.h) but a smaller header, since a dataset owns no vector table
-# and so none of APP/FBL's 256-byte VTOR-alignment requirement applies to it (see
-# BM/linker_script/STM32F103C8_BM_flash.ld's region constants comment - 76B is every byte
-# app_crc_injector/app_signer actually read or write, +20B reserved for future fields). Built by the
-# `dataset` target below, not the APP build; must match BM's/FBL's/APP's own linker script
-# constants (__dataset0_header_start__/__dataset0_code_end__ etc.) exactly, same contract as
-# __fbl_code_end__/FBL_CODE_END above.
+# DATASET0 - a 4KB slot after APP, before the NVM pages: 96B header + 4000B payload. The header is the
+# APP_header_st of HEADER.h, but smaller than APP's: no vector table, so no 256B VTOR alignment (see the
+# region constants in BM/linker_script/STM32F103C8_BM_flash.ld). Built by the `dataset` target, not the APP build.
+# Must match the __dataset0_* constants in the BM, FBL and APP linker scripts, as FBL_CODE_END does for the FBL.
 DATASET0_FLASH_START          := $(shell printf '0x%08X' $$(( $(BM_FLASH_START) + $(BM_FLASH_SIZE) + $(FBL_FLASH_SIZE) + $(APP_FLASH_SIZE) )))
 DATASET0_FLASH_SIZE           := 0x1000
 DATASET0_FLASH_END            := $(shell printf '0x%08X' $$(( $(DATASET0_FLASH_START) + $(DATASET0_FLASH_SIZE) - 1 )))
@@ -148,57 +134,28 @@ MCAL_INCLUDES                := $(addprefix -I ,$(shell find $(MCAL_SRC_DIR) $(M
                                 -I ../xCOMMON_MODULES/Src/MCAL
 
 ####################################################################################################
-# FreeRTOS Sources (vendored copy, xCOMMON_MODULES/Src/FREERTOS - shared tree, multiple ports
-# vendored so it covers every MCU this repo targets (ARM_CM3/STM32F103, ARM_CM4F/S32K144); each
-# consumer selects only the port it needs via FREERTOS_PORT_DIR below, same pattern as
-# MCAL_SRC_DIR selecting stm32f10x out of the shared MCAL tree. Only APP currently builds it -
-# BM/FBL stay bare-metal/superloop and never reference FREERTOS_C_SRCS/FREERTOS_INCLUDES, so
-# this costs them nothing; their own Makefiles use curated file lists, not a blanket find, so
-# they can never accidentally sweep these files in either.
-#
-# NOT a git submodule: pruned down to only the kernel core, the two ports above, and heap_4,
-# rather than tracking upstream FreeRTOS-Kernel's full tree, which bundles ports/examples for
-# architectures nothing here will ever build (AARCH64, AVR32, NiosII, Xtensa, ...). A submodule
-# can't hold a pruned subset of upstream - re-syncing it would just restore everything this
-# deliberately removed. To update: pull in new versions of just these files by hand.
-####################################################################################################
-FREERTOS_DIR                  := ../xCOMMON_MODULES/Src/FREERTOS
-FREERTOS_PORT_DIR             := $(FREERTOS_DIR)/portable/GCC/ARM_CM3
-# No heap_x.c: this project doesn't permit dynamic allocation (configSUPPORT_STATIC_ALLOCATION/
-# configSUPPORT_DYNAMIC_ALLOCATION in FreeRTOSConfig.h), so there's no pvPortMalloc()/vPortFree()
-# implementation to link - nothing calls them. stream_buffer.c is also removed from the vendored
-# tree (not just excluded here) since it's unused - see note above on hand-pruning. A blanket
-# find isn't needed (and would be wrong) here - see note above.
-FREERTOS_C_SRCS               := $(wildcard $(FREERTOS_DIR)/*.c) \
-                                  $(FREERTOS_PORT_DIR)/port.c
-FREERTOS_INCLUDES             := -I $(FREERTOS_DIR)/include -I $(FREERTOS_PORT_DIR)
-
-####################################################################################################
 # Source File Discovery
 ####################################################################################################
 APP_C_SRCS                   := $(shell find $(APP_SRC_DIRS) -type f -name '*.c')
 APP_S_SRCS                   := $(shell find $(APP_SRC_DIRS) -type f -name '*.S')
+# FREERTOS (the shared tree, which APP does not use) is left out of the sources and the include paths
 COMMON_SRCS                  := $(shell find $(COMMON_SRC_DIRS) -type f -name '*.c' ! -path '*/test/*' ! -path '*/MCAL/*' ! -path '*/CRYPTO/*' ! -path '*/xCOMMON_MODULES/cfg/*' ! -path '*/FREERTOS/*')
 
 # Include paths - add "-I" prefix to all discovered directories
-# Exclude MCAL and FREERTOS subdirs from the broad search; their headers come exclusively from
-# MCAL_INCLUDES/FREERTOS_INCLUDES (a blanket -I of portable/ would pull in every other port's
-# headers too, some of which shadow each other by filename across architectures)
+# Exclude MCAL subdirs from the broad search; their headers come exclusively from MCAL_INCLUDES
 INCLUDES                     := $(addprefix -I ,$(shell find $(APP_SRC_DIRS) $(COMMON_SRC_DIRS) -type d ! -path '*/MCAL/*' ! -path '*/FREERTOS/*')) \
-                                 $(MCAL_INCLUDES) $(FREERTOS_INCLUDES)
+                                 $(MCAL_INCLUDES)
 
 ####################################################################################################
 # Object File Generation
 ####################################################################################################
-VPATH                        := $(dir $(APP_C_SRCS) $(APP_S_SRCS) $(COMMON_SRCS) $(MCAL_C_SRCS) $(MCAL_S_SRCS) $(FREERTOS_C_SRCS))
+VPATH                        := $(dir $(APP_C_SRCS) $(APP_S_SRCS) $(COMMON_SRCS) $(MCAL_C_SRCS) $(MCAL_S_SRCS))
 APP_C_OBJS                   := $(patsubst %.c, $(APP_OBJ_DIR)/%.o, $(notdir $(APP_C_SRCS)))
 APP_S_OBJS                   := $(patsubst %.S, $(APP_OBJ_DIR)/%.o, $(notdir $(APP_S_SRCS)))
 COMMON_OBJS                  := $(patsubst %.c, $(COMMON_OBJ_DIR)/%.o, $(notdir $(COMMON_SRCS)))
 MCAL_C_OBJS                  := $(patsubst %.c, $(MCAL_OBJ_DIR)/%.o, $(notdir $(MCAL_C_SRCS)))
 MCAL_S_OBJS                  := $(patsubst %.S, $(MCAL_OBJ_DIR)/%.o, $(notdir $(MCAL_S_SRCS)))
-FREERTOS_OBJ_DIR             := $(BUILD_OUT_DIR)/obj/freertos
-FREERTOS_C_OBJS              := $(patsubst %.c, $(FREERTOS_OBJ_DIR)/%.o, $(notdir $(FREERTOS_C_SRCS)))
-TARGET_DEPS                  := $(APP_C_OBJS:.o=.d) $(COMMON_OBJS:.o=.d) $(MCAL_C_OBJS:.o=.d) $(FREERTOS_C_OBJS:.o=.d)
+TARGET_DEPS                  := $(APP_C_OBJS:.o=.d) $(COMMON_OBJS:.o=.d) $(MCAL_C_OBJS:.o=.d)
 
 ####################################################################################################
 # Compilation Settings
@@ -220,10 +177,7 @@ endif
 # of this define. Kept in sync anyway so it doesn't sit there silently wrong.
 CFLAGS += -DVECT_TAB_OFFSET=$(APP_CODE_START)
 
-# FAULT_MGR slot cap: APP defines no faults yet (no fault table, no monitors), so the module's default of
-# 64 slots only costs RAM. 8 is a placeholder - raise it when APP gets a real fault table; init rejects a
-# table larger than this, so it cannot silently overflow.
-CFLAGS += -DFAULT_MGR_MAX_FAULTS=8
+CFLAGS += $(APP_CFLAGS)
 
 # Linker flags configuration
 LDFLAGS := \
@@ -244,7 +198,7 @@ LDFLAGS := \
 .PHONY: test_clean test_unit_all test_sw_all
 .PHONY: doxygen doxygen_clean
 .PHONY: doc_functions doc_functions_clean
-.PHONY: no_targets__ list analyse_app_mapfile print_file_list
+.PHONY: list analyse_app_mapfile tree files
 .PHONY: warnings_parser basic_memory_stats full_memory_stats test_badges
 .PHONY: release_package force_ceedling_relink mux_dbc dataset
 
@@ -340,18 +294,14 @@ $(MCAL_OBJ_DIR)/%.o: %.S
 	@echo "--> Compiling $(notdir $@)..."
 	@$(CC) $(CFLAGS) $(MCAL_OPTIMISATION) $(INCLUDES) -c $< -o $@ 2>&1 | tee -a $(APP_COMPILER_OUTPUT) >&2
 
-$(FREERTOS_OBJ_DIR)/%.o: %.c
-	@echo "--> Compiling $(notdir $@)..."
-	@$(CC) $(CFLAGS) $(COMMON_OPTIMISATION) $(INCLUDES) -c $< -o $@ 2>&1 | tee -a $(APP_COMPILER_OUTPUT) >&2
-
 # Every object, as a target of its own: the parallel sub-make below is told this one name, not the ~430 paths, which
 # alone run to over 12K characters and overflow the command line once the output directory is longer than Build/
 .PHONY: all_objects
-all_objects: $(APP_C_OBJS) $(APP_S_OBJS) $(COMMON_OBJS) $(MCAL_C_OBJS) $(MCAL_S_OBJS) $(FREERTOS_C_OBJS)
+all_objects: $(APP_C_OBJS) $(APP_S_OBJS) $(COMMON_OBJS) $(MCAL_C_OBJS) $(MCAL_S_OBJS)
 
 $(APP_OBJ_DIR):
 	@echo "--> Creating build directories..."
-	@mkdir -p $(APP_OBJ_DIR) $(COMMON_OBJ_DIR) $(MCAL_OBJ_DIR) $(FREERTOS_OBJ_DIR)
+	@mkdir -p $(APP_OBJ_DIR) $(COMMON_OBJ_DIR) $(MCAL_OBJ_DIR)
 
 # Print build banner before any compilation starts
 build_banner:
@@ -365,42 +315,27 @@ $(APP_ELF_FILE): build_banner autoversion $(APP_OBJ_DIR)
 	@mkdir -p $(BUILD_OUT_DIR)
 	@echo Compiler warnings generated by $(CC) for $(PROJECT_NAME) > $(APP_COMPILER_OUTPUT)
 	@$(MAKE) -j$(JOBS) $(MAKE_FLAGS) all_objects
-	@echo ""
-	@echo "--> Linking Object Files..."
-	@$(file >$(LINK_OBJECT_LIST),$(APP_C_OBJS) $(APP_S_OBJS) $(COMMON_OBJS) $(MCAL_C_OBJS) $(MCAL_S_OBJS) $(FREERTOS_C_OBJS))
+	@printf '\n--> Linking Object Files...\n'
+	@$(file >$(LINK_OBJECT_LIST),$(APP_C_OBJS) $(APP_S_OBJS) $(COMMON_OBJS) $(MCAL_C_OBJS) $(MCAL_S_OBJS))
 	@$(LD) $(LDFLAGS) @$(LINK_OBJECT_LIST)
 	@$(OBJCOPY) -O binary $(APP_ELF_FILE) $(BUILD_OUT_DIR)/$(PROJECT_NAME).bin
 	@$(OBJCOPY) -O ihex $(APP_ELF_FILE) $(APP_HEX_FILE)
 	@$(SREC) $(APP_HEX_FILE) -Intel -o $(BUILD_OUT_DIR)/$(PROJECT_NAME).srec -Motorola
-	@echo ""
-	@echo "--> Padding HEX to the whole APP region (0xFF fill)..."
-# BM's CRC and signature cover the ENTIRE region [APP_CODE_START, APP_CODE_END], not just the bytes
-# the linker emitted. If the hex stopped short of APP_CODE_END, a flasher that only rewrites the pages
-# a hex touches (Lauterbach FLASH.ReProgram, FBL/CAN_FLASH sector erase) left the previous build's
-# bytes in the untouched tail pages, BM's CRC then no longer matched the header, and BM fell back to
-# FBL - whenever a build shrank enough to end in an earlier page than the one before it. Defining every
-# byte of the region makes the hex self-contained: every page is always erased and rewritten, and the
-# CRC/signature below cover exactly what ends up in flash. The 0xFF fill is what both tools already
-# assume for the gap, so CRC and signature values are unchanged.
+	@printf '\n--> Padding HEX to the whole APP region (0xFF fill)...\n'
+# BM's CRC and signature cover the whole region [APP_CODE_START, APP_CODE_END]. A hex that stops short
+# leaves the previous build's bytes in the tail pages when the flasher rewrites only the pages a hex
+# touches, so the CRC no longer matches and BM falls back to FBL. 0xFF is what both tools assume for
+# the gap, so the CRC and signature values are unchanged.
 	@$(SREC) $(APP_HEX_FILE) -Intel -fill 0xFF $(APP_FLASH_START) $(APP_FLASH_LIMIT) -o $(APP_HEX_PADDED_FILE) -Intel
-	@echo ""
-	@echo "--> Injecting CRC32 into APP header (HEX file)..."
+	@printf '\n--> Injecting CRC32 into APP header (HEX file)...\n'
 	@$(BUILD_ENV_BIN)/app_crc_injector $(APP_HEX_PADDED_FILE) --output=$(APP_HEX_WITH_CRC_FILE) --header-addr=$(APP_HEADER_ADDR) --code-start=$(APP_CODE_START) --code-end=$(APP_CODE_END) --crc-type=$(APP_CRC_TYPE)
-	@echo ""
-	@echo "--> Signing firmware ($(SIGN_ALGORITHM))..."
+	@printf '\n--> Signing firmware ($(SIGN_ALGORITHM))...\n'
 	@$(BUILD_ENV_BIN)/app_signer $(APP_HEX_WITH_CRC_FILE) --output=$(APP_HEX_SIGNED_FILE) --header-addr=$(APP_HEADER_ADDR) --code-start=$(APP_CODE_START) --code-end=$(APP_CODE_END) --algorithm=$(SIGN_ALGORITHM) --signing-key=$(SIGNING_KEY)
 	@echo "--> Converting signed HEX to S19 format..."
 	@$(SREC) $(APP_HEX_SIGNED_FILE) -Intel -o $(APP_S19_SIGNED_FILE) -Motorola -address-length=4
 	@build_timer $(BUILD_OUT_DIR)/build_time.csv $(START_TIME)
 	@echo "--> Output files generated in: $(realpath $(BUILD_OUT_DIR))"
-	@echo "   $(notdir $(APP_ELF_FILE))   (executable)"
-	@echo "   $(notdir $(APP_HEX_FILE))   (Intel HEX - raw)"
-	@echo "   $(notdir $(APP_HEX_WITH_CRC_FILE)) (Intel HEX with CRC)"
-	@echo "   $(notdir $(APP_HEX_SIGNED_FILE))   (Intel HEX signed - FLASH THIS!)"
-	@echo "   $(notdir $(APP_S19_SIGNED_FILE))   (Motorola S19 signed - FLASH THIS!)"
-	@echo "   $(notdir $(APP_BIN_FILE))   (binary)"
-	@echo "   $(notdir $(APP_SREC_FILE))  (S-record)"
-	@echo "   $(notdir $(APP_MAP_FILE))   (linker map)"
+	@echo "   FLASH THIS: $(notdir $(APP_HEX_SIGNED_FILE)) (Intel HEX) or $(notdir $(APP_S19_SIGNED_FILE)) (Motorola S19), both signed"
 	@echo ""
 	
 build_clean:
@@ -430,33 +365,14 @@ CEEDLING_COV_DIR					  := test/CodeCoverage
 CEEDLING_COV_XML_TEST_REPORT_DEST     := test/$(CEEDLING_COV_DIR)
 
 # Define unwanted file patterns for coverage exclusion (as separate excludes)
-EXCLUDE_TEST    := --exclude '.*test_.*'
-EXCLUDE_TMD     := --exclude '.*TMD_.*'
-EXCLUDE_UNITY   := --exclude '.*unity.*'
+EXCLUDE_TEST     := --exclude '.*test_.*'
+EXCLUDE_TMD      := --exclude '.*TMD_.*'
+EXCLUDE_UNITY    := --exclude '.*unity.*'
 EXCLUDE_TEST_DIR := --exclude '.*/test/.*'
-GCOVR_EXCLUDES  := $(EXCLUDE_TEST) $(EXCLUDE_TMD) $(EXCLUDE_UNITY) $(EXCLUDE_TEST_DIR)
+GCOVR_EXCLUDES   := $(EXCLUDE_TEST) $(EXCLUDE_TMD) $(EXCLUDE_UNITY) $(EXCLUDE_TEST_DIR)
 
 # Where gcovr looks for coverage data: Ceedling's own build, and the instrumented library's objects when there are any
 GCOVR_SEARCH    := test/build
-
-# Function to detect test type based on file location: unit_tests/ or sw_tests/, anywhere else is unknown
-define detect_test_type
-$(if $(wildcard test/unit_tests/$(1).c ../*/test/unit_tests/$(1).c),unit,$(if $(wildcard test/sw_tests/$(1).c),software,unknown))
-endef
-
-# Function to get the correct YML file
-define get_test_yml
-$(if $(filter unit,$(call detect_test_type,$(1))),$(UNIT_TEST_YML),$(SW_TEST_YML))
-endef
-
-define set_test_vars
-  	$(eval TEST_FILE := $(1))
-  	$(eval TEST_TYPE := $(call detect_test_type,$(basename $(1))))
-  	$(eval TEST_YML := $(call get_test_yml,$(basename $(1))))
-  	$(if $(filter unknown,$(TEST_TYPE)),$(error $(TEST_FILE) is in neither test/unit_tests nor test/sw_tests))
-  	$(info --> Detected $(TEST_TYPE) test: $(TEST_FILE))
-	$(info --> Using config: $(TEST_YML))
-endef
 
 $(CEEDLING_COV_XML_TEST_REPORT_DEST):
 	@mkdir -p $(CEEDLING_COV_XML_TEST_REPORT_DEST)
@@ -477,13 +393,6 @@ cov_report: $(CEEDLING_COV_DIR)
 	@echo "--> Launching HTML..."
 	@-cd $(CEEDLING_COV_DIR) && $(OPEN_CMD) coverage.html 2>/dev/null || true
 
-# The dark PASS/FAIL page, written beside Ceedling's own tests_report.html from the same run's JUnit file
-# (scripts/test_report). A problem making it never fails the tests: the run's exit code is the tests' own.
-TEST_JUNIT_XML := test/build/artifacts/gcov/junit_tests_report.xml
-.PHONY: test_report
-test_report:
-	@ruby ../scripts/test_report $(TEST_JUNIT_XML) --title "HUB software tests" || echo "--> test_report failed"
-
 # Parse test_report.html and generate test count badges
 .PHONY: test_badges
 test_badges:
@@ -499,33 +408,30 @@ test_clean:
 	@echo "--> Test Cleaned!"
 
 # make test_X.test runs one test and its coverage report - the form the VS Code task uses.
-# A common-module unit test is run by xCOMMON_MODULES' own Makefile, a software test by test_X_cov below.
-# Before the test_% rules: the stems tie in length for some names, and the earlier rule wins
-%.test:
-	@if [ -f ../xCOMMON_MODULES/test/unit_tests/$*.c ]; then $(MAKE) -C ../xCOMMON_MODULES $@; else $(MAKE) $*_cov; fi
-
-# Universal test runner - automatically detects a unit test (test/unit_tests) from a software test (test/sw_tests).
+# A common-module unit test is run by xCOMMON_MODULES' own Makefile; an APP unit test (test/unit_tests, UNIT_TEST_YML,
+# none yet), or else a software test (test/sw_tests, SW_TEST_YML), is run here. Ceedling reports an unknown name.
 # Every run is a coverage run: a software test links the instrumented library, so the modules in it are measured
-test_%:
-	@$(call set_test_vars,test_$*.c)
-	@rc=0; ( cd test && ceedling --project=$(TEST_YML) gcov:$(TEST_FILE) ) || rc=$$?; $(MAKE) --no-print-directory test_report; exit $$rc
+%.test: $(CEEDLING_COV_DIR)
+	@if [ -f ../xCOMMON_MODULES/test/unit_tests/$*.c ]; then \
+	  $(MAKE) -C ../xCOMMON_MODULES $@; \
+	elif [ -f test/unit_tests/$*.c ]; then \
+	  ( cd test && ceedling --project=$(UNIT_TEST_YML) gcov:$*.c ) && $(MAKE) cov_report; \
+	else \
+	  ( cd test && ceedling --project=$(SW_TEST_YML) gcov:$*.c ) && $(MAKE) cov_report; \
+	fi
 
-# The same, then the coverage report
-test_%_cov: $(CEEDLING_COV_DIR)
-	@$(call set_test_vars,test_$(patsubst %_cov,%,$*).c)
-	@rc=0; ( cd test && ceedling --project=$(TEST_YML) gcov:$(TEST_FILE) ) || rc=$$?; $(MAKE) --no-print-directory test_report; if [ $$rc -ne 0 ]; then exit $$rc; fi
-	@$(MAKE) cov_report
-
-# All unit tests
-test_unit_all: test_clean $(CEEDLING_COV_DIR)
+# All unit tests: the common modules' (xCOMMON_MODULES/test/unit_tests), run by their own Makefile, then APP's own
+# (test/unit_tests). Fails if any does.
+test_unit_all:
 	@echo "Running all unit tests"
-	@-cd test && ceedling --project=$(UNIT_TEST_YML) gcov:all
+	@$(MAKE) -C ../xCOMMON_MODULES test_all
+	@cd test && ceedling --project=$(UNIT_TEST_YML) gcov:all
 	@$(MAKE) cov_report
 
 # All software tests, with coverage
 test_sw_all: test_clean $(CEEDLING_COV_DIR)
 	@echo "Running all software tests"
-	@rc=0; ( cd test && ceedling --project=$(SW_TEST_YML) gcov:all ) || rc=$$?; $(MAKE) --no-print-directory test_report; if [ $$rc -ne 0 ]; then exit $$rc; fi
+	@cd test && ceedling --project=$(SW_TEST_YML) gcov:all
 	@$(MAKE) cov_report
 
 # user fn check overall test result for Pass \ Fail.  Exits with error code on failure
@@ -556,18 +462,21 @@ doxygen_clean:
 ####################################################################################################
 #                                  Miscellaneous targets & rules                                   #
 ####################################################################################################
-# Print all targets if no target has been supplied
-no_targets__:
+# Every target named in the makefiles, pattern rules like %.test included
 list:
 	@echo "--> Available Targets:"
-	@sh -c "$(MAKE) $(MAKE_FLAGS) -p no_targets__ | awk -F':' '/^[a-zA-Z0-9][^\$$#\/\\t=]*:([^=]|$$)/ {split(\$$1,A,/ /);for(i in A)print A[i]}' | grep -v '__\$$' | sort"
+	@grep -hoiE '^[a-z%][a-z0-9_.%-]*:' $(MAKEFILE_LIST) | tr -d : | sort -u
 
 analyse_app_mapfile: $(APP_MAP_FILE)
 	@sed '/debug/d' $(APP_MAP_FILE) > $(APP_MAP_FILE)_stripped
 	@amap $(APP_MAP_FILE)_stripped
 
-print_file_list:
-	@cmd //c "tree /a $(if $(FILE),/f,)" | tee file_list.txt
+# From the repo root (the parent of APP), where file_list.txt is written too
+tree:
+	@cd .. && cmd //c "tree /a" | tee file_list.txt
+
+files:
+	@cd .. && cmd //c "tree /a /f" | tee file_list.txt
 
 autoversion:
 	@sVersion -a Src --yml project.yml && echo "--> Generating autoversion header file..."
@@ -593,7 +502,6 @@ basic_memory_stats: $(APP_ELF_FILE)
 full_memory_stats: $(APP_MAP_FILE)
 	@$(BUILD_ENV_BIN)/memory_analyser_stm32 $(APP_MAP_FILE) $(APP_ELF_FILE) $(APP_LINKER_SCRIPT) --out $(APP_MEM_OUTPUT_FILE) --csv $(APP_MEM_CSV_FILE) $(README_ARGS)
 
-		
 release_package:
 	@echo "======================================================================"
 	@echo "--> Creating release package $(SW_VER)..."

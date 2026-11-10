@@ -7,17 +7,15 @@
 #                                           instrumentation and without optimisation: gcov counts lines accurately only at -O0
 #    mingw32-make -C APP/test/build_system clean            removes it
 #
-#  What goes in is decided by four text files, one entry per line, paths relative to the project root:
+#  What goes in is decided by two text files, one entry per line, paths relative to the project root:
 #
 #    lib_sources.txt    a .c file to compile - add a file here to put it in the library
 #    lib_includes.txt   a folder for the include path, for the headers that live in a folder with no
 #                       listed source. The folder of every listed source is on the path already, ahead
 #                       of these, so the project's own headers win over xCOMMON_MODULES/cfg as they do in
 #                       the firmware build
-#    lib_defines.txt    a preprocessor symbol, NAME or NAME=VALUE
-#    lib_flags.txt      a compiler flag. -ffunction-sections / -fdata-sections let the linker drop
-#                       unreferenced code from a member it pulls in; -O0 -fprofile-arcs -ftest-coverage are the
-#                       coverage build, which every test run uses. The Makefile adds -MMD -MP itself
+#
+#  The flags are COMMON_CFLAGS and APP_CFLAGS from rules.mk, the same ones the firmware uses, plus HOST_CFLAGS below.
 #
 #  The STM32 is xCOMMON_MODULES/test/support/VHW_STM32F10X: its folder is first in lib_includes.txt, ahead of
 #  the real stm32f10x.h / core_cm3.h / nvic_driver.h, and the SPL files (except misc.c and fsmc) are its host
@@ -44,11 +42,20 @@ LIB       := $(BUILD)/libHUB_APP_x86.a
 
 SRCS    := $(file < lib_sources.txt)
 INC_REL := $(patsubst %/,%,$(sort $(dir $(SRCS)))) $(file < lib_includes.txt)
-DEFINES := $(file < lib_defines.txt)
 OBJS    := $(addprefix $(BUILD)/obj/,$(SRCS:.c=.o))
 
-FLAGS  := $(file < lib_flags.txt)
-CFLAGS := $(foreach f,$(FLAGS),$f) -MMD -MP $(addprefix -I$(ROOT)/,$(INC_REL)) $(addprefix -D,$(DEFINES))
+# Host build. -O0 -fprofile-arcs -ftest-coverage are the coverage build, which every test run uses: gcov counts
+# lines accurately only at -O0
+HOST_CFLAGS := \
+	-m32 \
+	-std=gnu11 \
+	-O0 \
+	-g \
+	-Wno-incompatible-pointer-types \
+	-fprofile-arcs \
+	-ftest-coverage
+
+CFLAGS := $(COMMON_CFLAGS) $(APP_CFLAGS) $(HOST_CFLAGS) -MMD -MP $(addprefix -I$(ROOT)/,$(INC_REL))
 
 .PHONY: all clean
 all: $(LIB)
@@ -61,7 +68,7 @@ $(LIB): $(OBJS)
 
 # An object's path under obj/ is its source's path under the project root, so equal file names
 # in different modules cannot collide
-$(BUILD)/obj/%.o: $(ROOT)/%.c Makefile lib_sources.txt lib_includes.txt lib_defines.txt lib_flags.txt
+$(BUILD)/obj/%.o: $(ROOT)/%.c Makefile lib_sources.txt lib_includes.txt
 	@mkdir -p $(dir $@)
 	@$(MINGW_CC) $(CFLAGS) -c $< -o $@
 
