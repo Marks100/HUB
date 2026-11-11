@@ -381,17 +381,17 @@ test_clean:
 	@rm -fr $(CEEDLING_COV_DIR)
 	@echo "--> Test Cleaned!"
 
-# make test_X.test runs one test and its coverage report - the form the VS Code task uses.
+# make test_X.test runs one test - the form the VS Code task uses. A unit test also gets its coverage report.
 # A common-module unit test is run by xCOMMON_MODULES' own Makefile; an APP unit test (test/unit_tests, UNIT_TEST_YML,
 # none yet), or else a software test (test/sw_tests, SW_TEST_YML), is run here. Ceedling reports an unknown name.
-# Every run is a coverage run: a software test links the instrumented library, so the modules in it are measured
+# A software test is an end to end test of the whole APP, not a measure of one module: no coverage is shown for it
 %.test: $(CEEDLING_COV_DIR)
 	@if [ -f ../xCOMMON_MODULES/test/unit_tests/$*.c ]; then \
 	  $(MAKE) -C ../xCOMMON_MODULES $@; \
 	elif [ -f test/unit_tests/$*.c ]; then \
 	  ( cd test && ceedling --project=$(UNIT_TEST_YML) gcov:$*.c ) && $(MAKE) cov_report; \
 	else \
-	  ( cd test && ceedling --project=$(SW_TEST_YML) gcov:$*.c ) && $(MAKE) cov_report; \
+	  ( cd test && ceedling --project=$(SW_TEST_YML) test:$*.c ); \
 	fi
 
 # All unit tests: the common modules' (xCOMMON_MODULES/test/unit_tests), run by their own Makefile, then APP's own
@@ -402,11 +402,10 @@ test_unit_all:
 	@cd test && ceedling --project=$(UNIT_TEST_YML) gcov:all
 	@$(MAKE) cov_report
 
-# All software tests, with coverage
-test_sw_all: test_clean $(CEEDLING_COV_DIR)
+# All software tests (no coverage: see %.test)
+test_sw_all: test_clean
 	@echo "Running all software tests"
-	@cd test && ceedling --project=$(SW_TEST_YML) gcov:all
-	@$(MAKE) cov_report
+	@cd test && ceedling --project=$(SW_TEST_YML) test:all
 
 ####################################################################################################
 #                                  Doxygen targets & rules                                         #

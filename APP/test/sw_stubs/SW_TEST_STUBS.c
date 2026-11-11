@@ -31,7 +31,6 @@
 #include "TMD_TJA1051.h"
 #include "TMD_MCP2515.h"
 #include "TMD_MBA.h"
-#include "TMD_PREEMPT.h"
 #include "TMD_STARTUP.h"
 #include "TMD_SH1106.h"
 #include "SH1106.h"
@@ -61,8 +60,16 @@ static const u8_t sw_test_dataset0_c[] =
 /***************************************************************************************************
 **                                  Private Function Prototypes                                   **
 ***************************************************************************************************/
+/* How long the firmware takes to run. Every function it enters costs this long, on average, and the hardware goes on while it runs:
+   an interrupt can fall in the middle of a scheduler pass, where its time says it would.
+   833 ns is 60 cycles of the STM32F103 at 72 MHz: an estimate for -Os from flash (a call and return are 8 to 12 cycles, the body 15 to
+   100 instructions at 1.3 to 1.8 cycles each). Measure it on the board: the time of one scheduler pass (DWT->CYCCNT around
+   SysTick_Handler, over the core clock) divided by the function entries one pass makes here (about 230 with nothing going on) -
+   and change it here */
+#define SW_TEST_NS_PER_ENTRY        ( 833u )
+
 static void        sw_test_models_init( void );
-static void        sw_test_models_tick( void );
+static void        sw_test_tick_the_models( void );
 static void        sw_test_ecu_start( void );
 static void        sw_test_power_on( false_true_et blank_nvm );
 
@@ -117,8 +124,8 @@ static void sw_test_models_init( void )
     };
 
     /* Every model first: the inits clear what was registered with the model before, so nothing is wired yet */
-    TMD_TIME_init( sw_test_models_tick );    /* every simulated millisecond ticks the models */
-    TMD_SYSTICK_init( vhw_systick_read_regs, &SystemCoreClock );    /* the clock's address: the firmware sets it up after this */
+    TMD_TIME_init( SW_TEST_NS_PER_ENTRY, sw_test_tick_the_models );    /* every model acts as the clock moves */
+    TMD_SYSTICK_init( vhw_systick_read_regs, &SystemCoreClock, vhw_systick_set_pending );    /* the clock's address: the firmware sets it up after this */
     TMD_CAN_init();
     TMD_TJA1051_reset();
     TMD_MCP2515_reset();
@@ -146,11 +153,9 @@ static void sw_test_models_init( void )
     TMD_NVM_set_address_base( NVM_BASE_ADDRESS );
     FLASH_SIM_set_fault_funcs( TMD_NVM_is_write_faulted, TMD_NVM_is_erase_faulted );
 
-    TMD_PREEMPT_init();                                         /* the interrupts run where the hardware asserts them, until a test chooses */
-
     TMD_SH1106_init();                                          /* the OLED of the panel, on I2C1 */
     TMD_SH1106_attach( I2C1, SH1106_I2C_ADDR_DEFAULT );
-
+    
     /* The board's pull-ups hold a released button HIGH, which a virtual pin cannot do by itself: a power on clears it to LOW */
     GPIO_SIM_set_input( ONBOARD_BTN_PORT,       ONBOARD_BTN_PIN,       HIGH );
     GPIO_SIM_set_input( PANEL_SELECT_BTN_PORT,  PANEL_SELECT_BTN_PIN,  HIGH );
@@ -161,27 +166,30 @@ static void sw_test_models_init( void )
 /*!
 ****************************************************************************************************
 *
-*   \brief         One simulated millisecond of the models: SysTick, which runs the firmware's scheduler as the real one
-*                  does, then the ERXs (the UDS nodes answer what the scheduler's passes sent, and the heartbeats go out), the
-*                  NVM, and the tester
+*   \brief         Every model acts on the clock where it has got to: the scheduler's period, the bus, the ERXs (the UDS nodes answer what
+*                  the scheduler's passes sent, and the heartbeats go out), the NVM and the tester, then the virtual STM32 catches up
 *
 *   \author        mstewart
 *
 *   \return        none
 *
+*   \note          They look at the clock and do what is due, so they can run as often as it moves: TMD_TIME runs this at every function
+*                  the firmware enters, and at every millisecond stop. The virtual STM32 follows the same clock in its own sync (the
+*                  timers, the watchdogs, the RTC); SysTick only sets its pending bit, and its handler, the scheduler's pass, runs from
+*                  the interrupt poll like any other, by its priority.
+*
 *****************************************************************************************************/
-static void sw_test_models_tick( void )
+static void sw_test_tick_the_models( void )
 {
-    vhw_sync();    /* the hardware catches up with what the firmware did since the last millisecond, and the interrupts it asks for run */
-
-    TIM_SIM_advance_us( 1000u, SystemCoreClock );    /* the timers count the millisecond, 72 MHz of it, and run their handlers */
-
-    TMD_SYSTICK_tick();
+    TMD_SYSTICK_tick();   /* the scheduler's period: SysTick goes pending */
+    TMD_CAN_tick();       /* the frames that have crossed the bus by now reach their end */
     TMD_ERX_UDS_tick();
     TMD_ERX_tick();
     TMD_NVM_tick();
     TMD_CANTP_tick();
     TMD_UDS_tick();
+
+    vhw_sync();           /* the hardware catches up with what the models did, and the interrupts they asserted run: here, at the top of whichever function the firmware has just entered */
 }
 
 /*!

@@ -48,7 +48,7 @@ OBJS    := $(addprefix $(BUILD)/obj/,$(SRCS:.c=.o))
 # What is hardware and what is firmware. The virtual hardware and its models keep their state across a power on, and are not
 # a place the firmware can be interrupted. Everything else is firmware:
 #   - its RAM goes to the sections TMD_STARTUP resets at every power on (fw_ram_sections.sh)
-#   - every function of it reports its entry, which is where TMD_PREEMPT runs an interrupt (-finstrument-functions)
+#   - every function of it reports its entry, which is where TMD_TIME moves the clock and ticks the models (-finstrument-functions)
 HARDWARE_DIR  := xCOMMON_MODULES/test/support
 MINGW_OBJCOPY ?= $(MINGW)-objcopy
 MINGW_OBJDUMP ?= $(MINGW)-objdump
