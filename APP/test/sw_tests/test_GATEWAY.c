@@ -214,7 +214,6 @@ void test_a_request_does_not_pass_the_tja1051_in_standby( void )
 
     test_make_frame( &request, TEST_REQUEST_ID, data );
     TJA1051_set_mode( &tja1051_main_instance_s, TJA1051_MODE_STANDBY );
-    vhw_sync();                       /* the EN pin reaches the transceiver at the next register access */
 
     TMD_CAN_inject_frame_to_ecu( TEST_BUS_TESTER, &request );
     TMD_TIME_advance_time_ms( TEST_FRAME_SETTLE_MS );
@@ -250,7 +249,6 @@ void test_a_reply_waits_in_the_mailbox_until_the_tja1051_is_back_in_normal_mode(
     TMD_TIME_advance_time_ms( TEST_FRAME_SETTLE_MS );
 
     TJA1051_set_mode( &tja1051_main_instance_s, TJA1051_MODE_STANDBY );
-    vhw_sync();                       /* the EN pin reaches the transceiver at the next register access */
 
     TMD_CAN_inject_frame_to_ecu( TEST_BUS_NODES, &response );
     TMD_TIME_advance_time_ms( TEST_FRAME_SETTLE_MS );
@@ -260,7 +258,7 @@ void test_a_reply_waits_in_the_mailbox_until_the_tja1051_is_back_in_normal_mode(
     TEST_ASSERT_TRUE( TMD_TJA1051_get_blocked_tx_count( TEST_BUS_TESTER ) > 0u );
 
     TJA1051_set_mode( &tja1051_main_instance_s, TJA1051_MODE_NORMAL );
-    vhw_sync();
+    TMD_TIME_advance_time_ms( TEST_FRAME_SETTLE_MS );    /* the bxCAN offers the frame again */
 
     TEST_ASSERT_EQUAL( 0u, CAN_SIM_get_mailboxes_in_use() );
     TEST_ASSERT_EQUAL( TRUE, TMD_CAN_consume_message_from_ecu( TEST_BUS_TESTER, TEST_RESPONSE_ID, &sent ) );

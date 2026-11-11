@@ -35,6 +35,8 @@
 
 #define TEST_SECOND_WELD_TIME       ( 2222u )    /* a later save than TEST_SAVED_WELD_TIME_MS */
 #define TEST_THIRD_WELD_TIME        ( 3333u )    /* and a later one than that */
+#define TEST_MAX_MS_PER_SAVE                ( 5000u )   /* a save that takes longer than this is stuck */
+#define TEST_NVM_SETTLED_MS                 ( 60u )     /* longer than the 50 ms period of the NVM tick (SCHED_config.c) */
 #define TEST_MAX_SAVES_TO_FILL_A_PARTITION  ( 400u )    /* a record is 8 bytes of overhead and the block, in a page of the 2 KB */
 
 /* Every field different from its default (23, FALSE, 0, FALSE, 40, 0, 0) */
@@ -89,6 +91,70 @@ void tearDown( void )
 /*!
 ****************************************************************************************************
 *
+*   \brief         Let time pass, a millisecond at a time, until the save in flight has ended
+*
+*   \author        mstewart
+*
+*   \param[in]     stop_state    Also stop when NVM_GEN2 is in this state (a compaction state), NVM_GEN2_STATE_MAX for none
+*
+*   \return        none
+*
+*   \note          The scheduler runs NVM_GEN2_tick(), as it does in the firmware: the state is looked at after every
+*                  millisecond. NVM_GEN2 goes back to IDLE between one pending write and the next, and a request
+*                  waits for the scheduler's next NVM tick, so the saves have ended when it has stayed IDLE for longer
+*                  than the tick period (TEST_NVM_SETTLED_MS), or is in FAULT
+*
+*****************************************************************************************************/
+static void test_advance_time_until_the_save_ends( NVM_GEN2_state_et stop_state )
+{
+    u32_t elapsed_ms = 0u;
+    u32_t idle_ms    = 0u;
+
+    do
+    {
+        TMD_TIME_advance_time_ms( 1u );
+        elapsed_ms++;
+
+        if( NVM_GEN2_get_state() == NVM_GEN2_STATE_IDLE )
+        {
+            idle_ms++;
+        }
+        else
+        {
+            idle_ms = 0u;
+        }
+    }
+    while( ( idle_ms < TEST_NVM_SETTLED_MS ) &&
+           ( NVM_GEN2_get_state() != stop_state ) &&
+           ( NVM_GEN2_get_state() != NVM_GEN2_STATE_FAULT ) &&
+           ( elapsed_ms < TEST_MAX_MS_PER_SAVE ) );
+
+    TEST_ASSERT_TRUE_MESSAGE( elapsed_ms < TEST_MAX_MS_PER_SAVE, "the save did not end" );
+}
+
+/*!
+****************************************************************************************************
+*
+*   \brief         Request the write of a block and let time pass until it has reached the flash
+*
+*   \author        mstewart
+*
+*   \param[in]     block_id    A registered block
+*
+*   \return        none
+*
+*   \note          What NVM_GEN2_flush_block() does by pumping the tick with no time passing, done through the time model
+*
+*****************************************************************************************************/
+static void test_save_block( u8_t block_id )
+{
+    NVM_GEN2_request_write_block( block_id );
+    test_advance_time_until_the_save_ends( NVM_GEN2_STATE_MAX );
+}
+
+/*!
+****************************************************************************************************
+*
 *   \brief         Change the generic block and make NVM_GEN2 write it to the flash
 *
 *   \author        mstewart
@@ -100,7 +166,7 @@ static void test_save_generic_block( void )
 {
     app_generic_data_blk_g.weld_time_ms = TEST_SAVED_WELD_TIME_MS;
 
-    NVM_GEN2_flush_block( APP_GENERIC_BLOCK_ID );
+    test_save_block( APP_GENERIC_BLOCK_ID );
 }
 
 /*!
@@ -204,7 +270,8 @@ static void test_replace_the_latest_generic_record( u8_t version, const void* pa
 *
 *   \return        The value of the last save that reached the flash: the one in flight when the state was reached is not it
 *
-*   \note          Pumps NVM_GEN2_tick() itself, with no time passing. NVM_GEN2_flush() would run the compaction through
+*   \note          Time passes through the time model, so the scheduler runs the compaction a tick at a time, and the
+*                  state is looked at after every millisecond. NVM_GEN2_flush() would run the compaction through
 *
 *****************************************************************************************************/
 static u16_t test_save_until_the_compaction_is_in( NVM_GEN2_state_et state )
@@ -217,11 +284,7 @@ static u16_t test_save_until_the_compaction_is_in( NVM_GEN2_state_et state )
         app_generic_data_blk_g.weld_time_ms = save;
         NVM_GEN2_request_write_block( APP_GENERIC_BLOCK_ID );
 
-        do
-        {
-            NVM_GEN2_tick();
-        }
-        while( ( NVM_GEN2_get_state() != NVM_GEN2_STATE_IDLE ) && ( NVM_GEN2_get_state() != state ) && ( NVM_GEN2_get_state() != NVM_GEN2_STATE_FAULT ) );
+        test_advance_time_until_the_save_ends( state );
 
         if( NVM_GEN2_get_state() == NVM_GEN2_STATE_IDLE )
         {
@@ -254,7 +317,7 @@ static void test_assert_a_power_cut_in_the_compaction_state_keeps_the_last_saves
     u16_t             last_on_flash;
 
     STDC_memcpy( app_chassis_num_blk_g.chassis_num, chassis_num, APP_CHASSIS_NUM_LEN );
-    NVM_GEN2_flush_block( APP_CHASSIS_NUM_BLOCK_ID );
+    test_save_block( APP_CHASSIS_NUM_BLOCK_ID );
 
     last_on_flash = test_save_until_the_compaction_is_in( state );
 
@@ -268,7 +331,7 @@ static void test_assert_a_power_cut_in_the_compaction_state_keeps_the_last_saves
     TEST_ASSERT_EQUAL_MEMORY( chassis_num, app_chassis_num_blk_g.chassis_num, APP_CHASSIS_NUM_LEN );
 
     app_generic_data_blk_g.weld_time_ms = TEST_THIRD_WELD_TIME;
-    NVM_GEN2_flush_block( APP_GENERIC_BLOCK_ID );
+    test_save_block( APP_GENERIC_BLOCK_ID );
     test_scramble_the_ram_copies();
     TMD_INIT_restart_ecu( NON_VIRGIN );
 
@@ -423,7 +486,7 @@ void test_a_new_test_does_not_find_the_block_of_the_one_before( void )
 void test_every_field_of_a_saved_block_is_recovered_after_a_restart( void )
 {
     app_generic_data_blk_g = test_saved_generic_blk_s;
-    NVM_GEN2_flush_block( APP_GENERIC_BLOCK_ID );
+    test_save_block( APP_GENERIC_BLOCK_ID );
     test_scramble_the_ram_copies();
 
     TMD_INIT_restart_ecu( NON_VIRGIN );
@@ -456,7 +519,7 @@ void test_the_latest_of_several_saves_is_recovered( void )
         app_generic_data_blk_g = test_saved_generic_blk_s;
         app_generic_data_blk_g.weld_time_ms   = (u16_t)( 100u * save );
         app_generic_data_blk_g.total_num_welds = save;
-        NVM_GEN2_flush_block( APP_GENERIC_BLOCK_ID );
+        test_save_block( APP_GENERIC_BLOCK_ID );
     }
 
     test_scramble_the_ram_copies();
@@ -519,10 +582,10 @@ void test_all_the_blocks_are_recovered_together_after_a_restart( void )
     STDC_memcpy( app_key_2_blk_g.key, key_2, APP_KEY_LEN );
     STDC_memcpy( app_chassis_num_blk_g.chassis_num, chassis_num, APP_CHASSIS_NUM_LEN );
 
-    NVM_GEN2_flush_block( APP_GENERIC_BLOCK_ID );
-    NVM_GEN2_flush_block( APP_KEY_1_BLOCK_ID );
-    NVM_GEN2_flush_block( APP_KEY_2_BLOCK_ID );
-    NVM_GEN2_flush_block( APP_CHASSIS_NUM_BLOCK_ID );
+    test_save_block( APP_GENERIC_BLOCK_ID );
+    test_save_block( APP_KEY_1_BLOCK_ID );
+    test_save_block( APP_KEY_2_BLOCK_ID );
+    test_save_block( APP_CHASSIS_NUM_BLOCK_ID );
     test_scramble_the_ram_copies();
 
     TMD_INIT_restart_ecu( NON_VIRGIN );
@@ -549,11 +612,11 @@ void test_saving_one_block_leaves_another_blocks_record_alone( void )
     static const u8_t chassis_num[APP_CHASSIS_NUM_LEN] = { 'V', 'I', 'N', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '1' };
 
     STDC_memcpy( app_chassis_num_blk_g.chassis_num, chassis_num, APP_CHASSIS_NUM_LEN );
-    NVM_GEN2_flush_block( APP_CHASSIS_NUM_BLOCK_ID );
+    test_save_block( APP_CHASSIS_NUM_BLOCK_ID );
 
     test_save_generic_block();
     app_generic_data_blk_g.weld_time_ms = 4321u;
-    NVM_GEN2_flush_block( APP_GENERIC_BLOCK_ID );
+    test_save_block( APP_GENERIC_BLOCK_ID );
     test_scramble_the_ram_copies();
 
     TMD_INIT_restart_ecu( NON_VIRGIN );
@@ -582,7 +645,7 @@ void test_a_torn_latest_record_falls_back_to_the_save_before( void )
     test_save_generic_block();
 
     app_generic_data_blk_g.weld_time_ms = TEST_SECOND_WELD_TIME;
-    NVM_GEN2_flush_block( APP_GENERIC_BLOCK_ID );
+    test_save_block( APP_GENERIC_BLOCK_ID );
 
     *(volatile u8_t*)test_latest_generic_payload_address() ^= 0x01u;
     test_scramble_the_ram_copies();
@@ -609,7 +672,7 @@ void test_a_failed_save_leaves_the_last_good_record_to_recover( void )
 
     TMD_NVM_inject_write_error( 0u, NVM_TOTAL_SIZE );
     app_generic_data_blk_g.weld_time_ms = TEST_SECOND_WELD_TIME;
-    NVM_GEN2_flush_block( APP_GENERIC_BLOCK_ID );
+    test_save_block( APP_GENERIC_BLOCK_ID );
     TEST_ASSERT_EQUAL( NVM_GEN2_STATE_FAULT, NVM_GEN2_get_state() );
 
     test_scramble_the_ram_copies();
@@ -640,12 +703,12 @@ void test_a_block_saved_once_survives_the_compaction_forced_by_many_saves_of_ano
     u16_t             save;
 
     STDC_memcpy( app_chassis_num_blk_g.chassis_num, chassis_num, APP_CHASSIS_NUM_LEN );
-    NVM_GEN2_flush_block( APP_CHASSIS_NUM_BLOCK_ID );
+    test_save_block( APP_CHASSIS_NUM_BLOCK_ID );
 
     for( save = 1u; ( save <= TEST_MAX_SAVES_TO_FILL_A_PARTITION ) && ( NVM_GEN2_get_active_seq() == first_seq ); save++ )
     {
         app_generic_data_blk_g.weld_time_ms = save;
-        NVM_GEN2_flush_block( APP_GENERIC_BLOCK_ID );
+        test_save_block( APP_GENERIC_BLOCK_ID );
         TMD_TIME_advance_time_ms( 10u );
     }
 
@@ -678,7 +741,7 @@ void test_a_torn_record_header_is_skipped_and_the_next_save_still_reaches_the_fl
     test_save_generic_block();
 
     app_generic_data_blk_g.weld_time_ms = TEST_SECOND_WELD_TIME;
-    NVM_GEN2_flush_block( APP_GENERIC_BLOCK_ID );
+    test_save_block( APP_GENERIC_BLOCK_ID );
 
     *(volatile u8_t*)( test_latest_generic_record_address() + offsetof( NVM_GEN2_rec_hdr_st, hdr_crc ) ) ^= 0x01u;
     test_scramble_the_ram_copies();
@@ -689,7 +752,7 @@ void test_a_torn_record_header_is_skipped_and_the_next_save_still_reaches_the_fl
 
     seq_before = NVM_GEN2_get_active_seq();
     app_generic_data_blk_g.weld_time_ms = TEST_THIRD_WELD_TIME;
-    NVM_GEN2_flush_block( APP_GENERIC_BLOCK_ID );
+    test_save_block( APP_GENERIC_BLOCK_ID );
 
     TEST_ASSERT_TRUE( NVM_GEN2_get_active_seq() != seq_before );    /* the tail was unusable, so the save compacted into the other partition */
 

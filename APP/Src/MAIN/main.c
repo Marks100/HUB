@@ -78,6 +78,7 @@ void app_main( void )
    VER_init();
    TIME_init( &time_cfg_s );
 #if ( HW_VARIANT == SUPER_PILL )
+   TYRE_DATA_init();   /* after BOOT_HANDOFF_init(), before the menu that lists the table */
    HMI_SH1106_init( &hmi_sh1106_cfg_s );
    MENU_NAV_init();
    BUZZER_init( &buzzer_instance_s, &buzzer_func_table_s );

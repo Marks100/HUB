@@ -26,8 +26,9 @@
 #  Src/CRYPTO/libCRYPTO_x86.a in xCOMMON_MODULES, the facade is compiled by the test with its own
 #  CRYPTO_config.h). TEST is not defined, so STATIC stays static - the library is the production code.
 #
-#  Compiled for the host, so without the firmware's -fpack-struct / -fshort-enums: a test that links the
-#  library must not use them either, or the struct layouts would differ.
+#  Compiled with the firmware's struct layout (-fpack-struct=1 -fshort-enums), so the records, frames and
+#  headers are the bytes they are on the target. A test that links the library must use them too, or the layouts
+#  would differ: sw_test_project.yml has them too.
 ####################################################################################################
 .SUFFIXES:
 
@@ -44,16 +45,28 @@ SRCS    := $(file < lib_sources.txt)
 INC_REL := $(patsubst %/,%,$(sort $(dir $(SRCS)))) $(file < lib_includes.txt)
 OBJS    := $(addprefix $(BUILD)/obj/,$(SRCS:.c=.o))
 
+# What is hardware and what is firmware. The virtual hardware and its models keep their state across a power on, and are not
+# a place the firmware can be interrupted. Everything else is firmware:
+#   - its RAM goes to the sections TMD_STARTUP resets at every power on (fw_ram_sections.sh)
+#   - every function of it reports its entry, which is where TMD_PREEMPT runs an interrupt (-finstrument-functions)
+HARDWARE_DIR  := xCOMMON_MODULES/test/support
+MINGW_OBJCOPY ?= $(MINGW)-objcopy
+MINGW_OBJDUMP ?= $(MINGW)-objdump
+
 # Host build. -O0 -fprofile-arcs -ftest-coverage are the coverage build, which every test run uses: gcov counts
 # lines accurately only at -O0
 HOST_CFLAGS := \
 	-m32 \
+	-fshort-enums \
+	-fpack-struct=1 \
 	-std=gnu11 \
 	-O0 \
 	-g \
 	-Wno-incompatible-pointer-types \
 	-fprofile-arcs \
-	-ftest-coverage
+	-ftest-coverage \
+	-finstrument-functions \
+	-finstrument-functions-exclude-file-list=$(HARDWARE_DIR)
 
 CFLAGS := $(COMMON_CFLAGS) $(APP_CFLAGS) $(HOST_CFLAGS) -MMD -MP $(addprefix -I$(ROOT)/,$(INC_REL))
 
@@ -68,13 +81,13 @@ $(LIB): $(OBJS)
 
 # An object's path under obj/ is its source's path under the project root, so equal file names
 # in different modules cannot collide
-$(BUILD)/obj/%.o: $(ROOT)/%.c Makefile lib_sources.txt lib_includes.txt
+$(BUILD)/obj/%.o: $(ROOT)/%.c Makefile lib_sources.txt lib_includes.txt fw_ram_sections.sh
 	@mkdir -p $(dir $@)
 	@$(MINGW_CC) $(CFLAGS) -c $< -o $@
+	@$(if $(filter $(HARDWARE_DIR)/%,$*),,OBJCOPY=$(MINGW_OBJCOPY) OBJDUMP=$(MINGW_OBJDUMP) sh fw_ram_sections.sh $@)
 
 clean:
 	@rm -rf $(BUILD)/obj $(BUILD)/*.a
-	@rm -rf build build_cov libHUB_APP_x86.a libHUB_APP_x86_cov.a    # where this folder's output used to go, and an older Makefile's
 	@echo "--> library cleaned"
 
 -include $(OBJS:.o=.d)

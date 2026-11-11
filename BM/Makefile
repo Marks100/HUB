@@ -120,9 +120,9 @@ LDFLAGS := \
 ####################################################################################################
 # Targets
 ####################################################################################################
-.PHONY: bm_build bm_clean bm_rebuild basic_memory_stats full_memory_stats memory_stats gen_hmac_secret_header
+.PHONY: bm_build bm_clean bm_rebuild memory_stats object_stats gen_hmac_secret_header
 
-bm_build: gen_hmac_secret_header $(BM_ELF_FILE) basic_memory_stats
+bm_build: gen_hmac_secret_header $(BM_ELF_FILE) memory_stats
 
 bm_rebuild: bm_clean bm_build
 
@@ -175,13 +175,12 @@ $(BM_MAP_FILE): $(BM_ELF_FILE)
 # UPDATE_README=y refreshes them locally.
 README_ARGS := $(if $(or $(CI),$(UPDATE_README)),--readme ../README.md --tag BM)
 
-basic_memory_stats: $(BM_ELF_FILE)
+memory_stats: $(BM_ELF_FILE)
 	@$(BUILD_ENV_BIN)/memory_analyser_stm32 $(BM_MAP_FILE) $(BM_ELF_FILE) $(BM_LINKER_SCRIPT) --out $(BM_MEM_OUTPUT_FILE) --csv $(BM_MEM_CSV_FILE) $(README_ARGS)
 
-full_memory_stats: $(BM_MAP_FILE)
-	@$(BUILD_ENV_BIN)/memory_analyser_stm32 $(BM_MAP_FILE) $(BM_ELF_FILE) $(BM_LINKER_SCRIPT) --out $(BM_MEM_OUTPUT_FILE) --csv $(BM_MEM_CSV_FILE) $(README_ARGS)
-
-# Legacy alias - this is what tasks.json's "BM_memory_stats" task already calls
-memory_stats: basic_memory_stats
+# Size of every function in every object, for finding what to trim
+object_stats: $(BM_ELF_FILE)
+	@$(BUILD_ENV_BIN)/obj_size_analyser $(OBJ_DIR) --out $(BUILD_OUT_DIR)/object_sizes.txt > /dev/null
+	@echo "--> Per-function sizes written to $(BUILD_OUT_DIR)/object_sizes.txt"
 
 -include $(BM_C_DEPS)

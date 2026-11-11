@@ -84,6 +84,10 @@
     - ../../xCOMMON_MODULES/test/support/models/TMD_INIT
     - ../../xCOMMON_MODULES/test/support/models/TMD_CANTP
     - ../../xCOMMON_MODULES/test/support/models/TMD_UDS
+    - ../../xCOMMON_MODULES/test/support/models/TMD_SH1106
+    - ../../xCOMMON_MODULES/test/support/models/TMD_MBA
+    - ../../xCOMMON_MODULES/test/support/models/TMD_STARTUP
+    - ../../xCOMMON_MODULES/test/support/models/TMD_PREEMPT
 
 # Must match COMMON_CFLAGS and APP_CFLAGS in rules.mk, which the library is built with. TEST is not defined: the library is built without it, so STATIC is static
 # in the library and a test that saw it empty would disagree about the headers
@@ -97,12 +101,15 @@
   :release: []
   :use_test_definition: FALSE
 
-# Must agree with build_system/Makefile (HOST_CFLAGS) where it changes the code: no -fpack-struct / -fshort-enums here or there.
+# Must agree with build_system/Makefile (HOST_CFLAGS) where it changes the code: the firmware's struct layout
+# (-fpack-struct=1 -fshort-enums) here and there, or a test and the library would disagree about every struct.
 # -m32: the tests cast pointers to u32_t and map the flash at its real 32-bit address, so they are a 32-bit host build everywhere
 :flags:
   :test:
     :compile:
       - -m32
+      - -fshort-enums
+      - -fpack-struct=1
       - -std=gnu11
       - -O0
       - -g
@@ -120,6 +127,8 @@
   :gcov:
     :compile:
       - -m32
+      - -fshort-enums
+      - -fpack-struct=1
       - -std=gnu11
       - -O0
       - -g

@@ -193,7 +193,7 @@ LDFLAGS := \
 ####################################################################################################
 .PHONY: all rebuild build_clean total_clean app_build app_rebuild gen_lcov_report
 .PHONY: $(BM_IMAGE) $(FBL_IMAGE) full_image_with_eol
-.PHONY: test_clean test_unit_all test_sw_all cov_report test_badges
+.PHONY: test_clean test_unit_all test_sw_all cov_report
 .PHONY: doxygen doxygen_clean
 .PHONY: doc_functions doc_functions_clean
 .PHONY: list analyse_app_mapfile tree files
@@ -360,9 +360,6 @@ GCOVR_EXCLUDES   := $(EXCLUDE_TEST) $(EXCLUDE_TMD) $(EXCLUDE_UNITY) $(EXCLUDE_TE
 
 # Where gcovr looks for coverage data: Ceedling's own build, and the instrumented library's objects when there are any
 GCOVR_SEARCH     := test/build
-# Ceedling's test report for the last coverage run (report_tests_log_factory)
-TEST_REPORT_HTML      := test/build/artifacts/gcov/tests_report.html
-BADGE_OUTPUT_DIR      := ../.github/badges
 
 $(CEEDLING_COV_DIR):
 	@mkdir -p $(CEEDLING_COV_DIR)
@@ -372,13 +369,8 @@ cov_report: $(CEEDLING_COV_DIR)
 	@echo "--> Generating Code Coverage Report..."
 	@$(GCOVR_EXE) $(GCOVR_EXCLUDES) --root .. --txt-metric branch --merge-mode-functions=merge-use-line-0 --html-details --gcov-ignore-errors=no_working_dir_found -o $(CEEDLING_COV_DIR)/coverage.html $(GCOVR_SEARCH)
 	@$(GCOVR_EXE) $(GCOVR_EXCLUDES) --root .. --txt-metric branch --merge-mode-functions=merge-use-line-0 --cobertura-pretty --gcov-ignore-errors=no_working_dir_found --cobertura $(CEEDLING_COV_DIR)/example_cobertura.xml $(GCOVR_SEARCH)
-	@-$(MAKE) test_badges
 	@echo "--> Launching HTML..."
 	@-cd $(CEEDLING_COV_DIR) && $(OPEN_CMD) coverage.html 2>/dev/null || true
-
-# Parse test_report.html and generate test count badges
-test_badges:
-	@ruby ../scripts/generate_test_badge.rb $(TEST_REPORT_HTML) $(BADGE_OUTPUT_DIR) || echo "--> test_badges failed"
 
 # Cleans up any generated files from tests
 test_clean: 
@@ -539,12 +531,14 @@ release_package:
 ####################################################################################################
 # Documentation Generation
 ####################################################################################################
-# Find all C source files in multiple source directories (excluding test and FREERTOS)
-DOCUMENTABLE_C_FILES := $(shell find Src ../Common_Src ../xCOMMON_MODULES/Src -name '*.c' ! -path '*/test/*' ! -path '*/FREERTOS/*' 2>/dev/null)
-
+# Every C file of the project and the common modules. xargs batches the list (all at once is far over the
+# Windows command-line limit); only the tool's failure lines are shown, it prints several lines per file
 doc_functions:
 	@echo "Generating function documentation for all C files..."
-	@c_function_documenter $(DOCUMENTABLE_C_FILES)
+	@find Src ../Common_Src ../xCOMMON_MODULES/Src -name '*.c' ! -path '*/test/*' ! -path '*/FREERTOS/*' \
+	  ! -path '*/CRYPTO/BearSSL/*' ! -path '*/CRYPTO/micro-ecc/*' ! -path '*/CRYPTO/ED25519/*' \
+	  ! -path '*/JSON/tinyjson.c' ! -path '*/stm32g4xx/*' \
+	  | xargs -s 6000 c_function_documenter | grep -E 'Error|Failed' || true
 
 doc_functions_clean:
 	@echo "--> Cleaning function documentation files..."

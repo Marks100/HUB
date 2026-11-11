@@ -17,6 +17,7 @@
 #include "stm32f10x_flash.h"
 #include "stm32f10x_gpio.h"
 #include "stm32f10x_spi.h"
+#include "stm32f10x_tim.h"
 #include "TMD_TIME.h"
 #include "TMD_SYSTICK.h"
 #include "TMD_NVM.h"
@@ -29,6 +30,12 @@
 #include "TMD_UDS.h"
 #include "TMD_TJA1051.h"
 #include "TMD_MCP2515.h"
+#include "TMD_MBA.h"
+#include "TMD_PREEMPT.h"
+#include "TMD_STARTUP.h"
+#include "TMD_SH1106.h"
+#include "SH1106.h"
+#include "BOOT_HANDOFF.h"
 #include "SW_TEST_STUBS.h"
 #include "INTEGRATION_STUBS.h"
 
@@ -37,13 +44,19 @@
 ***************************************************************************************************/
 extern void app_main( void );                      /* main.c: the ECU's start, it returns */
 
-/* The ends of DATASET0's payload, which the APP linker script places in flash and TYRE_DATA.c reads. One byte each
-   here: an empty dataset, so TYRE_DATA_init() sees no valid data. */
-const u8_t __dataset0_code_start__ = 0u;
-const u8_t __dataset0_code_end__   = 0u;
-
-/* The start of the vector table, which app_main() hands to the vector table offset register */
-u32_t __isr_vector_start = 0u;
+/* DATASET0's payload as BM leaves it in flash (the layout of TYRE_DATA.h, format 2): two makes, three models, four year
+   ranges. The linker model puts it where the firmware reads it. */
+static const u8_t sw_test_dataset0_c[] =
+{
+    'T', 'P', 2u, 2u, 3u, 0u, 4u, 0u,                                   /* header: magic, format, 2 makes, 3 models, 4 year ranges */
+    2u, 1u,                                                             /* models per make: Audi 2, BMW 1 */
+    2u, 1u, 1u,                                                         /* year ranges per model: A3 2, A4 1, M3 1 */
+    'A', 'u', 'd', 'i', 0, 'B', 'M', 'W', 0,                            /* make names */
+    'A', '3', 0, 'A', '4', 0, 'M', '3', 0,                              /* model names */
+    103u, 112u, 23u, 22u,   113u, 120u, 24u, 23u,                       /* A3 2003 - 2012 and 2013 - 2020: front and rear in 0.1 bar */
+    108u, 115u, 22u, 21u,                                               /* A4 2008 - 2015 */
+    107u, 113u, 25u, 24u                                                /* M3 2007 - 2013 */
+};
 
 /***************************************************************************************************
 **                                  Private Function Prototypes                                   **
@@ -51,10 +64,11 @@ u32_t __isr_vector_start = 0u;
 static void        sw_test_models_init( void );
 static void        sw_test_models_tick( void );
 static void        sw_test_ecu_start( void );
+static void        sw_test_power_on( false_true_et blank_nvm );
 
 const TMD_INIT_cfg_st sw_test_init_cfg_g =
 {
-    .power_on_func_p    = vhw_power_on,
+    .power_on_func_p    = sw_test_power_on,
     .models_init_func_p = sw_test_models_init,
     .ecu_main_func_p    = sw_test_ecu_start
 };
@@ -116,7 +130,6 @@ static void sw_test_models_init( void )
     TMD_UDS_set_timeout( SW_TEST_TESTER_TIMEOUT_MS );
 
     /* Then the wiring between the models and the virtual STM32 */
-    TMD_CAN_register_sync_hook( vhw_sync );    /* a frame the firmware just requested is on the bus when a test looks */
 
     TMD_TJA1051_attach( TEST_BUS_TESTER, CAN_SIM_rxd );
     CAN_SIM_attach( TMD_TJA1051_attached_txd );
@@ -132,6 +145,17 @@ static void sw_test_models_init( void )
 
     TMD_NVM_set_address_base( NVM_BASE_ADDRESS );
     FLASH_SIM_set_fault_funcs( TMD_NVM_is_write_faulted, TMD_NVM_is_erase_faulted );
+
+    TMD_PREEMPT_init();                                         /* the interrupts run where the hardware asserts them, until a test chooses */
+
+    TMD_SH1106_init();                                          /* the OLED of the panel, on I2C1 */
+    TMD_SH1106_attach( I2C1, SH1106_I2C_ADDR_DEFAULT );
+
+    /* The board's pull-ups hold a released button HIGH, which a virtual pin cannot do by itself: a power on clears it to LOW */
+    GPIO_SIM_set_input( ONBOARD_BTN_PORT,       ONBOARD_BTN_PIN,       HIGH );
+    GPIO_SIM_set_input( PANEL_SELECT_BTN_PORT,  PANEL_SELECT_BTN_PIN,  HIGH );
+    GPIO_SIM_set_input( PANEL_CONFIRM_BTN_PORT, PANEL_CONFIRM_BTN_PIN, HIGH );
+    GPIO_SIM_set_input( PANEL_BACK_BTN_PORT,    PANEL_BACK_BTN_PIN,    HIGH );
 }
 
 /*!
@@ -148,6 +172,10 @@ static void sw_test_models_init( void )
 *****************************************************************************************************/
 static void sw_test_models_tick( void )
 {
+    vhw_sync();    /* the hardware catches up with what the firmware did since the last millisecond, and the interrupts it asks for run */
+
+    TIM_SIM_advance_us( 1000u, SystemCoreClock );    /* the timers count the millisecond, 72 MHz of it, and run their handlers */
+
     TMD_SYSTICK_tick();
     TMD_ERX_UDS_tick();
     TMD_ERX_tick();
@@ -159,20 +187,43 @@ static void sw_test_models_tick( void )
 /*!
 ****************************************************************************************************
 *
-*   \brief         The ECU's start: app_main(), and then the virtual STM32 carries what it did to the pins to their models
+*   \brief         The ECU's start: what BM leaves for it, app_main(), and then the virtual STM32 carries what it did to the pins
+*                  to their models
 *
 *   \author        mstewart
 *
 *   \return        none
 *
-*   \note          A pin the firmware drove reaches its listener on the next sync of the virtual STM32. Without this, the
+*   \note          BM finds DATASET0 valid when there is a payload in it, and says so in the handoff RAM, which a restart keeps.
+*                  A pin the firmware drove reaches its listener on the next sync of the virtual STM32. Without this, the
 *                  ERX supply the firmware switched on at start-up would reach the ERXs only when the first millisecond goes by.
 *
 *****************************************************************************************************/
 static void sw_test_ecu_start( void )
 {
+    BOOT_HANDOFF_init();
+    BOOT_HANDOFF_set_dataset_valid_mask( ( TMD_MBA_is_dataset0_present() == TRUE ) ? 1u : 0u );    /* bit 0: DATASET0 */
+
     app_main();
-    vhw_sync();
+}
+
+/*!
+****************************************************************************************************
+*
+*   \brief         Power the ECU on: the firmware's RAM, the virtual STM32, and DATASET0 with the tyre table the factory flashes
+*
+*   \author        mstewart
+*
+*   \param[in]     blank_nvm    TRUE: a new ECU. FALSE: a restart, which keeps whatever is in its flash
+*
+*   \return        none
+*
+*****************************************************************************************************/
+static void sw_test_power_on( false_true_et blank_nvm )
+{
+    TMD_STARTUP_init_ram();    /* the firmware's RAM as the startup code leaves it, before anything of the firmware runs */
+    vhw_power_on( blank_nvm );
+    TMD_MBA_power_on( blank_nvm, sw_test_dataset0_c, (u16_t)sizeof( sw_test_dataset0_c ) );
 }
 
 /****************************** END OF FILE *******************************************************/

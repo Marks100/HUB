@@ -31,8 +31,7 @@
 /*!
 ****************************************************************************************************
 *
-*   \brief         Every test case starts as a virgin ECU, with the button released: the virtual pin has no pull-up, so
-*                  the test drives it HIGH as the board's pull-up does
+*   \brief         Every test case starts as a virgin ECU, with the button released: the board's pull-up (SW_TEST_STUBS.c)
 *
 *   \author        mstewart
 *
@@ -43,7 +42,6 @@ void setUp( void )
 {
     TMD_INIT_init( &sw_test_init_cfg_g );
 
-    GPIO_SIM_set_input( ONBOARD_BTN_PORT, ONBOARD_BTN_PIN, HIGH );
     TMD_TIME_advance_time_ms( TEST_BUTTON_SETTLE_MS );
 
     TEST_TIMING_START();

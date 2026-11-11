@@ -183,9 +183,9 @@ LDFLAGS := \
 ####################################################################################################
 # Targets
 ####################################################################################################
-.PHONY: fbl_build fbl_clean fbl_rebuild basic_memory_stats full_memory_stats memory_stats autoversion
+.PHONY: fbl_build fbl_clean fbl_rebuild memory_stats object_stats autoversion
 
-fbl_build: autoversion $(FBL_ELF_FILE) basic_memory_stats
+fbl_build: autoversion $(FBL_ELF_FILE) memory_stats
 
 fbl_rebuild: fbl_clean fbl_build
 
@@ -239,12 +239,12 @@ $(FBL_MAP_FILE): $(FBL_ELF_FILE)
 # UPDATE_README=y refreshes them locally.
 README_ARGS := $(if $(or $(CI),$(UPDATE_README)),--readme ../README.md --tag FBL)
 
-basic_memory_stats: $(FBL_ELF_FILE)
+memory_stats: $(FBL_ELF_FILE)
 	@$(BUILD_ENV_BIN)/memory_analyser_stm32 $(FBL_MAP_FILE) $(FBL_ELF_FILE) $(FBL_LINKER_SCRIPT) --out $(FBL_MEM_OUTPUT_FILE) --csv $(FBL_MEM_CSV_FILE) $(README_ARGS)
 
-full_memory_stats: $(FBL_MAP_FILE)
-	@$(BUILD_ENV_BIN)/memory_analyser_stm32 $(FBL_MAP_FILE) $(FBL_ELF_FILE) $(FBL_LINKER_SCRIPT) --out $(FBL_MEM_OUTPUT_FILE) --csv $(FBL_MEM_CSV_FILE) $(README_ARGS)
-
-memory_stats: basic_memory_stats
+# Size of every function in every object, for finding what to trim
+object_stats: $(FBL_ELF_FILE)
+	@$(BUILD_ENV_BIN)/obj_size_analyser $(OBJ_DIR) --out $(BUILD_OUT_DIR)/object_sizes.txt > /dev/null
+	@echo "--> Per-function sizes written to $(BUILD_OUT_DIR)/object_sizes.txt"
 
 -include $(FBL_C_DEPS)

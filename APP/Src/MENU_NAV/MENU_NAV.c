@@ -769,19 +769,28 @@ STATIC const MENU_NAV_list_st* menu_nav_active_list_p = NULL_P;
 /*!
 ****************************************************************************************************
 *
-*   \brief         Select the starting screen
+*   \brief         Select the starting screen, with every list at its top
 *
 *   \author        MS
 *
 *   \return        none
 *
-*   \note          Goes through MENU_NAV_goto() rather than assigning directly, so arriving at the
+*   \note          Clears where the cursor sits on every list and the tyre make, model and year range
+*                  last chosen, so a start never depends on the RAM having been zeroed before it.
+*
+*                  Goes through MENU_NAV_goto() rather than assigning directly, so arriving at the
 *                  first screen is not a special case - it runs that screen's on_enter_func_p the
 *                  same way every later arrival does.
 *
 ***************************************************************************************************/
 void MENU_NAV_init( void )
 {
+    STDC_memset( menu_nav_pos_s, 0u, (u16_t)sizeof( menu_nav_pos_s ) );
+
+    menu_nav_tyre_make_s    = 0u;
+    menu_nav_tyre_model_s   = 0u;
+    menu_nav_tyre_variant_s = 0u;
+
     MENU_NAV_goto( MENU_NAV_SCREEN_HOME );
 }
 

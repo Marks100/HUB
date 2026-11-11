@@ -41,7 +41,7 @@ extern const TMD_INIT_cfg_st sw_test_init_cfg_g;    /* power on, models, blank f
 /***************************************************************************************************
 **                                    Function Prototypes                                        **
 ***************************************************************************************************/
-/* None: a test puts an ERX on the bus with TMD_ERX_place_instance( APP_ISO_..., TMD_ERX_PORT_A or B ), and takes it off and puts it back
+/* A test puts an ERX on the bus with TMD_ERX_place_instance( APP_ISO_..., TMD_ERX_PORT_A or B ), and takes it off and puts it back
    with TMD_ERX_unplug_instance() / TMD_ERX_plug_in_instance() on TMD_ERX_find_instance( APP_ISO_... ). The HUB powers it. */
 
 #endif /* SW_TEST_STUBS_H */
