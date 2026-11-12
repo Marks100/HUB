@@ -66,12 +66,9 @@
     - -:../../xCOMMON_MODULES/Src/CRYPTO/BearSSL/**
     - -:../../xCOMMON_MODULES/Src/CRYPTO/micro-ecc/**
     - -:../../xCOMMON_MODULES/Src/CRYPTO/ED25519/**
-  # Linked into every test, and on the include path: sw_stubs (the clock's list and the models every test's setUp() starts a
-  # virgin ECU with are the project's own, in SW_TEST_STUBS.c) and the test models of xCOMMON_MODULES: the CAN bus with
-  # its debug prints, the transceiver and controller models, and the clock, ECU start and diagnostic models.
-  # The virtual STM32 (xCOMMON VHW_STM32F10X) is in the library
-  :support:
-    - sw_stubs
+  # The test models of xCOMMON_MODULES (the CAN bus with its debug prints, the transceiver and controller models, and the
+  # clock, ECU start and diagnostic models) are in the library with the virtual STM32 (build_system/lib_sources.txt), built once:
+  # only their headers are here
     - ../../xCOMMON_MODULES/test/support/models/TMD_CAN
     - ../../xCOMMON_MODULES/test/support/models/TMD_DEBUG
     - ../../xCOMMON_MODULES/test/support/models/TMD_TJA1051
@@ -87,6 +84,9 @@
     - ../../xCOMMON_MODULES/test/support/models/TMD_SH1106
     - ../../xCOMMON_MODULES/test/support/models/TMD_MBA
     - ../../xCOMMON_MODULES/test/support/models/TMD_STARTUP
+    # sw_stubs: the clock's list and the models every test's setUp() starts a virgin ECU with are the project's own, in
+    # SW_TEST_STUBS.c, which is in the library too
+    - sw_stubs
 
 # Must match COMMON_CFLAGS and APP_CFLAGS in rules.mk, which the library is built with. TEST is not defined: the library is built without it, so STATIC is static
 # in the library and a test that saw it empty would disagree about the headers

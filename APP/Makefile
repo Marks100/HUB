@@ -403,7 +403,7 @@ test_unit_all:
 	@$(MAKE) cov_report
 
 # All software tests (no coverage: see %.test)
-test_sw_all: test_clean
+test_sw_all:
 	@echo "Running all software tests"
 	@cd test && ceedling --project=$(SW_TEST_YML) test:all
 

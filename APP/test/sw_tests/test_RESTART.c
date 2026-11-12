@@ -20,7 +20,6 @@
 #include "TMD_INIT.h"
 #include "TMD_TIME.h"
 
-#include "SW_TEST_PANEL.h"
 #include "SW_TEST_STUBS.h"
 
 #define TEST_BOOT_SETTLE_MS     ( 500u )    /* the first screen is drawn */

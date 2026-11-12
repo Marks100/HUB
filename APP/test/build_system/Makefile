@@ -49,7 +49,9 @@ OBJS    := $(addprefix $(BUILD)/obj/,$(SRCS:.c=.o))
 # a place the firmware can be interrupted. Everything else is firmware:
 #   - its RAM goes to the sections TMD_STARTUP resets at every power on (fw_ram_sections.sh)
 #   - every function of it reports its entry, which is where TMD_TIME moves the clock and ticks the models (-finstrument-functions)
+#   The models are hardware, and so is the test's own start of the ECU (sw_stubs: it is the models callback, which must not report its own entry)
 HARDWARE_DIR  := xCOMMON_MODULES/test/support
+STUBS_DIR     := APP/test/sw_stubs
 MINGW_OBJCOPY ?= $(MINGW)-objcopy
 MINGW_OBJDUMP ?= $(MINGW)-objdump
 
@@ -66,7 +68,7 @@ HOST_CFLAGS := \
 	-fprofile-arcs \
 	-ftest-coverage \
 	-finstrument-functions \
-	-finstrument-functions-exclude-file-list=$(HARDWARE_DIR)
+	-finstrument-functions-exclude-file-list=$(HARDWARE_DIR),$(STUBS_DIR)
 
 CFLAGS := $(COMMON_CFLAGS) $(APP_CFLAGS) $(HOST_CFLAGS) -MMD -MP $(addprefix -I$(ROOT)/,$(INC_REL))
 
@@ -84,7 +86,7 @@ $(LIB): $(OBJS)
 $(BUILD)/obj/%.o: $(ROOT)/%.c Makefile lib_sources.txt lib_includes.txt fw_ram_sections.sh
 	@mkdir -p $(dir $@)
 	@$(MINGW_CC) $(CFLAGS) -c $< -o $@
-	@$(if $(filter $(HARDWARE_DIR)/%,$*),,OBJCOPY=$(MINGW_OBJCOPY) OBJDUMP=$(MINGW_OBJDUMP) sh fw_ram_sections.sh $@)
+	@$(if $(filter $(HARDWARE_DIR)/% $(STUBS_DIR)/%,$*),,OBJCOPY=$(MINGW_OBJCOPY) OBJDUMP=$(MINGW_OBJDUMP) sh fw_ram_sections.sh $@)
 
 clean:
 	@rm -rf $(BUILD)/obj $(BUILD)/*.a

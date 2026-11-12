@@ -190,5 +190,4 @@ void test_the_real_world_time_goes_on_from_the_date_a_test_set( void )
     TEST_ASSERT_TRUE( (u32_t)TMD_TIME_get_real_world_time() >= ( TEST_REAL_WORLD_S + 90u ) );
 }
 
-
 /****************************** END OF FILE *******************************************************/

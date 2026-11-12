@@ -128,4 +128,30 @@ void test_the_ecu_run_time_keeps_up_with_the_clock( void )
     TEST_ASSERT_UINT32_WITHIN( 2u * SCHED_PERIOD_10MS, clock_ms, run_time_ms );
 }
 
+/*!
+****************************************************************************************************
+*
+*   \brief         Verify the ECU's run time still keeps up with the clock over ten minutes: a tick lost now and then, too few to show
+*                  in ten seconds, would add up to more than a period. It is also the long run the speed of the tests is measured on
+*
+*   \author        mstewart
+*
+*   \return        none
+*
+*****************************************************************************************************/
+void test_the_ecu_run_time_keeps_up_with_the_clock_for_ten_minutes( void )
+{
+    const u64_t start_ns = TMD_TIME_get_current_time_ns();
+    const u32_t start_ms = TIME_get_cumulative_run_time_ms();
+    u32_t       clock_ms;
+    u32_t       run_time_ms;
+
+    TMD_TIME_advance_time_s( 600u );
+
+    clock_ms    = (u32_t)( ( TMD_TIME_get_current_time_ns() - start_ns ) / 1000000u );
+    run_time_ms = TIME_get_cumulative_run_time_ms() - start_ms;
+
+    TEST_ASSERT_UINT32_WITHIN( 2u * SCHED_PERIOD_10MS, clock_ms, run_time_ms );
+}
+
 /****************************** END OF FILE *******************************************************/

@@ -4,7 +4,7 @@
 *
 *   \details    DATASET0 as BM leaves it (SW_TEST_STUBS.c: two makes, three models, four year ranges, and the valid bit in
 *               the handoff RAM) read by TYRE_DATA, and the menu that lists it on the panel's OLED. A test drives the panel as a
-*               user does (SW_TEST_PANEL.h) and looks at the display. Every test case starts as a virgin ECU (setUp, SW_TEST_STUBS.c).
+*               user does (SW_TEST_STUBS.h) and looks at the display. Every test case starts as a virgin ECU (setUp, SW_TEST_STUBS.c).
 */
 #include "unity.h"
 #include "test_timing.h"
@@ -18,7 +18,6 @@
 #include "TMD_MBA.h"
 #include "TMD_TIME.h"
 
-#include "SW_TEST_PANEL.h"
 #include "SW_TEST_STUBS.h"
 
 #define TEST_BOOT_SETTLE_MS     ( 500u )    /* the first screen is drawn */

@@ -19,6 +19,7 @@
 #include "STDC.h"
 #include "TMD_INIT.h"
 #include "TMD_CAN.h"
+#include "TMD_SH1106.h"
 
 /***************************************************************************************************
 **                                       Definitions                                              **
@@ -34,6 +35,16 @@
 #define SW_TEST_TESTER_RESPONSE_MAX_LEN ( 128u )    /* what a test's buffer for an answer has to hold */
 
 /***************************************************************************************************
+**                                    Data Types and Enums                                        **
+***************************************************************************************************/
+typedef enum
+{
+    SW_TEST_PANEL_SELECT = 0u,
+    SW_TEST_PANEL_CONFIRM,
+    SW_TEST_PANEL_BACK
+} SW_TEST_PANEL_button_et;
+
+/***************************************************************************************************
 **                                    Exported Globals                                            **
 ***************************************************************************************************/
 extern const TMD_INIT_cfg_st sw_test_init_cfg_g;    /* power on, models, blank flash, app_main(): a virgin ECU */
@@ -43,6 +54,19 @@ extern const TMD_INIT_cfg_st sw_test_init_cfg_g;    /* power on, models, blank f
 ***************************************************************************************************/
 /* A test puts an ERX on the bus with TMD_ERX_place_instance( APP_ISO_..., TMD_ERX_PORT_A or B ), and takes it off and puts it back
    with TMD_ERX_unplug_instance() / TMD_ERX_plug_in_instance() on TMD_ERX_find_instance( APP_ISO_... ). The HUB powers it. */
+
+/* The HUB's panel as a user works it: the three push buttons are pins of the virtual STM32 and the knob is the count of TIM4, which the
+   firmware's encoder reads. What the user sees is the OLED, the TMD_SH1106 model on I2C1. A test presses, turns, and looks at the screen. */
+void        SW_TEST_PANEL_press( SW_TEST_PANEL_button_et button );    /* press and release: a short press */
+void        SW_TEST_PANEL_turn_knob_clockwise( void );                /* one detent */
+void        SW_TEST_PANEL_turn_knob_to( const char* text_p );         /* turn the knob until the cursor of the list is on that row, or the list has gone round */
+const char* SW_TEST_PANEL_screen_message( const char* what_p );       /* what was looked for and what the screen shows, kept until the next call: the message of a failed assertion */
+
+/* The assertions are macros, so a failure names the line of the test, and the library needs no Unity */
+#define SW_TEST_PANEL_assert_on_screen( text_p )        TEST_ASSERT_TRUE_MESSAGE( TMD_SH1106_find_text( ( text_p ), NULL_P, NULL_P ), SW_TEST_PANEL_screen_message( text_p ) )
+#define SW_TEST_PANEL_assert_not_on_screen( text_p )    TEST_ASSERT_FALSE_MESSAGE( TMD_SH1106_find_text( ( text_p ), NULL_P, NULL_P ), SW_TEST_PANEL_screen_message( text_p ) )
+#define SW_TEST_PANEL_assert_cursor_on( text_p )        TEST_ASSERT_TRUE_MESSAGE( TMD_SH1106_find_marked_text( ( text_p ), NULL_P ), SW_TEST_PANEL_screen_message( text_p ) )    /* the row is on the screen with the cursor in front of it */
+#define SW_TEST_PANEL_move_the_cursor_to( text_p )      do { SW_TEST_PANEL_turn_knob_to( text_p ); SW_TEST_PANEL_assert_cursor_on( text_p ); } while( 0 )
 
 #endif /* SW_TEST_STUBS_H */
 
