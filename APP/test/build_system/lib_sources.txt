@@ -217,6 +217,7 @@ xCOMMON_MODULES/test/support/models/TMD_INIT/TMD_INIT.c
 xCOMMON_MODULES/test/support/models/TMD_MBA/TMD_MBA.c
 xCOMMON_MODULES/test/support/models/TMD_MCP2515/TMD_MCP2515.c
 xCOMMON_MODULES/test/support/models/TMD_NVM/TMD_NVM.c
+xCOMMON_MODULES/test/support/models/TMD_PANEL/TMD_PANEL.c
 xCOMMON_MODULES/test/support/models/TMD_SH1106/TMD_SH1106.c
 xCOMMON_MODULES/test/support/models/TMD_STARTUP/TMD_STARTUP.c
 xCOMMON_MODULES/test/support/models/TMD_SYSTICK/TMD_SYSTICK.c

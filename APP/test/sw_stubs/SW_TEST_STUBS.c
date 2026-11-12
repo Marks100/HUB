@@ -1,4 +1,4 @@
-﻿/*! \file
+/*! \file
 *               Author: mstewart
 *   \brief      Software tests - how every test starts the ECU
 *
@@ -10,8 +10,6 @@
 /***************************************************************************************************
 **                                        Includes                                                **
 ***************************************************************************************************/
-#include <stdio.h>
-
 #include "STDC.h"
 #include "HAL_config.h"
 #include "vhw.h"
@@ -23,6 +21,7 @@
 #include "TMD_TIME.h"
 #include "TMD_SYSTICK.h"
 #include "TMD_NVM.h"
+#include "TMD_PANEL.h"
 #include "TMD_ERX.h"
 #include "TMD_ERX_UDS.h"
 #include "FLS_STM32F1.h"
@@ -39,22 +38,6 @@
 #include "BOOT_HANDOFF.h"
 #include "SW_TEST_STUBS.h"
 #include "INTEGRATION_STUBS.h"
-
-/***************************************************************************************************
-**                                       Definitions                                              **
-***************************************************************************************************/
-#define SW_TEST_PANEL_PRESS_MS          ( 100u )    /* a short press, well under a long one */
-#define SW_TEST_PANEL_DETENT_COUNTS     ( 4u )      /* TIM4 decodes x4, hmi_sh1106_cfg_s.enc_counts_per_detent */
-#define SW_TEST_PANEL_DETENT_SETTLE_MS  ( 100u )
-#define SW_TEST_PANEL_MAX_DETENTS       ( 40u )     /* more than any list of the menu is long */
-
-#define SW_TEST_PANEL_SCREEN_ROWS       ( 8u )
-#define SW_TEST_PANEL_SCREEN_ROW_LEN    ( 24u )
-
-/***************************************************************************************************
-**                                    Private Variables                                           **
-***************************************************************************************************/
-static char sw_test_panel_message_s[( SW_TEST_PANEL_SCREEN_ROWS * ( SW_TEST_PANEL_SCREEN_ROW_LEN + 1u ) ) + 48u];    /* what the screen showed, for a failed assertion */
 
 /***************************************************************************************************
 **                                    Exported Globals                                           **
@@ -88,7 +71,7 @@ static const u8_t sw_test_dataset0_c[] =
 
 /* The models are ticked at every this many functions the firmware enters; the clock still moves at every one, so the time is the same.
    1 is every function, the finest; more is a faster run, and an interrupt that falls due waits for the next tick */
-#define SW_TEST_ENTRIES_PER_TICK    ( 4u )
+#define SW_TEST_ENTRIES_PER_TICK    ( 8u )
 
 static void        sw_test_models_init( void );
 static void        sw_test_tick_the_models( void );
@@ -106,116 +89,7 @@ const TMD_INIT_cfg_st sw_test_init_cfg_g =
 **                                  Public Functions                                              **
 ***************************************************************************************************/
 
-/*!
-****************************************************************************************************
-*
-*   \brief         Press and release a push button of the panel
-*
-*   \author        mstewart
-*
-*   \param[in]     button    Which one
-*
-*   \return        none
-*
-*   \note          The buttons pull their pin LOW when pressed
-*
-*****************************************************************************************************/
-void SW_TEST_PANEL_press( SW_TEST_PANEL_button_et button )
-{
-    GPIO_TypeDef* port_p = PANEL_SELECT_BTN_PORT;
-    u16_t         pin    = PANEL_SELECT_BTN_PIN;
-
-    if( button == SW_TEST_PANEL_CONFIRM )
-    {
-        port_p = PANEL_CONFIRM_BTN_PORT;
-        pin    = PANEL_CONFIRM_BTN_PIN;
-    }
-    else if( button == SW_TEST_PANEL_BACK )
-    {
-        port_p = PANEL_BACK_BTN_PORT;
-        pin    = PANEL_BACK_BTN_PIN;
-    }
-    else
-    {
-        /* SELECT, as above */
-    }
-
-    GPIO_SIM_set_input( port_p, pin, LOW );
-    TMD_TIME_advance_time_ms( SW_TEST_PANEL_PRESS_MS );
-    GPIO_SIM_set_input( port_p, pin, HIGH );
-    TMD_TIME_advance_time_ms( SW_TEST_PANEL_PRESS_MS );
-}
-
-/*!
-****************************************************************************************************
-*
-*   \brief         Turn the knob a detent clockwise
-*
-*   \author        mstewart
-*
-*   \return        none
-*
-*****************************************************************************************************/
-void SW_TEST_PANEL_turn_knob_clockwise( void )
-{
-    TIM_SIM_set_counter( TIM4, TIM_GetCounter( TIM4 ) + SW_TEST_PANEL_DETENT_COUNTS );
-    TMD_TIME_advance_time_ms( SW_TEST_PANEL_DETENT_SETTLE_MS );
-}
-
-/*!
-****************************************************************************************************
-*
-*   \brief         Turn the knob until the cursor of the list is on a row
-*
-*   \author        mstewart
-*
-*   \param[in]     text_p    The row
-*
-*   \return        none
-*
-*   \note          Where the cursor starts is not the test's business: the list wraps round. It stops when the list has gone
-*                  round and the row is not there, and the assertion of the test says so.
-*
-*****************************************************************************************************/
-void SW_TEST_PANEL_turn_knob_to( const char* text_p )
-{
-    u8_t detents = 0u;
-
-    while( ( TMD_SH1106_find_marked_text( text_p, NULL_P ) == FALSE ) && ( detents < SW_TEST_PANEL_MAX_DETENTS ) )
-    {
-        SW_TEST_PANEL_turn_knob_clockwise();
-        detents++;
-    }
-}
-
-/*!
-****************************************************************************************************
-*
-*   \brief         The message of an assertion about the screen: what was looked for, and what the screen shows
-*
-*   \author        mstewart
-*
-*   \param[in]     what_p    What the test looked for
-*
-*   \return        The message, kept until the next call
-*
-*****************************************************************************************************/
-const char* SW_TEST_PANEL_screen_message( const char* what_p )
-{
-    char  row[SW_TEST_PANEL_SCREEN_ROW_LEN + 1u];
-    u32_t length = 0u;
-    u8_t  page;
-
-    length += (u32_t)snprintf( &sw_test_panel_message_s[length], sizeof( sw_test_panel_message_s ) - length, "%s, screen:", what_p );
-
-    for( page = 0u; page < SW_TEST_PANEL_SCREEN_ROWS; page++ )
-    {
-        TMD_SH1106_read_page_text( page, row, (u16_t)sizeof( row ) );
-        length += (u32_t)snprintf( &sw_test_panel_message_s[length], sizeof( sw_test_panel_message_s ) - length, "|%s", row );
-    }
-
-    return( sw_test_panel_message_s );
-}
+/* None */
 
 /***************************************************************************************************
 **                                  Private Functions                                             **
@@ -255,6 +129,16 @@ static void sw_test_models_init( void )
         .exchange    = TMD_MCP2515_spi_byte
     };
 
+    /* The pins are calls into the virtual STM32 (GPIOA is its smart register), so this cannot be static const */
+    const TMD_PANEL_config_st panel_cfg =
+    {
+        .button            = { { PANEL_SELECT_BTN_PORT,  PANEL_SELECT_BTN_PIN },
+                               { PANEL_CONFIRM_BTN_PORT, PANEL_CONFIRM_BTN_PIN },
+                               { PANEL_BACK_BTN_PORT,    PANEL_BACK_BTN_PIN } },
+        .knob_timer_p      = TIM4,
+        .counts_per_detent = 4u      /* TIM4 decodes x4, hmi_sh1106_cfg_s.enc_counts_per_detent */
+    };
+
     /* Every model first: the inits clear what was registered with the model before, so nothing is wired yet */
     TMD_TIME_init( SW_TEST_NS_PER_ENTRY, SW_TEST_ENTRIES_PER_TICK, sw_test_tick_the_models );    /* every model acts as the clock moves */
     TMD_SYSTICK_init( vhw_systick_read_regs, &SystemCoreClock, vhw_systick_set_pending );    /* the clock's address: the firmware sets it up after this */
@@ -262,7 +146,6 @@ static void sw_test_models_init( void )
     TMD_TJA1051_reset();
     TMD_MCP2515_reset();
     TMD_NVM_init( &nvm_cfg );
-    TMD_ERX_UDS_init();                  /* no ERX on the buses: a test adds the ones it needs */
     TMD_ERX_init();
     TMD_CANTP_init( &tester_cfg );       /* the tester on CAN1, at the ECU's own UDS server: a test points it at another node with TMD_CANTP_set_ids() */
     TMD_UDS_init();
@@ -288,11 +171,10 @@ static void sw_test_models_init( void )
     TMD_SH1106_init();                                          /* the OLED of the panel, on I2C1 */
     TMD_SH1106_attach( I2C1, SH1106_I2C_ADDR_DEFAULT );
     
+    TMD_PANEL_init( &panel_cfg );                               /* the buttons and the knob of the panel, released */
+
     /* The board's pull-ups hold a released button HIGH, which a virtual pin cannot do by itself: a power on clears it to LOW */
-    GPIO_SIM_set_input( ONBOARD_BTN_PORT,       ONBOARD_BTN_PIN,       HIGH );
-    GPIO_SIM_set_input( PANEL_SELECT_BTN_PORT,  PANEL_SELECT_BTN_PIN,  HIGH );
-    GPIO_SIM_set_input( PANEL_CONFIRM_BTN_PORT, PANEL_CONFIRM_BTN_PIN, HIGH );
-    GPIO_SIM_set_input( PANEL_BACK_BTN_PORT,    PANEL_BACK_BTN_PIN,    HIGH );
+    GPIO_SIM_set_input( ONBOARD_BTN_PORT, ONBOARD_BTN_PIN, HIGH );
 }
 
 /*!
@@ -315,7 +197,6 @@ static void sw_test_tick_the_models( void )
 {
     TMD_SYSTICK_tick();   /* the scheduler's period: SysTick goes pending */
     TMD_CAN_tick();       /* the frames that have crossed the bus by now reach their end */
-    TMD_ERX_UDS_tick();
     TMD_ERX_tick();
     TMD_NVM_tick();
     TMD_CANTP_tick();

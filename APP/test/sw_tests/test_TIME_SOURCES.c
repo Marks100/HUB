@@ -185,7 +185,7 @@ void test_the_real_world_time_goes_on_from_the_date_a_test_set( void )
 
     TEST_ASSERT_EQUAL_UINT32( TEST_REAL_WORLD_S + 90u, (u32_t)TMD_TIME_get_real_world_time() );
 
-    TMD_INIT_restart_ecu( NON_VIRGIN );
+    TMD_INIT_restart_ecu();
 
     TEST_ASSERT_TRUE( (u32_t)TMD_TIME_get_real_world_time() >= ( TEST_REAL_WORLD_S + 90u ) );
 }

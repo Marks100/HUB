@@ -76,6 +76,7 @@
     - ../../xCOMMON_MODULES/test/support/models/TMD_TIME
     - ../../xCOMMON_MODULES/test/support/models/TMD_SYSTICK
     - ../../xCOMMON_MODULES/test/support/models/TMD_NVM
+    - ../../xCOMMON_MODULES/test/support/models/TMD_PANEL
     - ../../xCOMMON_MODULES/test/support/models/TMD_ERX
     - ../../xCOMMON_MODULES/test/support/models/TMD_GPIO
     - ../../xCOMMON_MODULES/test/support/models/TMD_INIT

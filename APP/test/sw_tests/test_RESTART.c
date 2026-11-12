@@ -15,14 +15,12 @@
 
 #include "INTEGRATION_STUBS.h"
 #include "BOOT_HANDOFF.h"
-#include "MENU_NAV.h"
 
 #include "TMD_INIT.h"
+#include "TMD_PANEL.h"
 #include "TMD_TIME.h"
 
 #include "SW_TEST_STUBS.h"
-
-#define TEST_BOOT_SETTLE_MS     ( 500u )    /* the first screen is drawn */
 
 /*!
 ****************************************************************************************************
@@ -37,7 +35,7 @@
 void setUp( void )
 {
     TMD_INIT_init( &sw_test_init_cfg_g );
-    TMD_TIME_advance_time_ms( TEST_BOOT_SETTLE_MS );
+    TMD_TIME_advance_time_ms( SW_TEST_BOOT_SETTLE_MS );
 
     TEST_TIMING_START();
 }
@@ -50,23 +48,8 @@ void tearDown( void )
 /*!
 ****************************************************************************************************
 *
-*   \brief         Restart the ECU, keeping its flash, and let the first screen be drawn
-*
-*   \author        mstewart
-*
-*   \return        none
-*
-*****************************************************************************************************/
-static void test_restart( void )
-{
-    TMD_INIT_restart_ecu( NON_VIRGIN );
-    TMD_TIME_advance_time_ms( TEST_BOOT_SETTLE_MS );
-}
-
-/*!
-****************************************************************************************************
-*
-*   \brief         Verify a variable that starts at zero is zero after a restart: the fan speed, which nothing in the start-up sets
+*   \brief         Verify a variable that starts at zero is zero after a restart: the fan speed, which nothing in the start-up sets.
+*                  The user turns it up to 15 %, and after the restart the screen shows 0 % again
 *
 *   \author        mstewart
 *
@@ -75,12 +58,23 @@ static void test_restart( void )
 *****************************************************************************************************/
 void test_a_restart_zeroes_a_variable_the_startup_code_zeroes( void )
 {
-    MENU_NAV_set_fan_speed_pct( 55u );
-    TEST_ASSERT_EQUAL_UINT8( 55u, MENU_NAV_get_fan_speed_pct() );
+    TMD_PANEL_press( TMD_PANEL_SELECT );    /* home to the main menu */
+    TMD_PANEL_move_the_cursor_to( "Fan Speed" );
+    TMD_PANEL_press( TMD_PANEL_SELECT );
+    TMD_PANEL_assert_on_screen( "0%" );
 
-    test_restart();
+    TMD_PANEL_turn_knob_clockwise();
+    TMD_PANEL_turn_knob_clockwise();
+    TMD_PANEL_turn_knob_clockwise();
+    TMD_PANEL_assert_on_screen( "15%" );
 
-    TEST_ASSERT_EQUAL_UINT8( 0u, MENU_NAV_get_fan_speed_pct() );
+    TMD_INIT_restart_ecu_and_settle( SW_TEST_BOOT_SETTLE_MS );
+
+    TMD_PANEL_press( TMD_PANEL_SELECT );
+    TMD_PANEL_move_the_cursor_to( "Fan Speed" );
+    TMD_PANEL_press( TMD_PANEL_SELECT );
+    TMD_PANEL_assert_on_screen( "0%" );
+    TMD_PANEL_assert_not_on_screen( "15%" );
 }
 
 /*!
@@ -96,21 +90,21 @@ void test_a_restart_zeroes_a_variable_the_startup_code_zeroes( void )
 *****************************************************************************************************/
 void test_a_restart_gives_an_initialised_variable_its_initial_value( void )
 {
-    SW_TEST_PANEL_press( SW_TEST_PANEL_SELECT );    /* home to the main menu */
-    SW_TEST_PANEL_move_the_cursor_to( "Brightness" );
-    SW_TEST_PANEL_press( SW_TEST_PANEL_SELECT );
-    SW_TEST_PANEL_assert_on_screen( "75%" );
+    TMD_PANEL_press( TMD_PANEL_SELECT );    /* home to the main menu */
+    TMD_PANEL_move_the_cursor_to( "Brightness" );
+    TMD_PANEL_press( TMD_PANEL_SELECT );
+    TMD_PANEL_assert_on_screen( "75%" );
 
-    SW_TEST_PANEL_turn_knob_clockwise();
-    SW_TEST_PANEL_turn_knob_clockwise();
-    SW_TEST_PANEL_assert_on_screen( "85%" );
+    TMD_PANEL_turn_knob_clockwise();
+    TMD_PANEL_turn_knob_clockwise();
+    TMD_PANEL_assert_on_screen( "85%" );
 
-    test_restart();
+    TMD_INIT_restart_ecu_and_settle( SW_TEST_BOOT_SETTLE_MS );
 
-    SW_TEST_PANEL_press( SW_TEST_PANEL_SELECT );
-    SW_TEST_PANEL_move_the_cursor_to( "Brightness" );
-    SW_TEST_PANEL_press( SW_TEST_PANEL_SELECT );
-    SW_TEST_PANEL_assert_on_screen( "75%" );
+    TMD_PANEL_press( TMD_PANEL_SELECT );
+    TMD_PANEL_move_the_cursor_to( "Brightness" );
+    TMD_PANEL_press( TMD_PANEL_SELECT );
+    TMD_PANEL_assert_on_screen( "75%" );
 }
 
 /*!
@@ -128,7 +122,7 @@ void test_the_shared_ram_survives_a_restart( void )
 {
     BOOT_HANDOFF_set_fbl_request( TRUE );
 
-    test_restart();
+    TMD_INIT_restart_ecu_and_settle( SW_TEST_BOOT_SETTLE_MS );
 
     TEST_ASSERT_EQUAL( TRUE, BOOT_HANDOFF_get_fbl_request() );
 }

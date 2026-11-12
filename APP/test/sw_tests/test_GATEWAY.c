@@ -151,7 +151,7 @@ void test_the_gateway_forwards_again_after_the_ecu_restarts( void )
     TMD_CAN_message_st request;
     TMD_CAN_message_st sent;
 
-    TMD_INIT_restart_ecu( NON_VIRGIN );
+    TMD_INIT_restart_ecu();
 
     test_make_frame( &request, TEST_REQUEST_ID, data );
     TMD_CAN_inject_frame_to_ecu( TEST_BUS_TESTER, &request );

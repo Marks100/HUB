@@ -3,8 +3,7 @@
 #  static library, for the end to end tests, which link it to run the real modules on the Windows host.
 #
 #    mingw32-make -C APP/test/build_system -j8       build APP/test/build/artifacts/libHUB_APP_x86.a
-#                                           (objects in APP/test/build/artifacts/obj), always built with coverage
-#                                           instrumentation and without optimisation: gcov counts lines accurately only at -O0
+#                                           (objects in APP/test/build/artifacts/obj)
 #    mingw32-make -C APP/test/build_system clean            removes it
 #
 #  What goes in is decided by two text files, one entry per line, paths relative to the project root:
@@ -55,18 +54,16 @@ STUBS_DIR     := APP/test/sw_stubs
 MINGW_OBJCOPY ?= $(MINGW)-objcopy
 MINGW_OBJDUMP ?= $(MINGW)-objdump
 
-# Host build. -O0 -fprofile-arcs -ftest-coverage are the coverage build, which every test run uses: gcov counts
-# lines accurately only at -O0
+# Host build. -Og for everything: fast enough, and the firmware and the hardware can both be stepped through. No coverage: the software
+# tests do not report it, and its counters cost time in every function
 HOST_CFLAGS := \
 	-m32 \
 	-fshort-enums \
 	-fpack-struct=1 \
 	-std=gnu11 \
-	-O0 \
+	-Og \
 	-g \
 	-Wno-incompatible-pointer-types \
-	-fprofile-arcs \
-	-ftest-coverage \
 	-finstrument-functions \
 	-finstrument-functions-exclude-file-list=$(HARDWARE_DIR),$(STUBS_DIR)
 

@@ -16,11 +16,10 @@
 
 #include "TMD_INIT.h"
 #include "TMD_MBA.h"
+#include "TMD_PANEL.h"
 #include "TMD_TIME.h"
 
 #include "SW_TEST_STUBS.h"
-
-#define TEST_BOOT_SETTLE_MS     ( 500u )    /* the first screen is drawn */
 
 /*!
 ****************************************************************************************************
@@ -35,7 +34,7 @@
 void setUp( void )
 {
     TMD_INIT_init( &sw_test_init_cfg_g );
-    TMD_TIME_advance_time_ms( TEST_BOOT_SETTLE_MS );
+    TMD_TIME_advance_time_ms( SW_TEST_BOOT_SETTLE_MS );
 
     TEST_TIMING_START();
 }
@@ -58,11 +57,11 @@ void tearDown( void )
 *****************************************************************************************************/
 static void test_open_the_tyre_pressures_menu( void )
 {
-    SW_TEST_PANEL_press( SW_TEST_PANEL_SELECT );
-    SW_TEST_PANEL_assert_on_screen( "MAIN MENU" );
+    TMD_PANEL_press( TMD_PANEL_SELECT );
+    TMD_PANEL_assert_on_screen( "MAIN MENU" );
 
-    SW_TEST_PANEL_move_the_cursor_to( "Tyre Pressures" );
-    SW_TEST_PANEL_press( SW_TEST_PANEL_SELECT );
+    TMD_PANEL_move_the_cursor_to( "Tyre Pressures" );
+    TMD_PANEL_press( TMD_PANEL_SELECT );
 }
 
 /*!
@@ -104,16 +103,15 @@ void test_the_dataset_bm_confirmed_is_read_at_the_start( void )
 void test_a_blank_dataset_leaves_the_tyre_menu_empty( void )
 {
     TMD_MBA_init();    /* DATASET0 is blank: BM has nothing to confirm */
-    TMD_INIT_restart_ecu( NON_VIRGIN );
-    TMD_TIME_advance_time_ms( TEST_BOOT_SETTLE_MS );
+    TMD_INIT_restart_ecu_and_settle( SW_TEST_BOOT_SETTLE_MS );
 
     TEST_ASSERT_EQUAL( FALSE, TYRE_DATA_is_valid() );
     TEST_ASSERT_EQUAL_UINT8( 0u, TYRE_DATA_get_make_count() );
 
     test_open_the_tyre_pressures_menu();
 
-    SW_TEST_PANEL_assert_on_screen( "No tyre data" );
-    SW_TEST_PANEL_assert_not_on_screen( "Audi" );
+    TMD_PANEL_assert_on_screen( "No tyre data" );
+    TMD_PANEL_assert_not_on_screen( "Audi" );
 }
 
 /*!
@@ -130,9 +128,9 @@ void test_the_tyre_menu_lists_the_makes_of_the_dataset( void )
 {
     test_open_the_tyre_pressures_menu();
 
-    SW_TEST_PANEL_assert_on_screen( "Audi" );
-    SW_TEST_PANEL_assert_on_screen( "BMW" );
-    SW_TEST_PANEL_assert_not_on_screen( "No tyre data" );
+    TMD_PANEL_assert_on_screen( "Audi" );
+    TMD_PANEL_assert_on_screen( "BMW" );
+    TMD_PANEL_assert_not_on_screen( "No tyre data" );
 }
 
 /*!
@@ -148,12 +146,12 @@ void test_the_tyre_menu_lists_the_makes_of_the_dataset( void )
 void test_choosing_a_make_lists_the_models_of_that_make( void )
 {
     test_open_the_tyre_pressures_menu();
-    SW_TEST_PANEL_move_the_cursor_to( "Audi" );
-    SW_TEST_PANEL_press( SW_TEST_PANEL_SELECT );
+    TMD_PANEL_move_the_cursor_to( "Audi" );
+    TMD_PANEL_press( TMD_PANEL_SELECT );
 
-    SW_TEST_PANEL_assert_on_screen( "A3" );
-    SW_TEST_PANEL_assert_on_screen( "A4" );
-    SW_TEST_PANEL_assert_not_on_screen( "M3" );
+    TMD_PANEL_assert_on_screen( "A3" );
+    TMD_PANEL_assert_on_screen( "A4" );
+    TMD_PANEL_assert_not_on_screen( "M3" );
 }
 
 /*!
@@ -169,11 +167,11 @@ void test_choosing_a_make_lists_the_models_of_that_make( void )
 void test_the_knob_chooses_the_other_make( void )
 {
     test_open_the_tyre_pressures_menu();
-    SW_TEST_PANEL_move_the_cursor_to( "BMW" );
-    SW_TEST_PANEL_press( SW_TEST_PANEL_SELECT );
+    TMD_PANEL_move_the_cursor_to( "BMW" );
+    TMD_PANEL_press( TMD_PANEL_SELECT );
 
-    SW_TEST_PANEL_assert_on_screen( "M3" );
-    SW_TEST_PANEL_assert_not_on_screen( "A3" );
+    TMD_PANEL_assert_on_screen( "M3" );
+    TMD_PANEL_assert_not_on_screen( "A3" );
 }
 
 /*!
@@ -189,13 +187,13 @@ void test_the_knob_chooses_the_other_make( void )
 void test_a_model_lists_its_year_ranges( void )
 {
     test_open_the_tyre_pressures_menu();
-    SW_TEST_PANEL_move_the_cursor_to( "Audi" );
-    SW_TEST_PANEL_press( SW_TEST_PANEL_SELECT );
-    SW_TEST_PANEL_move_the_cursor_to( "A3" );
-    SW_TEST_PANEL_press( SW_TEST_PANEL_SELECT );
+    TMD_PANEL_move_the_cursor_to( "Audi" );
+    TMD_PANEL_press( TMD_PANEL_SELECT );
+    TMD_PANEL_move_the_cursor_to( "A3" );
+    TMD_PANEL_press( TMD_PANEL_SELECT );
 
-    SW_TEST_PANEL_assert_on_screen( "2003 - 2012" );
-    SW_TEST_PANEL_assert_on_screen( "2013 - 2020" );
+    TMD_PANEL_assert_on_screen( "2003 - 2012" );
+    TMD_PANEL_assert_on_screen( "2013 - 2020" );
 }
 
 /*!
@@ -211,19 +209,19 @@ void test_a_model_lists_its_year_ranges( void )
 void test_a_year_range_shows_the_pressures_of_the_car( void )
 {
     test_open_the_tyre_pressures_menu();
-    SW_TEST_PANEL_move_the_cursor_to( "Audi" );
-    SW_TEST_PANEL_press( SW_TEST_PANEL_SELECT );
-    SW_TEST_PANEL_move_the_cursor_to( "A3" );
-    SW_TEST_PANEL_press( SW_TEST_PANEL_SELECT );
-    SW_TEST_PANEL_move_the_cursor_to( "2013 - 2020" );
-    SW_TEST_PANEL_press( SW_TEST_PANEL_SELECT );
+    TMD_PANEL_move_the_cursor_to( "Audi" );
+    TMD_PANEL_press( TMD_PANEL_SELECT );
+    TMD_PANEL_move_the_cursor_to( "A3" );
+    TMD_PANEL_press( TMD_PANEL_SELECT );
+    TMD_PANEL_move_the_cursor_to( "2013 - 2020" );
+    TMD_PANEL_press( TMD_PANEL_SELECT );
 
-    SW_TEST_PANEL_assert_on_screen( "TYRE PRESSURES" );
-    SW_TEST_PANEL_assert_on_screen( "Audi" );
-    SW_TEST_PANEL_assert_on_screen( "A3" );
-    SW_TEST_PANEL_assert_on_screen( "2013 - 2020" );
-    SW_TEST_PANEL_assert_on_screen( "Front 2.4 bar 35 psi" );    /* 34.8 psi */
-    SW_TEST_PANEL_assert_on_screen( "Rear  2.3 bar 33 psi" );    /* 33.4 psi, the label padded to the width of Front */
+    TMD_PANEL_assert_on_screen( "TYRE PRESSURES" );
+    TMD_PANEL_assert_on_screen( "Audi" );
+    TMD_PANEL_assert_on_screen( "A3" );
+    TMD_PANEL_assert_on_screen( "2013 - 2020" );
+    TMD_PANEL_assert_on_screen( "Front 2.4 bar 35 psi" );    /* 34.8 psi */
+    TMD_PANEL_assert_on_screen( "Rear  2.3 bar 33 psi" );    /* 33.4 psi, the label padded to the width of Front */
 }
 
 /*!
@@ -239,14 +237,14 @@ void test_a_year_range_shows_the_pressures_of_the_car( void )
 void test_back_returns_from_the_models_to_the_makes( void )
 {
     test_open_the_tyre_pressures_menu();
-    SW_TEST_PANEL_move_the_cursor_to( "Audi" );
-    SW_TEST_PANEL_press( SW_TEST_PANEL_SELECT );
-    SW_TEST_PANEL_assert_on_screen( "A3" );
+    TMD_PANEL_move_the_cursor_to( "Audi" );
+    TMD_PANEL_press( TMD_PANEL_SELECT );
+    TMD_PANEL_assert_on_screen( "A3" );
 
-    SW_TEST_PANEL_press( SW_TEST_PANEL_BACK );
+    TMD_PANEL_press( TMD_PANEL_BACK );
 
-    SW_TEST_PANEL_assert_on_screen( "BMW" );
-    SW_TEST_PANEL_assert_not_on_screen( "A3" );
+    TMD_PANEL_assert_on_screen( "BMW" );
+    TMD_PANEL_assert_not_on_screen( "A3" );
 }
 
 /*!
@@ -263,13 +261,12 @@ void test_back_returns_from_the_models_to_the_makes( void )
 void test_a_restart_puts_the_tyre_lists_back_at_the_top( void )
 {
     test_open_the_tyre_pressures_menu();
-    SW_TEST_PANEL_move_the_cursor_to( "BMW" );
+    TMD_PANEL_move_the_cursor_to( "BMW" );
 
-    TMD_INIT_restart_ecu( NON_VIRGIN );
-    TMD_TIME_advance_time_ms( TEST_BOOT_SETTLE_MS );
+    TMD_INIT_restart_ecu_and_settle( SW_TEST_BOOT_SETTLE_MS );
     test_open_the_tyre_pressures_menu();
 
-    SW_TEST_PANEL_assert_cursor_on( "Audi" );
+    TMD_PANEL_assert_cursor_on( "Audi" );
 }
 
 /****************************** END OF FILE *******************************************************/

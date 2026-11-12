@@ -325,7 +325,7 @@ static void test_assert_a_power_cut_in_the_compaction_state_keeps_the_last_saves
     TEST_ASSERT_TRUE( last_on_flash > 1u );
 
     test_scramble_the_ram_copies();
-    TMD_INIT_power_cut_ecu( NON_VIRGIN );
+    TMD_INIT_power_cut_ecu();
 
     TEST_ASSERT_EQUAL_UINT16( last_on_flash, app_generic_data_blk_g.weld_time_ms );
     TEST_ASSERT_EQUAL_MEMORY( chassis_num, app_chassis_num_blk_g.chassis_num, APP_CHASSIS_NUM_LEN );
@@ -333,7 +333,7 @@ static void test_assert_a_power_cut_in_the_compaction_state_keeps_the_last_saves
     app_generic_data_blk_g.weld_time_ms = TEST_THIRD_WELD_TIME;
     test_save_block( APP_GENERIC_BLOCK_ID );
     test_scramble_the_ram_copies();
-    TMD_INIT_restart_ecu( NON_VIRGIN );
+    TMD_INIT_restart_ecu();
 
     TEST_ASSERT_EQUAL_UINT16( TEST_THIRD_WELD_TIME, app_generic_data_blk_g.weld_time_ms );
     TEST_ASSERT_EQUAL_MEMORY( chassis_num, app_chassis_num_blk_g.chassis_num, APP_CHASSIS_NUM_LEN );
@@ -392,7 +392,7 @@ void test_a_saved_block_survives_a_restart_that_keeps_the_nvm( void )
     test_save_generic_block();
     app_generic_data_blk_g.weld_time_ms = TEST_OVERWRITTEN_WELD_TIME;
 
-    TMD_INIT_restart_ecu( NON_VIRGIN );
+    TMD_INIT_restart_ecu();
 
     TEST_ASSERT_EQUAL_UINT16( TEST_SAVED_WELD_TIME_MS, app_generic_data_blk_g.weld_time_ms );
 }
@@ -412,7 +412,7 @@ void test_a_virgin_restart_loses_a_saved_block( void )
     test_save_generic_block();
     app_generic_data_blk_g.weld_time_ms = TEST_OVERWRITTEN_WELD_TIME;
 
-    TMD_INIT_restart_ecu( VIRGIN );
+    TMD_INIT_init( &sw_test_init_cfg_g );
 
     TEST_ASSERT_EQUAL_UINT16( APP_GENERIC_DEFAULT_DATA_BLK_s.weld_time_ms, app_generic_data_blk_g.weld_time_ms );
 }
@@ -489,7 +489,7 @@ void test_every_field_of_a_saved_block_is_recovered_after_a_restart( void )
     test_save_block( APP_GENERIC_BLOCK_ID );
     test_scramble_the_ram_copies();
 
-    TMD_INIT_restart_ecu( NON_VIRGIN );
+    TMD_INIT_restart_ecu();
 
     TEST_ASSERT_EQUAL_UINT8( test_saved_generic_blk_s.screen_brightness, app_generic_data_blk_g.screen_brightness );
     TEST_ASSERT_EQUAL( test_saved_generic_blk_s.reset_request, app_generic_data_blk_g.reset_request );
@@ -524,7 +524,7 @@ void test_the_latest_of_several_saves_is_recovered( void )
 
     test_scramble_the_ram_copies();
 
-    TMD_INIT_restart_ecu( NON_VIRGIN );
+    TMD_INIT_restart_ecu();
 
     TEST_ASSERT_EQUAL_UINT16( 300u, app_generic_data_blk_g.weld_time_ms );
     TEST_ASSERT_EQUAL_UINT32( 3u, app_generic_data_blk_g.total_num_welds );
@@ -545,10 +545,10 @@ void test_a_saved_block_survives_two_restarts_in_a_row( void )
     test_save_generic_block();
 
     test_scramble_the_ram_copies();
-    TMD_INIT_restart_ecu( NON_VIRGIN );
+    TMD_INIT_restart_ecu();
 
     test_scramble_the_ram_copies();
-    TMD_INIT_restart_ecu( NON_VIRGIN );
+    TMD_INIT_restart_ecu();
 
     TEST_ASSERT_EQUAL_UINT16( TEST_SAVED_WELD_TIME_MS, app_generic_data_blk_g.weld_time_ms );
 }
@@ -588,7 +588,7 @@ void test_all_the_blocks_are_recovered_together_after_a_restart( void )
     test_save_block( APP_CHASSIS_NUM_BLOCK_ID );
     test_scramble_the_ram_copies();
 
-    TMD_INIT_restart_ecu( NON_VIRGIN );
+    TMD_INIT_restart_ecu();
 
     TEST_ASSERT_EQUAL_UINT16( TEST_SAVED_WELD_TIME_MS, app_generic_data_blk_g.weld_time_ms );
     TEST_ASSERT_EQUAL_MEMORY( key_1, app_key_1_blk_g.key, APP_KEY_LEN );
@@ -619,7 +619,7 @@ void test_saving_one_block_leaves_another_blocks_record_alone( void )
     test_save_block( APP_GENERIC_BLOCK_ID );
     test_scramble_the_ram_copies();
 
-    TMD_INIT_restart_ecu( NON_VIRGIN );
+    TMD_INIT_restart_ecu();
 
     TEST_ASSERT_EQUAL_MEMORY( chassis_num, app_chassis_num_blk_g.chassis_num, APP_CHASSIS_NUM_LEN );
     TEST_ASSERT_EQUAL_UINT16( 4321u, app_generic_data_blk_g.weld_time_ms );
@@ -650,7 +650,7 @@ void test_a_torn_latest_record_falls_back_to_the_save_before( void )
     *(volatile u8_t*)test_latest_generic_payload_address() ^= 0x01u;
     test_scramble_the_ram_copies();
 
-    TMD_INIT_restart_ecu( NON_VIRGIN );
+    TMD_INIT_restart_ecu();
 
     TEST_ASSERT_EQUAL_UINT16( TEST_SAVED_WELD_TIME_MS, app_generic_data_blk_g.weld_time_ms );
 }
@@ -676,7 +676,7 @@ void test_a_failed_save_leaves_the_last_good_record_to_recover( void )
     TEST_ASSERT_EQUAL( NVM_GEN2_STATE_FAULT, NVM_GEN2_get_state() );
 
     test_scramble_the_ram_copies();
-    TMD_INIT_restart_ecu( NON_VIRGIN );
+    TMD_INIT_restart_ecu();
 
     TEST_ASSERT_EQUAL_UINT16( TEST_SAVED_WELD_TIME_MS, app_generic_data_blk_g.weld_time_ms );
 }
@@ -717,7 +717,7 @@ void test_a_block_saved_once_survives_the_compaction_forced_by_many_saves_of_ano
     TMD_TIME_advance_time_ms( 500u );    /* the compaction works a few records per tick */
     test_scramble_the_ram_copies();
 
-    TMD_INIT_restart_ecu( NON_VIRGIN );
+    TMD_INIT_restart_ecu();
 
     TEST_ASSERT_EQUAL_MEMORY( chassis_num, app_chassis_num_blk_g.chassis_num, APP_CHASSIS_NUM_LEN );
     TEST_ASSERT_TRUE( app_generic_data_blk_g.weld_time_ms > 1u );    /* the generic block is a late save, not the default and not the first */
@@ -746,7 +746,7 @@ void test_a_torn_record_header_is_skipped_and_the_next_save_still_reaches_the_fl
     *(volatile u8_t*)( test_latest_generic_record_address() + offsetof( NVM_GEN2_rec_hdr_st, hdr_crc ) ) ^= 0x01u;
     test_scramble_the_ram_copies();
 
-    TMD_INIT_restart_ecu( NON_VIRGIN );
+    TMD_INIT_restart_ecu();
 
     TEST_ASSERT_EQUAL_UINT16( TEST_SAVED_WELD_TIME_MS, app_generic_data_blk_g.weld_time_ms );
 
@@ -757,7 +757,7 @@ void test_a_torn_record_header_is_skipped_and_the_next_save_still_reaches_the_fl
     TEST_ASSERT_TRUE( NVM_GEN2_get_active_seq() != seq_before );    /* the tail was unusable, so the save compacted into the other partition */
 
     test_scramble_the_ram_copies();
-    TMD_INIT_restart_ecu( NON_VIRGIN );
+    TMD_INIT_restart_ecu();
 
     TEST_ASSERT_EQUAL_UINT16( TEST_THIRD_WELD_TIME, app_generic_data_blk_g.weld_time_ms );
 }
@@ -829,7 +829,7 @@ void test_a_version_1_record_is_migrated_to_version_2_without_losing_its_fields(
     test_replace_the_latest_generic_record( 1u, &test_saved_generic_blk_v1_s, (u16_t)sizeof( test_saved_generic_blk_v1_s ) );
     test_scramble_the_ram_copies();
 
-    TMD_INIT_restart_ecu( NON_VIRGIN );
+    TMD_INIT_restart_ecu();
 
     TEST_ASSERT_EQUAL_UINT8( test_saved_generic_blk_v1_s.screen_brightness, app_generic_data_blk_g.screen_brightness );
     TEST_ASSERT_EQUAL( test_saved_generic_blk_v1_s.reset_request, app_generic_data_blk_g.reset_request );
@@ -858,7 +858,7 @@ void test_a_migrated_block_is_saved_back_in_the_new_format( void )
     test_replace_the_latest_generic_record( 1u, &test_saved_generic_blk_v1_s, (u16_t)sizeof( test_saved_generic_blk_v1_s ) );
     test_scramble_the_ram_copies();
 
-    TMD_INIT_restart_ecu( NON_VIRGIN );
+    TMD_INIT_restart_ecu();
     TMD_TIME_advance_time_ms( 500u );    /* the write of the migrated value is requested at registration and goes on a tick */
 
     hdr_p = (const NVM_GEN2_rec_hdr_st*)test_latest_generic_record_address();
@@ -867,7 +867,7 @@ void test_a_migrated_block_is_saved_back_in_the_new_format( void )
     TEST_ASSERT_EQUAL_UINT16( sizeof( APP_generic_data_blk_st ), hdr_p->data_len );
 
     test_scramble_the_ram_copies();
-    TMD_INIT_restart_ecu( NON_VIRGIN );
+    TMD_INIT_restart_ecu();
 
     TEST_ASSERT_EQUAL_UINT16( test_saved_generic_blk_v1_s.weld_time_ms, app_generic_data_blk_g.weld_time_ms );
     TEST_ASSERT_EQUAL_UINT32( test_saved_generic_blk_v1_s.total_num_welds, app_generic_data_blk_g.total_num_welds );
@@ -889,7 +889,7 @@ void test_a_record_of_an_unknown_version_is_replaced_by_the_defaults( void )
     test_replace_the_latest_generic_record( 9u, &test_saved_generic_blk_v1_s, (u16_t)sizeof( test_saved_generic_blk_v1_s ) );
     test_scramble_the_ram_copies();
 
-    TMD_INIT_restart_ecu( NON_VIRGIN );
+    TMD_INIT_restart_ecu();
 
     TEST_ASSERT_EQUAL_UINT8( APP_GENERIC_DEFAULT_DATA_BLK_s.screen_brightness, app_generic_data_blk_g.screen_brightness );
     TEST_ASSERT_EQUAL_UINT16( APP_GENERIC_DEFAULT_DATA_BLK_s.weld_time_ms, app_generic_data_blk_g.weld_time_ms );
@@ -912,7 +912,7 @@ void test_a_version_1_record_of_the_wrong_length_is_replaced_by_the_defaults( vo
     test_replace_the_latest_generic_record( 1u, &test_saved_generic_blk_v1_s, (u16_t)( sizeof( test_saved_generic_blk_v1_s ) - 2u ) );
     test_scramble_the_ram_copies();
 
-    TMD_INIT_restart_ecu( NON_VIRGIN );
+    TMD_INIT_restart_ecu();
 
     TEST_ASSERT_EQUAL_UINT8( APP_GENERIC_DEFAULT_DATA_BLK_s.screen_brightness, app_generic_data_blk_g.screen_brightness );
     TEST_ASSERT_EQUAL_UINT16( APP_GENERIC_DEFAULT_DATA_BLK_s.weld_time_ms, app_generic_data_blk_g.weld_time_ms );
@@ -936,7 +936,7 @@ void test_a_corrupt_record_is_replaced_by_the_defaults( void )
     *(volatile u8_t*)test_latest_generic_payload_address() ^= 0x01u;
     app_generic_data_blk_g.weld_time_ms = TEST_OVERWRITTEN_WELD_TIME;
 
-    TMD_INIT_restart_ecu( NON_VIRGIN );
+    TMD_INIT_restart_ecu();
 
     TEST_ASSERT_EQUAL_UINT16( APP_GENERIC_DEFAULT_DATA_BLK_s.weld_time_ms, app_generic_data_blk_g.weld_time_ms );
     TEST_ASSERT_EQUAL_UINT8( APP_GENERIC_DEFAULT_DATA_BLK_s.screen_brightness, app_generic_data_blk_g.screen_brightness );
@@ -999,7 +999,7 @@ void test_a_power_cycle_recovers_nvm_gen2_from_a_write_error( void )
     TMD_NVM_inject_write_error( 0u, NVM_TOTAL_SIZE );
     test_save_generic_block();
 
-    TMD_INIT_restart_ecu( NON_VIRGIN );
+    TMD_INIT_restart_ecu();
     test_save_generic_block();
 
     TEST_ASSERT_EQUAL( NVM_GEN2_STATE_IDLE, NVM_GEN2_get_state() );
