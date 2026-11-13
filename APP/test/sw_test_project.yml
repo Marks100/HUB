@@ -154,6 +154,7 @@
     - m
   :test:
     - HUB_APP_x86
+    - CRYPTO_hub_x86    # BearSSL for the security model, built by build_system/Makefile with the same struct layout (in build/artifacts)
   :release: []
 
 # The host toolchain is whatever gcc, make and ar are first on the PATH: the 32-bit MinGW on Windows (the :environment: block below

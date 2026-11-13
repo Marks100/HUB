@@ -20,3 +20,4 @@ xCOMMON_MODULES/Src/MCAL/stm32/stm32f10x/core
 xCOMMON_MODULES/Src/MCAL/stm32/stm32f10x/inc
 xCOMMON_MODULES/test/support/models/TMD_CAN
 xCOMMON_MODULES/test/support/models/TMD_TIME
+xCOMMON_MODULES/Src/CRYPTO/BearSSL/inc
