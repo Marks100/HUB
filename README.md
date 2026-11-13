@@ -13,12 +13,12 @@ _Built 2026-11-13 from `APP.map`_
 
 | Region | Used | Free | Used % |
 |---|---:|---:|---:|
-| ROM (Flash) | 38,732 B | 52,404 B | 42.5% |
-| RAM | 10,648 B | 9,800 B | 52.1% |
+| ROM (Flash) | 39,196 B | 51,940 B | 43.0% |
+| RAM | 10,808 B | 9,640 B | 52.9% |
 
 <p>
-  <img src=".github/badges/memory_APP_rom.svg" alt="APP ROM (Flash): 42.5% used" width="320">
-  <img src=".github/badges/memory_APP_ram.svg" alt="APP RAM: 52.1% used" width="320">
+  <img src=".github/badges/memory_APP_rom.svg" alt="APP ROM (Flash): 43.0% used" width="320">
+  <img src=".github/badges/memory_APP_ram.svg" alt="APP RAM: 52.9% used" width="320">
 </p>
 <!-- MEMORY:APP:END -->
 
@@ -29,11 +29,11 @@ _Built 2026-11-13 from `FBL.map`_
 
 | Region | Used | Free | Used % |
 |---|---:|---:|---:|
-| ROM (Flash) | 24,520 B | 56 B | 99.8% |
+| ROM (Flash) | 24,544 B | 32 B | 99.9% |
 | RAM | 6,192 B | 14,256 B | 30.3% |
 
 <p>
-  <img src=".github/badges/memory_FBL_rom.svg" alt="FBL ROM (Flash): 99.8% used" width="320">
+  <img src=".github/badges/memory_FBL_rom.svg" alt="FBL ROM (Flash): 99.9% used" width="320">
   <img src=".github/badges/memory_FBL_ram.svg" alt="FBL RAM: 30.3% used" width="320">
 </p>
 <!-- MEMORY:FBL:END -->
