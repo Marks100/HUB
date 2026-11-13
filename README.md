@@ -41,7 +41,7 @@ _Built 2026-11-12 from `FBL.map`_
 <!-- MEMORY:BM:START -->
 ### BM
 
-_Built 2026-11-12 from `BM.map`_
+_Built 2026-11-13 from `BM.map`_
 
 | Region | Used | Free | Used % |
 |---|---:|---:|---:|
