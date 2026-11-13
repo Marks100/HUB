@@ -12,7 +12,8 @@
 *   CAN TX (sensor telemetry + heartbeat), 0x85 gates FAULT_MGR's DTC storage. 0x10, 0x11, 0x27 and
 *   0x3E are all rows in uds_service_table_s (UDS_config.c) like every other service, but UDS.c
 *   still dispatches them specially rather than through the generic subfunction search - see
-*   UDS_service_table_st's comment in UDS.h.
+*   UDS_service_table_st's comment in UDS.h. WriteMemoryByAddress (0x3D) keeps a write to DATASET0's flash for the FBL to make at the next start
+*   (VPM_CLIENT.h), from EXTENDED behind SecurityAccess level 1.
 */
 #ifndef UDS_CONFIG_H
 #define UDS_CONFIG_H
@@ -71,6 +72,7 @@
    alive/lost, frames received and alive counter of every ERX the HUB follows. Same vehicle-manufacturer-specific range
    as the keys above (0xF900-0xF9FF), read-only. */
 #define DID_APP_ERX_HEARTBEATS           ( 0xF910u )
+
 
 /***************************************************************************************************
 **                              Exported Globals                                                  **

@@ -2,10 +2,12 @@
 *               Author: mstewart
 *   \brief      Tyre pressures - software test
 *
-*   \details    DATASET0 as BM leaves it (SW_TEST_STUBS.c: two makes, three models, four year ranges, and the valid bit in
-*               the handoff RAM) read by TYRE_DATA, and the menu that lists it on the panel's OLED. A test drives the panel as a
+*   \details    DATASET0 as the factory downloads it (two makes, three models, four year ranges) and BM leaves it, with the
+*               valid bit in the handoff RAM, read by TYRE_DATA, and the menu that lists it on the panel's OLED. A test drives the panel as a
 *               user does (SW_TEST_STUBS.h) and looks at the display. Every test case starts as a virgin ECU (setUp, SW_TEST_STUBS.c).
 */
+#include <string.h>
+
 #include "unity.h"
 #include "test_timing.h"
 
@@ -15,16 +17,30 @@
 #include "TYRE_DATA.h"
 
 #include "TMD_INIT.h"
-#include "TMD_MBA.h"
 #include "TMD_PANEL.h"
 #include "TMD_TIME.h"
 
 #include "SW_TEST_STUBS.h"
 
+/* DATASET0's payload as the factory flashes it (the layout of TYRE_DATA.h, format 2): two makes, three models, four year ranges */
+static const u8_t test_dataset0_c[] =
+{
+    'T', 'P', 2u, 2u, 3u, 0u, 4u, 0u,                                   /* header: magic, format, 2 makes, 3 models, 4 year ranges */
+    2u, 1u,                                                             /* models per make: Audi 2, BMW 1 */
+    2u, 1u, 1u,                                                         /* year ranges per model: A3 2, A4 1, M3 1 */
+    'A', 'u', 'd', 'i', 0, 'B', 'M', 'W', 0,                            /* make names */
+    'A', '3', 0, 'A', '4', 0, 'M', '3', 0,                              /* model names */
+    103u, 112u, 23u, 22u,   113u, 120u, 24u, 23u,                       /* A3 2003 - 2012 and 2013 - 2020: front and rear in 0.1 bar */
+    108u, 115u, 22u, 21u,                                               /* A4 2008 - 2015 */
+    107u, 113u, 25u, 24u,                                               /* M3 2007 - 2013 */
+    0xFFu                                                               /* blank, to make it an even number of bytes: flash is written in half-words */
+};
+
 /*!
 ****************************************************************************************************
 *
-*   \brief         Every test case starts as a virgin ECU, with the dataset the factory flashed in DATASET0
+*   \brief         Every test case starts as a virgin ECU whose DATASET0 the factory has downloaded: the dataset is put in the flash
+*                  as the FBL's download leaves it, and the ECU starts again so that BM finds it
 *
 *   \author        mstewart
 *
@@ -34,11 +50,14 @@
 void setUp( void )
 {
     TMD_INIT_init( &sw_test_init_cfg_g );
-    TMD_TIME_advance_time_ms( SW_TEST_BOOT_SETTLE_MS );
+
+    memcpy( (void*)SW_TEST_DATASET0_PAYLOAD_ADDRESS, test_dataset0_c, sizeof( test_dataset0_c ) );    /* the download: not a 0x3D, which does not write there */
+
+    TMD_INIT_restart_ecu();
+    TMD_TIME_advance_time_ms( SW_TEST_BOOT_SETTLE_MS );    /* BM finds the dataset at the start of the ECU */
 
     TEST_TIMING_START();
 }
-
 void tearDown( void )
 {
     TEST_TIMING_STOP();
@@ -102,8 +121,8 @@ void test_the_dataset_bm_confirmed_is_read_at_the_start( void )
 *****************************************************************************************************/
 void test_a_blank_dataset_leaves_the_tyre_menu_empty( void )
 {
-    TMD_MBA_init();    /* DATASET0 is blank: BM has nothing to confirm */
-    TMD_INIT_restart_ecu_and_settle( SW_TEST_BOOT_SETTLE_MS );
+    TMD_INIT_init( &sw_test_init_cfg_g );    /* a new ECU, its DATASET0 blank: BM has nothing to confirm */
+    TMD_TIME_advance_time_ms( SW_TEST_BOOT_SETTLE_MS );
 
     TEST_ASSERT_EQUAL( FALSE, TYRE_DATA_is_valid() );
     TEST_ASSERT_EQUAL_UINT8( 0u, TYRE_DATA_get_make_count() );
@@ -263,7 +282,8 @@ void test_a_restart_puts_the_tyre_lists_back_at_the_top( void )
     test_open_the_tyre_pressures_menu();
     TMD_PANEL_move_the_cursor_to( "BMW" );
 
-    TMD_INIT_restart_ecu_and_settle( SW_TEST_BOOT_SETTLE_MS );
+    TMD_INIT_restart_ecu();
+    TMD_TIME_advance_time_ms( SW_TEST_BOOT_SETTLE_MS );
     test_open_the_tyre_pressures_menu();
 
     TMD_PANEL_assert_cursor_on( "Audi" );

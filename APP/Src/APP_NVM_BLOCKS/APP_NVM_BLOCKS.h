@@ -4,6 +4,7 @@
 #include "STDC.h"
 #include "NVM_GEN2.h"
 #include "FBL_NVM_BLOCKS.h"
+#include "VPM_config.h"
 
 /***************************************************************************************************
 **                              Constants                                                         **
@@ -23,6 +24,7 @@ typedef enum
    APP_KEY_1_BLOCK_ID,
    APP_KEY_2_BLOCK_ID,
    APP_CHASSIS_NUM_BLOCK_ID,
+   APP_VPM_CLIENT_BLOCK_ID = VPM_BLOCK_ID,   /* the patches of a flash write APP has kept for the FBL to apply: VPM_config.h fixes the ID, which the FBL reads it by */
    APP_BLOCK_ID_MAX
 } APP_block_id_et;
 
@@ -72,6 +74,7 @@ extern APP_generic_data_blk_st app_generic_data_blk_g;
 extern APP_key_blk_st          app_key_1_blk_g;
 extern APP_key_blk_st          app_key_2_blk_g;
 extern APP_chassis_num_blk_st  app_chassis_num_blk_g;
+extern VPM_COMMON_blk_st      app_vpm_client_blk_g;
 
 /* FBL-owned blocks (none are APP's - see FBL_NVM_BLOCKS.h), snapshotted once by app_main()'s
    APP_read_fbl_*() calls. Not live mirrors - call the matching function directly for a current

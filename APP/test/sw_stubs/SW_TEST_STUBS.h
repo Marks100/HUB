@@ -34,6 +34,11 @@
 #define SW_TEST_TESTER_RESPONSE_MAX_LEN ( 128u )    /* what a test's buffer for an answer has to hold */
 #define SW_TEST_BOOT_SETTLE_MS          ( 500u )    /* from the start of the ECU to its first screen drawn: for a test of the display */
 
+/* DATASET0's payload in the flash, APP's linker script (STM32F103C8_flash.ld): plain numbers, the assembler needs them too */
+#define SW_TEST_DATASET0_PAYLOAD_ADDRESS    0x0801E860
+#define SW_TEST_DATASET0_END_ADDRESS        0x0801F7FF    /* the last byte of it */
+#define SW_TEST_DATASET0_PAYLOAD_SIZE       ( SW_TEST_DATASET0_END_ADDRESS - SW_TEST_DATASET0_PAYLOAD_ADDRESS + 1 )
+
 /***************************************************************************************************
 **                                    Exported Globals                                            **
 ***************************************************************************************************/
@@ -42,10 +47,6 @@ extern const TMD_INIT_cfg_st sw_test_init_cfg_g;    /* power on, models, blank f
 /***************************************************************************************************
 **                                    Function Prototypes                                        **
 ***************************************************************************************************/
-/* A test puts an ERX on the bus with TMD_ERX_place_instance( APP_ISO_..., TMD_ERX_PORT_A or B ), and takes it off and puts it back
-   with TMD_ERX_unplug_instance() / TMD_ERX_plug_in_instance() on TMD_ERX_find_instance( APP_ISO_... ). The HUB powers it. */
-
-/* The HUB's panel (buttons, knob and the OLED) is the TMD_PANEL model, wired to the HUB's pins by the init of the models in SW_TEST_STUBS.c */
 
 #endif /* SW_TEST_STUBS_H */
 

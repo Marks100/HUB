@@ -62,6 +62,9 @@ FBL_C_SRCS := \
     $(COMMON_MODULES_DIR)/FBL/FBL.c \
     ../Common_Src/FBL_NVM_BLOCKS/FBL_NVM_BLOCKS.c \
     ../Common_Src/FBL_NVM_BLOCKS/FBL_NVM_BLOCKS_MIGRATE.c \
+    $(COMMON_MODULES_DIR)/VPM/VPM_COMMON.c \
+    $(COMMON_MODULES_DIR)/VPM/VPM_SERVER.c \
+    ../Common_Src/VPM_CFG/VPM_config.c \
     $(COMMON_MODULES_DIR)/HEADER/HEADER.c \
     $(COMMON_MODULES_DIR)/UDS/UDS.c \
     $(COMMON_MODULES_DIR)/CANTP/CANTP.c \
@@ -151,6 +154,8 @@ INCLUDES  := \
     -I ../Common_Src/HAL_I2C \
     -I ../Common_Src/PROJ_CONFIG \
     -I ../Common_Src/FBL_NVM_BLOCKS \
+    -I $(COMMON_MODULES_DIR)/VPM \
+    -I ../Common_Src/VPM_CFG \
     -I ../Common_Src/BOOT_HANDOFF
 
 ####################################################################################################

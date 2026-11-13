@@ -7,9 +7,10 @@
 **   FBL  : 0x08002000 - 0x08007FFF   24 KB
 **     .app_header : 0x08002000 - 0x080020FF  256 B
 **     code start  : 0x08002100               (FBL_CODE_START)
-**   APP  : 0x08008000 - 0x0801E7FF   90 KB
+**   APP  : 0x08008000 - 0x0801E3FF   89 KB
 **     .app_header : 0x08008000 - 0x080080FF  256 B
 **     code start  : 0x08008100               (APP_CODE_START)
+**   VPM  : 0x0801E400 - 0x0801E7FF    1 KB  (variant parameter page, VPM_COMMON.h: not validated, BM links none of it)
 **   DATASET0 : 0x0801E800 - 0x0801F7FF   4 KB  (field-downloadable via FBL_download_request().
 **                                               Same header fields as APP but a 96 B header - see
 **                                               the region constants comment below. BM validates
@@ -58,7 +59,7 @@ __fbl_code_start__    = 0x08002100;
 __fbl_code_end__      = 0x08007FFF;
 __app_header_start__  = 0x08008000;
 __app_code_start__    = 0x08008100;
-__app_code_end__      = 0x0801E7FF;
+__app_code_end__      = 0x0801E3FF;
 __dataset0_header_start__ = 0x0801E800;
 __dataset0_code_start__   = 0x0801E860;
 __dataset0_code_end__     = 0x0801F7FF;

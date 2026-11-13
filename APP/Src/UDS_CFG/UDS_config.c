@@ -24,6 +24,7 @@
 #include "FAULT_MGR.h"
 #include "MSG_SCHED.h"
 #include "APP_NVM_BLOCKS.h"
+#include "VPM_CLIENT.h"
 #include "NVM_GEN2.h"
 #include "RNG.h"
 #include "VER.h"
@@ -55,6 +56,10 @@
 /* 0x14 groupOfDTC - only "all groups" is supported */
 #define DTC_GROUP_ALL                     ( 0xFFFFFFul )
 #define DTC_GROUP_LEN                     ( 3u )
+/* 0x3D addressAndLengthFormatIdentifier (ISO 14229-1 Annex H): high nibble the length of memorySize, low nibble the length of
+   memoryAddress, each 1 to 4 bytes here */
+#define WMBA_FORMAT_LEN                   ( 1u )
+#define WMBA_FIELD_LEN_MAX                ( 4u )
 
 /***************************************************************************************************
 **                              Private Function Prototypes                                       **
@@ -69,6 +74,8 @@ STATIC u8_t uds_handle_read_app_sw_id( u16_t subfunc, u8_t* data_p, u16_t* len_p
 STATIC u8_t uds_handle_read_erx_heartbeats( u16_t subfunc, u8_t* data_p, u16_t* len_p, UDS_response_code_et* nrc_p );
 STATIC u8_t uds_handle_read_dtc_information( u16_t subfunc, u8_t* data_p, u16_t* len_p, UDS_response_code_et* nrc_p );
 STATIC u8_t uds_handle_clear_diagnostic_information( u16_t subfunc, u8_t* data_p, u16_t* len_p, UDS_response_code_et* nrc_p );
+STATIC u8_t uds_handle_write_memory_by_address( u16_t subfunc, u8_t* data_p, u16_t* len_p, UDS_response_code_et* nrc_p );
+STATIC u32_t uds_read_big_endian( const u8_t* data_p, u8_t length );
 STATIC void uds_handle_programming_session_notify( void );
 
 /***************************************************************************************************
@@ -181,6 +188,13 @@ STATIC UDS_subfunction_table_st clear_diagnostic_information_subfuncs_s[] =
     { UDS_SUBFUNC_IGNORED, UDS_SUBFUNC_MASK_ANY, uds_handle_clear_diagnostic_information, UDS_SES_ANY, 0u },
 };
 
+/* 0x3D has no sub-function (UDS.c gives the handler everything after the SID). It programs flash, so it is EXTENDED and
+   behind the same SecurityAccess level that gates PROGRAMMING. */
+STATIC UDS_subfunction_table_st write_memory_by_address_subfuncs_s[] =
+{
+    { UDS_SUBFUNC_IGNORED, UDS_SUBFUNC_MASK_ANY, uds_handle_write_memory_by_address, UDS_SES_EXTENDED, APP_SECURITY_LEVEL_1 },
+};
+
 /* APP's 0x10 policy - a whitelist, anything absent is refused with NRC 0x7E. See
    UDS_session_transition_st in UDS.h for the matching rules. Declared ahead of uds_service_table_s
    below since that table's 0x10 row names this array.
@@ -228,6 +242,7 @@ STATIC UDS_service_table_st uds_service_table_s[] =
     { UDS_SID_WRITE_DATA_BY_IDENTIFIER,   write_data_by_identifier_subfuncs_s, UDS_TABLE_ROWS( write_data_by_identifier_subfuncs_s ) },
     { UDS_SID_READ_DTC_INFORMATION,       read_dtc_information_subfuncs_s,     UDS_TABLE_ROWS( read_dtc_information_subfuncs_s ) },
     { UDS_SID_CLEAR_DIAGNOSTIC_INFORMATION, clear_diagnostic_information_subfuncs_s, UDS_TABLE_ROWS( clear_diagnostic_information_subfuncs_s ) },
+    { UDS_SID_WRITE_MEMORY_BY_ADDRESS,    write_memory_by_address_subfuncs_s,  UDS_TABLE_ROWS( write_memory_by_address_subfuncs_s ) },
 };
 
 /*!
@@ -295,13 +310,18 @@ u8_t UDS_get_service_table_size( void )
 ***************************************************************************************************/
 STATIC u8_t uds_handle_security_request_seed( u16_t subfunc, u8_t* data_p, u16_t* len_p, UDS_response_code_et* nrc_p )
 {
-    uds_last_seed_s = RNG_gen_u32();
+    if( ( subfunc == 0x01u ) || ( subfunc == 0x03u ) || ( subfunc == 0x05u ) )    /* levels 1 to 3: no seed for a level this ECU does not have */
+    {
+        uds_last_seed_s = RNG_gen_u32();
 
-    (void)subfunc;
-
-    STDC_copy_32bit_to_buffer_msb_first( data_p, uds_last_seed_s );
-    *len_p = 4u;
-    *nrc_p    = UDS_RC_POSITIVE_RESPONSE;
+        STDC_copy_32bit_to_buffer_msb_first( data_p, uds_last_seed_s );
+        *len_p = 4u;
+        *nrc_p = UDS_RC_POSITIVE_RESPONSE;
+    }
+    else
+    {
+        *nrc_p = UDS_RC_SUBFUNCTION_NOT_SUPPORTED;
+    }
 
     return( 0u );
 }
@@ -659,6 +679,111 @@ STATIC u8_t uds_handle_clear_diagnostic_information( u16_t subfunc, u8_t* data_p
     }
 
     return( 0u );
+}
+
+/*!
+****************************************************************************************************
+*
+*   \brief         0x3D WriteMemoryByAddress - program flash at an address
+*   \author        mstewart
+*
+*   \param[in]     subfunc  Unused: the service has no sub-function
+*   \param[in,out] data_p   Request after the SID: [addressAndLengthFormatIdentifier][memoryAddress][memorySize][dataRecord]
+*   \param[in,out] len_p    In: the request length after the SID. Out: the response length after the SID
+*   \param[out]    nrc_p    The response code
+*
+*   \return        0, no security level to grant
+*
+*   \note          The format identifier carries the length of the size in its high nibble and of the address in its low nibble,
+*                  1 to 4 bytes each, and the positive response echoes it with the address and the size.
+*                  APP does not program flash while it runs. A write that VPM_CLIENT_is_valid() accepts - inside the variant parameter
+*                  page, at any address and of any length up to VPM_COMMON_REQUEST_MAX - is kept as patches in an NVM block, split over as
+*                  many slots as it takes and accepted whole or not at all, and the response says it is kept: every patch kept is made at
+*                  the next start, by the FBL (app_main hands over to it, VPM_CLIENT.h), the way a Vector variant parameter manager does
+*                  it. Anything else is NRC 0x31, a wrong length NRC 0x13, and a write with too few free slots left for it NRC 0x22.
+*
+****************************************************************************************************/
+STATIC u8_t uds_handle_write_memory_by_address( u16_t subfunc, u8_t* data_p, u16_t* len_p, UDS_response_code_et* nrc_p )
+{
+    u8_t  address_len = 0u;
+    u8_t  size_len    = 0u;
+    u16_t header_len  = 0u;
+    u32_t address     = 0u;
+    u32_t size        = 0u;
+
+    (void)subfunc;
+
+    if( *len_p >= WMBA_FORMAT_LEN )
+    {
+        address_len = (u8_t)( data_p[0] & 0x0Fu );
+        size_len    = (u8_t)( ( data_p[0] >> 4u ) & 0x0Fu );
+        header_len  = (u16_t)( WMBA_FORMAT_LEN + address_len + size_len );
+    }
+
+    if( ( address_len == 0u ) || ( address_len > WMBA_FIELD_LEN_MAX ) ||
+        ( size_len == 0u )    || ( size_len > WMBA_FIELD_LEN_MAX )    || ( *len_p <= header_len ) )
+    {
+        *nrc_p = UDS_RC_INCORRECT_MESSAGE_LENGTH_OR_INVALID_FORMAT;
+    }
+    else
+    {
+        address = uds_read_big_endian( &data_p[WMBA_FORMAT_LEN], address_len );
+        size    = uds_read_big_endian( &data_p[WMBA_FORMAT_LEN + address_len], size_len );
+
+        if( size != (u32_t)( *len_p - header_len ) )
+        {
+            *nrc_p = UDS_RC_INCORRECT_MESSAGE_LENGTH_OR_INVALID_FORMAT;
+        }
+        else if( VPM_CLIENT_is_valid( address, size ) != TRUE )
+        {
+            *nrc_p = UDS_RC_REQUEST_OUT_OF_RANGE;
+        }
+        else
+        {
+            if( VPM_CLIENT_is_pending( &app_vpm_client_blk_g ) != TRUE )
+            {
+                VPM_CLIENT_start_batch( &app_vpm_client_blk_g );    /* the last batch was applied (or there was none): this write starts the next one */
+            }
+
+            if( VPM_CLIENT_append( &app_vpm_client_blk_g, address, &data_p[header_len], (u16_t)size ) == PASS )
+            {
+                NVM_GEN2_flush_block( APP_VPM_CLIENT_BLOCK_ID );    /* synchronous, like the key writes: kept before the response goes out */
+
+                *len_p = header_len;    /* the format identifier, the address and the size, as they came */
+                *nrc_p = UDS_RC_POSITIVE_RESPONSE;
+            }
+            else
+            {
+                *nrc_p = UDS_RC_CONDITIONS_NOT_CORRECT;    /* too few free slots for the patches: they are all free again once the FBL has applied the ones waiting */
+            }
+        }
+    }
+    return( 0u );
+}
+
+/*!
+****************************************************************************************************
+*
+*   \brief         Read a big-endian number of 1 to 4 bytes
+*   \author        mstewart
+*
+*   \param[in]     data_p   Its first byte, the most significant
+*   \param[in]     length   How many bytes it is, 1 to 4
+*
+*   \return        The number
+*
+****************************************************************************************************/
+STATIC u32_t uds_read_big_endian( const u8_t* data_p, u8_t length )
+{
+    u32_t value = 0u;
+    u8_t  i;
+
+    for( i = 0u; i < length; i++ )
+    {
+        value = ( value << 8u ) | data_p[i];
+    }
+
+    return( value );
 }
 
 /*!

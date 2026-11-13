@@ -4,8 +4,7 @@
 *
 *   \details    The scheduler runs on the one clock of the test (TMD_TIME): the clock counts up a millisecond at a time, and the
 *               scheduler's tick (SysTick) comes once every SCHED_TICK_RATE_MSECS of it. The ECU's own run time keeps up with the
-*               clock, and a task the table schedules sends at its rate on the bus. Every test case starts as a virgin ECU
-*               (setUp, SW_TEST_STUBS.c).
+*               clock. Every test case starts as a virgin ECU (setUp, SW_TEST_STUBS.c).
 */
 #include "unity.h"
 #include "test_timing.h"
@@ -13,21 +12,14 @@
 #include "STDC.h"
 
 #include "INTEGRATION_STUBS.h"
-#include "MRA_CLUSTER.h"
 #include "SCHED_config.h"
 #include "TIME_MGR.h"
 
-#include "TMD_CAN.h"
 #include "TMD_INIT.h"
 #include "TMD_SYSTICK.h"
 #include "TMD_TIME.h"
 
 #include "SW_TEST_STUBS.h"
-
-#define TEST_AIRBAG_FRAMES_MAX      ( 128u )
-
-static u64_t test_airbag_us_s[TEST_AIRBAG_FRAMES_MAX];    /* when each airbag keep-alive frame the ECU sent reached the bus */
-static u32_t test_airbag_count_s;
 
 /*!
 ****************************************************************************************************
@@ -42,8 +34,6 @@ static u32_t test_airbag_count_s;
 void setUp( void )
 {
     TMD_INIT_init( &sw_test_init_cfg_g );
-
-    test_airbag_count_s = 0u;
 
     TEST_TIMING_START();
 }

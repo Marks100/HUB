@@ -38,6 +38,8 @@
 #include "VER.h"
 #include "UDS_config.h"
 #include "BOOT_HANDOFF.h"
+#include "VPM_CLIENT.h"
+#include "VPM_config.h"
 #include "TYRE_DATA.h"
 #include "NODE_INFO.h"
 
@@ -56,6 +58,16 @@ void app_main( void )
    (void)APP_read_fbl_boot_count( &app_fbl_boot_count_g );
    (void)APP_read_fbl_download_attempt_count( &app_fbl_download_attempt_count_g );
    (void)APP_read_fbl_dataset_download_count( &app_fbl_dataset_download_count_g );
+
+   /* A flash write was accepted (0x3D WriteMemoryByAddress) that the FBL has not applied: APP does not program flash while it
+      runs, so hand over to the FBL now, the first start after it. BM boots the FBL on the request flag, which the FBL clears, and
+      comes back to APP once the write is made. Nothing else of APP has run yet. */
+   VPM_CLIENT_init( &vpm_cfg_s );
+   if( VPM_CLIENT_is_pending( &app_vpm_client_blk_g ) == TRUE )
+   {
+      BOOT_HANDOFF_set_fbl_request( TRUE );
+      MCU_JUMP_software_reset();
+   }
 
    DBG_MGR_init( &dbg_mgr_cfg_s, SystemCoreClock );
    DWT_init( SystemCoreClock );

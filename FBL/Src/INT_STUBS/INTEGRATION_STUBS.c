@@ -18,10 +18,12 @@
 ***************************************************************************************************/
 #include "INTEGRATION_STUBS.h"
 #include "FBL_NVM_BLOCKS.h"
+#include "VPM_config.h"
 #include "CHKSUM.h"
 #include "CLK_STM32F1.h"
 #include "BOOT_HANDOFF.h"
 #include "FLS_STM32F1.h"
+#include "MCU_JUMP.h"
 #include "NVM_GEN2.h"
 #include "SYSTICK.h"
 #include "TIME_MGR.h"
@@ -140,13 +142,17 @@ STATIC void fbl_dataset_download_notify( u8_t index )
     }
 }
 
+/* Caller-owned staging buffer for sector writes - STM32F103 medium-density page size (1KB). */
+STATIC u8_t fbl_transfer_sector_buffer_s[ FLS_STM32F1_PAGE_SIZE ];
+
 /* The blocks FBL registers, in registration order */
 STATIC const NVM_GEN2_block_entry_st fbl_nvm_gen2_block_table_s[] =
 {
     { FBL_FINGERPRINT_BLOCK_ID,            &fbl_nvm_gen2_fingerprint_block_s },
     { FBL_BOOT_COUNT_BLOCK_ID,             &fbl_nvm_gen2_boot_count_block_s },
     { FBL_DOWNLOAD_ATTEMPT_COUNT_BLOCK_ID, &fbl_nvm_gen2_download_attempt_count_block_s },
-    { FBL_DATASET_DOWNLOAD_COUNT_BLOCK_ID, &fbl_nvm_gen2_dataset_download_count_block_s }
+    { FBL_DATASET_DOWNLOAD_COUNT_BLOCK_ID, &fbl_nvm_gen2_dataset_download_count_block_s },
+    { FBL_VPM_APPLIED_BLOCK_ID,  &fbl_nvm_gen2_vpm_applied_block_s }
 };
 
 /* fbl_config_st's board_init - flash driver bring-up, shared RAM bring-up and NVM bring-up are
@@ -171,6 +177,22 @@ STATIC void fbl_board_init( void )
        immediately rather than left pending for the same reason as the two writers above. */
     fbl_boot_count_g.count++;
     NVM_GEN2_flush_block( FBL_BOOT_COUNT_BLOCK_ID );
+
+    /* APP handed over because it accepted a flash write (0x3D WriteMemoryByAddress, VPM_CLIENT and VPM_SERVER) it does not make while it
+       runs. Applied here, before the comms stack is up so nothing is in the middle of a download, with the transfer buffer as
+       the page: the write is noted as applied whether it went well or not, so APP does not hand over again at every start.
+       The reset is to BM, which checks the dataset again and boots APP: the FBL request is cleared first or BM would come
+       straight back. */
+    VPM_SERVER_init( &vpm_server_cfg_s );
+
+    if( VPM_SERVER_is_pending() == TRUE )
+    {
+        (void)VPM_SERVER_apply( fbl_transfer_sector_buffer_s, (u16_t)sizeof( fbl_transfer_sector_buffer_s ) );
+
+        BOOT_HANDOFF_set_fbl_request( FALSE );
+        BOOT_HANDOFF_set_boot_failure_count( 0u );    /* APP started and handed over at once: not a failed start, as in fbl_download_attempt_notify() */
+        MCU_JUMP_software_reset();
+    }
 }
 
 /***************************************************************************************************
@@ -487,9 +509,6 @@ STATIC void fbl_comms_init( void )
 /***************************************************************************************************
 **                              Field Bootloader Configuration                                    **
 ***************************************************************************************************/
-/* Caller-owned staging buffer for sector writes - STM32F103 medium-density page size (1KB). */
-STATIC u8_t fbl_transfer_sector_buffer_s[ FLS_STM32F1_PAGE_SIZE ];
-
 /* One downloadable/erasable 4KB data block (the tyre pressure table) - see fbl_is_region_valid() in
    FBL.c. Add/remove entries here (and the matching extern symbols above, defined in this project's
    own linker script) to change how many datasets this platform has - FBL.c itself has no hardcoded

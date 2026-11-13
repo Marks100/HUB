@@ -9,7 +9,9 @@
 **                                                     BM validates this before jumping here,
 **                                                     same tooling/layout as APP's header)
 **     .isr_vector : 0x08002100 ...            code start
-**   APP  : 0x08008000 - 0x0801E7FF   90 KB
+**   APP  : 0x08008000 - 0x0801E3FF   89 KB
+**   VPM  : 0x0801E400 - 0x0801E7FF    1 KB  (variant parameter page: the FBL makes the writes APP kept in the NVM at its start,
+**                                               VPM_SERVER.h; a download never touches it)
 **   DATASET0 : 0x0801E800 - 0x0801F7FF   4 KB  (field-downloadable via FBL_download_request() -
 **                                               same header fields as APP, 96 B header. BM
 **                                               validates it informationally only - see
@@ -45,7 +47,7 @@ _Min_Stack_Size = 0x400;   /* 1 KB */
    STM32F103C8_BM_flash.ld) - same names, same values, both describing the identical physical
    addresses. Every *_code_end__ is inclusive (last valid byte). */
 __app_header_start__  = 0x08008000;
-__app_code_end__      = 0x0801E7FF;
+__app_code_end__      = 0x0801E3FF;
 __dataset0_header_start__ = 0x0801E800;
 __dataset0_code_start__   = 0x0801E860;
 __dataset0_code_end__     = 0x0801F7FF;

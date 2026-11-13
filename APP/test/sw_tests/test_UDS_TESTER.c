@@ -90,7 +90,7 @@ void test_a_session_request_from_a_tester_is_answered_by_the_erx( void )
     u8_t       response[SW_TEST_TESTER_RESPONSE_MAX_LEN];
     u16_t      len = 0u;
 
-    TEST_ASSERT_EQUAL( TMD_UDS_RESULT_OK, TMD_UDS_send_request( request, 2u, response, sizeof( response ), &len ) );
+    TEST_ASSERT_EQUAL( TMD_UDS_RESULT_OK, TMD_UDS_send_request( request, 2u, response, sizeof( response ), &len, NULL_P ) );
 
     TEST_ASSERT_TRUE( len >= 2u );
     TEST_ASSERT_EQUAL_HEX8( 0x50u, response[0u] );    /* positive response to 0x10 */
@@ -113,7 +113,7 @@ void test_a_tester_present_from_a_tester_is_answered_by_the_erx( void )
     u8_t       response[SW_TEST_TESTER_RESPONSE_MAX_LEN];
     u16_t      len = 0u;
 
-    TEST_ASSERT_EQUAL( TMD_UDS_RESULT_OK, TMD_UDS_send_request( request, 2u, response, sizeof( response ), &len ) );
+    TEST_ASSERT_EQUAL( TMD_UDS_RESULT_OK, TMD_UDS_send_request( request, 2u, response, sizeof( response ), &len, NULL_P ) );
 
     TEST_ASSERT_EQUAL_UINT16( 2u, len );
     TEST_ASSERT_EQUAL_HEX8( 0x7Eu, response[0u] );
@@ -136,7 +136,7 @@ void test_a_tester_reads_a_multi_frame_did_from_the_erx( void )
     u8_t  data[SW_TEST_TESTER_RESPONSE_MAX_LEN];
     u16_t len = 0u;
 
-    TEST_ASSERT_EQUAL( TMD_UDS_RESULT_OK, TMD_UDS_read_data_by_identifier( TEST_PART_NUMBER_DID, data, sizeof( data ), &len ) );
+    TEST_ASSERT_EQUAL( TMD_UDS_RESULT_OK, TMD_UDS_read_data_by_identifier( TEST_PART_NUMBER_DID, data, sizeof( data ), &len, NULL_P ) );
 
     TEST_ASSERT_EQUAL_UINT16( TEST_PART_NUMBER_LEN, len );
     TEST_ASSERT_EQUAL_HEX8_ARRAY( TEST_PART_NUMBER, data, TEST_PART_NUMBER_LEN );
@@ -159,7 +159,7 @@ void test_a_negative_response_of_the_erx_reaches_the_tester( void )
     u8_t       response[SW_TEST_TESTER_RESPONSE_MAX_LEN];
     u16_t      len = 0u;
 
-    TEST_ASSERT_EQUAL( TMD_UDS_RESULT_ERROR_NEGATIVE_RESPONSE, TMD_UDS_send_request( request, 3u, response, sizeof( response ), &len ) );
+    TEST_ASSERT_EQUAL( TMD_UDS_RESULT_ERROR_NEGATIVE_RESPONSE, TMD_UDS_send_request( request, 3u, response, sizeof( response ), &len, NULL_P ) );
 
     TEST_ASSERT_EQUAL_UINT16( 3u, len );
     TEST_ASSERT_EQUAL_HEX8( TMD_UDS_NEGATIVE_RESPONSE_SID, response[0u] );
@@ -186,11 +186,11 @@ void test_a_tester_gets_no_answer_from_an_unplugged_erx( void )
     TMD_ERX_unplug_instance( TMD_ERX_find_instance( APP_ISO_AXLE_2_INNER_RIGHT ) );    /* the ERX at the second axle's inner right wheel is unplugged */
     TMD_UDS_set_timeout( TEST_SILENT_TIMEOUT_MS );
 
-    TEST_ASSERT_NOT_EQUAL( TMD_UDS_RESULT_OK, TMD_UDS_diagnostic_session_control( TMD_UDS_SESSION_EXTENDED ) );    /* no answer: the model reports it as a timeout or a transport error */
+    TEST_ASSERT_NOT_EQUAL( TMD_UDS_RESULT_OK, TMD_UDS_diagnostic_session_control( TMD_UDS_SESSION_EXTENDED, NULL_P ) );    /* no answer: the model reports it as a timeout or a transport error */
 
     TMD_CANTP_set_ids( TEST_AXLE_2_OUTER_RIGHT_REQUEST_ID, TEST_AXLE_2_OUTER_RIGHT_RESPONSE_ID );    /* now the healthy ERX at the second axle's outer right wheel, on its own IDs */
 
-    TEST_ASSERT_EQUAL( TMD_UDS_RESULT_OK, TMD_UDS_diagnostic_session_control( TMD_UDS_SESSION_EXTENDED ) );
+    TEST_ASSERT_EQUAL( TMD_UDS_RESULT_OK, TMD_UDS_diagnostic_session_control( TMD_UDS_SESSION_EXTENDED, NULL_P ) );
 }
 
 /*!
@@ -219,7 +219,7 @@ void test_a_tester_reaches_the_erx_at_the_first_id_of_the_gateway_range( void )
     /* The HUB's client waits for the ERX to be up (its heartbeat is coming in) before it reads it. Once it has, the gateway holds the tester's request until the client's time is up */
     TMD_TIME_advance_time_ms( TEST_ERX_UP_MS );
 
-    TEST_ASSERT_EQUAL( TMD_UDS_RESULT_OK, TMD_UDS_send_request( request, 2u, response, sizeof( response ), &len ) );
+    TEST_ASSERT_EQUAL( TMD_UDS_RESULT_OK, TMD_UDS_send_request( request, 2u, response, sizeof( response ), &len, NULL_P ) );
 
     TEST_ASSERT_TRUE( len >= 2u );
     TEST_ASSERT_EQUAL_HEX8( 0x50u, response[0u] );
@@ -250,7 +250,7 @@ void test_a_tester_reaches_the_erx_at_the_last_position( void )
     TMD_ERX_place_instance( APP_ISO_AXLE_5_OUTER_RIGHT, TMD_ERX_PORT_A );
     TMD_CANTP_set_ids( TEST_AXLE_5_OUTER_RIGHT_REQUEST_ID, TEST_AXLE_5_OUTER_RIGHT_RESPONSE_ID );
 
-    TEST_ASSERT_EQUAL( TMD_UDS_RESULT_OK, TMD_UDS_send_request( request, 2u, response, sizeof( response ), &len ) );
+    TEST_ASSERT_EQUAL( TMD_UDS_RESULT_OK, TMD_UDS_send_request( request, 2u, response, sizeof( response ), &len, NULL_P ) );
 
     TEST_ASSERT_TRUE( len >= 2u );
     TEST_ASSERT_EQUAL_HEX8( 0x50u, response[0u] );
@@ -276,7 +276,7 @@ static void test_open_extended_session_on( u8_t iso_position )
     TMD_CANTP_set_ids( TMD_ERX_UDS_REQUEST_BASE_ID + iso_position, TMD_ERX_UDS_RESPONSE_BASE_ID + iso_position );
     TMD_UDS_set_timeout( TEST_GATEWAY_HOLD_MS );    /* the HUB's client reads the ERXs in turn: the gateway may hold the request until its time is up */
 
-    TEST_ASSERT_EQUAL( TMD_UDS_RESULT_OK, TMD_UDS_diagnostic_session_control( TMD_UDS_SESSION_EXTENDED ) );
+    TEST_ASSERT_EQUAL( TMD_UDS_RESULT_OK, TMD_UDS_diagnostic_session_control( TMD_UDS_SESSION_EXTENDED, NULL_P ) );
 }
 
 /*!

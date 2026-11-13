@@ -68,7 +68,8 @@ void test_a_restart_zeroes_a_variable_the_startup_code_zeroes( void )
     TMD_PANEL_turn_knob_clockwise();
     TMD_PANEL_assert_on_screen( "15%" );
 
-    TMD_INIT_restart_ecu_and_settle( SW_TEST_BOOT_SETTLE_MS );
+    TMD_INIT_restart_ecu();
+    TMD_TIME_advance_time_ms( SW_TEST_BOOT_SETTLE_MS );
 
     TMD_PANEL_press( TMD_PANEL_SELECT );
     TMD_PANEL_move_the_cursor_to( "Fan Speed" );
@@ -99,7 +100,8 @@ void test_a_restart_gives_an_initialised_variable_its_initial_value( void )
     TMD_PANEL_turn_knob_clockwise();
     TMD_PANEL_assert_on_screen( "85%" );
 
-    TMD_INIT_restart_ecu_and_settle( SW_TEST_BOOT_SETTLE_MS );
+    TMD_INIT_restart_ecu();
+    TMD_TIME_advance_time_ms( SW_TEST_BOOT_SETTLE_MS );
 
     TMD_PANEL_press( TMD_PANEL_SELECT );
     TMD_PANEL_move_the_cursor_to( "Brightness" );
@@ -122,7 +124,8 @@ void test_the_shared_ram_survives_a_restart( void )
 {
     BOOT_HANDOFF_set_fbl_request( TRUE );
 
-    TMD_INIT_restart_ecu_and_settle( SW_TEST_BOOT_SETTLE_MS );
+    TMD_INIT_restart_ecu();
+    TMD_TIME_advance_time_ms( SW_TEST_BOOT_SETTLE_MS );
 
     TEST_ASSERT_EQUAL( TRUE, BOOT_HANDOFF_get_fbl_request() );
 }

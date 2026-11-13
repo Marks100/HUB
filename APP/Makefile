@@ -54,7 +54,7 @@ RELEASE_PACKAGE_NAME         := $(RELEASE_PACKAGE_BASE_DIR)/$(PROJECT_TYPE)_$(VE
 
 # Flash layout - must match the linker scripts in BM/, FBL/, APP/. Change a size in all three.
 # STM32F103C8T6: 128KB at 0x08000000 (a "C8" is 64KB nominal but 128KB silicon, confirmed by reading
-# F_SIZE at 0x1FFFF7E0). BM=8KB  FBL=24KB  APP=90KB  DATASET0=4KB  NVM=2KB.
+# F_SIZE at 0x1FFFF7E0). BM=8KB  FBL=24KB  APP=89KB  VPM=1KB  DATASET0=4KB  NVM=2KB.
 # The top 2KB (0x0801F800-0x0801FFFF) is the NVM_GEN2 pages, fixed in Common_Src/PROJ_CONFIG/PROJ_config.h:
 # APP and DATASET0 must stay below them. FBL and APP share those pages, see NVM_GEN2/README.md.
 # DATASET0 is downloaded through FBL and validated by BM at boot.
@@ -67,7 +67,7 @@ FBL_FLASH_SIZE                := 0x6000
 FBL_FLASH_END                 := $(shell printf '0x%08X' $$(( $(BM_FLASH_START) + $(BM_FLASH_SIZE) + $(FBL_FLASH_SIZE) - 1 )))
 
 APP_FLASH_START               := $(shell printf '0x%08X' $$(( $(BM_FLASH_START) + $(BM_FLASH_SIZE) + $(FBL_FLASH_SIZE) )))
-APP_FLASH_SIZE                := 0x16800
+APP_FLASH_SIZE                := 0x16400
 APP_FLASH_END                 := $(shell printf '0x%08X' $$(( $(BM_FLASH_START) + $(BM_FLASH_SIZE) + $(FBL_FLASH_SIZE) + $(APP_FLASH_SIZE) - 1 )))
 
 # One past APP_FLASH_END - the exclusive upper bound srec_cat's -fill wants. See the padding step in
@@ -78,7 +78,13 @@ APP_FLASH_LIMIT               := $(shell printf '0x%08X' $$(( $(APP_FLASH_START)
 # APP_header_st of HEADER.h, but smaller than APP's: no vector table, so no 256B VTOR alignment (see the
 # region constants in BM/linker_script/STM32F103C8_BM_flash.ld). Built by the `dataset` target, not the APP build.
 # Must match the __dataset0_* constants in the BM, FBL and APP linker scripts, as FBL_CODE_END does for the FBL.
-DATASET0_FLASH_START          := $(shell printf '0x%08X' $$(( $(BM_FLASH_START) + $(BM_FLASH_SIZE) + $(FBL_FLASH_SIZE) + $(APP_FLASH_SIZE) )))
+# The variant parameter page (VPM_COMMON.h, VPM_config.h): after APP, before DATASET0. Nothing signs or downloads it - APP keeps writes for it in the NVM
+# and the FBL makes them at the next start - so it is not in any image and stays blank (0xFF) until the first write.
+VPM_FLASH_START              := $(shell printf '0x%08X' $$(( $(BM_FLASH_START) + $(BM_FLASH_SIZE) + $(FBL_FLASH_SIZE) + $(APP_FLASH_SIZE) )))
+VPM_FLASH_SIZE               := 0x400
+VPM_FLASH_END                := $(shell printf '0x%08X' $$(( $(VPM_FLASH_START) + $(VPM_FLASH_SIZE) - 1 )))
+
+DATASET0_FLASH_START          := $(shell printf '0x%08X' $$(( $(BM_FLASH_START) + $(BM_FLASH_SIZE) + $(FBL_FLASH_SIZE) + $(APP_FLASH_SIZE) + $(VPM_FLASH_SIZE) )))
 DATASET0_FLASH_SIZE           := 0x1000
 DATASET0_FLASH_END            := $(shell printf '0x%08X' $$(( $(DATASET0_FLASH_START) + $(DATASET0_FLASH_SIZE) - 1 )))
 DATASET0_HEADER_SIZE          := 0x60

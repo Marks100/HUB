@@ -27,6 +27,7 @@ APP_generic_data_blk_st app_generic_data_blk_g;
 APP_key_blk_st          app_key_1_blk_g;
 APP_key_blk_st          app_key_2_blk_g;
 APP_chassis_num_blk_st  app_chassis_num_blk_g;
+VPM_COMMON_blk_st      app_vpm_client_blk_g;
 
 /* Populated once at start-up by app_main()'s APP_read_fbl_fingerprint() call - this is NOT a
    live mirror the way app_generic_data_blk_g is: FBL owns this block, APP never registers it,
@@ -196,13 +197,25 @@ STATIC const NVM_GEN2_block_cfg_st app_nvm_gen2_chassis_num_block_s =
     .migrate_fn   = NULL_P
 };
 
+/* The write APP has accepted for the FBL to apply (VPM_CLIENT.h). All zero until one is: sequence 0 is nothing accepted. */
+STATIC const NVM_GEN2_block_cfg_st app_nvm_gen2_vpm_client_block_s =
+{
+    .default_data = NULL_P,
+    .current_data = &app_vpm_client_blk_g,
+    .data_len     = sizeof( VPM_COMMON_blk_st ),
+    .version      = 1u,
+    .event_fn     = NULL_P,
+    .migrate_fn   = NULL_P
+};
+
 /* Every block this image registers, in registration order - app_main() hands the table to NVM_GEN2_register_blocks() */
 const NVM_GEN2_block_entry_st app_nvm_gen2_block_table_s[] =
 {
     { APP_GENERIC_BLOCK_ID,     &app_nvm_gen2_generic_block_s },
     { APP_KEY_1_BLOCK_ID,       &app_nvm_gen2_key_1_block_s },
     { APP_KEY_2_BLOCK_ID,       &app_nvm_gen2_key_2_block_s },
-    { APP_CHASSIS_NUM_BLOCK_ID, &app_nvm_gen2_chassis_num_block_s }
+    { APP_CHASSIS_NUM_BLOCK_ID, &app_nvm_gen2_chassis_num_block_s },
+    { APP_VPM_CLIENT_BLOCK_ID, &app_nvm_gen2_vpm_client_block_s }
 };
 
 const u8_t app_nvm_gen2_block_count_s = NVM_GEN2_BLOCK_TABLE_SIZE( app_nvm_gen2_block_table_s );

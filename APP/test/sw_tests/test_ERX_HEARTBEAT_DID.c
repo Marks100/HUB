@@ -73,7 +73,7 @@ void test_a_tester_reads_the_erx_heartbeat_state( void )
     TMD_ERX_unplug_instance( TMD_ERX_find_instance( APP_ISO_AXLE_1_CENTRE ) );    /* unplugged from the start */
     TMD_TIME_advance_time_ms( 2100u );    /* four heartbeats, the last carrying the 2 seconds */
 
-    TEST_ASSERT_EQUAL( TMD_UDS_RESULT_OK, TMD_UDS_read_data_by_identifier( DID_APP_ERX_HEARTBEATS, data, sizeof( data ), &len ) );
+    TEST_ASSERT_EQUAL( TMD_UDS_RESULT_OK, TMD_UDS_read_data_by_identifier( DID_APP_ERX_HEARTBEATS, data, sizeof( data ), &len, NULL_P ) );
     TEST_ASSERT_EQUAL_UINT16( AUTOCFG_HEARTBEAT_INFO_SIZE, len );
 
     /* Port 0, slot 0: the centre line, unplugged. Only the position. */
@@ -113,7 +113,7 @@ void test_a_tester_sees_an_erx_that_was_unplugged_as_lost( void )
     TMD_ERX_unplug_instance( TMD_ERX_find_instance( APP_ISO_AXLE_1_OUTER_LEFT ) );    /* unplugged */
     TMD_TIME_advance_time_ms( AUTOCFG_HEARTBEAT_TIMEOUT_MS + 100u );    /* the timeout without a heartbeat */
 
-    TEST_ASSERT_EQUAL( TMD_UDS_RESULT_OK, TMD_UDS_read_data_by_identifier( DID_APP_ERX_HEARTBEATS, data, sizeof( data ), &len ) );
+    TEST_ASSERT_EQUAL( TMD_UDS_RESULT_OK, TMD_UDS_read_data_by_identifier( DID_APP_ERX_HEARTBEATS, data, sizeof( data ), &len, NULL_P ) );
 
     TEST_ASSERT_EQUAL_UINT16( AUTOCFG_HEARTBEAT_INFO_SIZE, len );
     TEST_ASSERT_EQUAL_HEX8( APP_ISO_AXLE_1_OUTER_LEFT, data[TEST_PORT_1] );
@@ -142,7 +142,7 @@ void test_a_tester_sees_an_erx_that_was_never_plugged_in_as_lost( void )
     TMD_ERX_unplug_instance( TMD_ERX_find_instance( APP_ISO_AXLE_1_CENTRE ) );    /* unplugged from the start */
     TMD_TIME_advance_time_ms( AUTOCFG_HEARTBEAT_TIMEOUT_MS + 100u );
 
-    TEST_ASSERT_EQUAL( TMD_UDS_RESULT_OK, TMD_UDS_read_data_by_identifier( DID_APP_ERX_HEARTBEATS, data, sizeof( data ), &len ) );
+    TEST_ASSERT_EQUAL( TMD_UDS_RESULT_OK, TMD_UDS_read_data_by_identifier( DID_APP_ERX_HEARTBEATS, data, sizeof( data ), &len, NULL_P ) );
 
     TEST_ASSERT_EQUAL_HEX8( APP_ISO_AXLE_1_CENTRE, data[0u] );
     TEST_ASSERT_EQUAL_HEX8( AUTOCFG_HEARTBEAT_INFO_LOST, data[1u] );

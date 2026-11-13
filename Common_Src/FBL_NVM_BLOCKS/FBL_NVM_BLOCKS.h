@@ -54,6 +54,7 @@
 #define FBL_BOOT_COUNT_BLOCK_ID              ( NVM_GEN2_BLOCK_ID_OWNER_A_FIRST + 1u )
 #define FBL_DOWNLOAD_ATTEMPT_COUNT_BLOCK_ID  ( NVM_GEN2_BLOCK_ID_OWNER_A_FIRST + 2u )
 #define FBL_DATASET_DOWNLOAD_COUNT_BLOCK_ID  ( NVM_GEN2_BLOCK_ID_OWNER_A_FIRST + 3u )
+#define FBL_VPM_APPLIED_BLOCK_ID   ( NVM_GEN2_BLOCK_ID_OWNER_A_FIRST + 4u )   /* an FBL_vpm_applied_blk_st: the sequence number of the last batch of patches APP kept (VPM_COMMON.h) that the FBL applied */
 
 /* Matches this project's current dataset table size (see fbl_dataset_table_s in FBL/Src/INT_STUBS/
    INTEGRATION_STUBS.c and bm_dataset_table_s in BM/Src/bm_main.c) - NVM_GEN2 blocks are a fixed
@@ -150,6 +151,13 @@ typedef struct
     u32_t count;
 } FBL_counter_blk_st;
 
+/* The batch of variant parameter patches the FBL last applied (VPM_COMMON.h): its sequence number, 0 until it has applied one, which is what
+   no batch kept yet is too. Two bytes: a batch is only started by a write over UDS, and the number skips 0 when it wraps. */
+typedef struct
+{
+    u16_t sequence;
+} FBL_vpm_applied_blk_st;
+
 /* Per-dataset accepted-download-attempt counts - same "attempts, not completions" semantics as
    FBL_counter_blk_st/FBL_DOWNLOAD_ATTEMPT_COUNT_BLOCK_ID above (see that block's comment for why
    there is no separate "failed" counter), just one count per configured dataset instead of one
@@ -173,11 +181,13 @@ extern FBL_fingerprint_blk_st           fbl_fingerprint_g;
 extern FBL_counter_blk_st               fbl_boot_count_g;
 extern FBL_counter_blk_st               fbl_download_attempt_count_g;
 extern FBL_dataset_download_count_blk_st fbl_dataset_download_count_g;
+extern FBL_vpm_applied_blk_st             fbl_vpm_applied_g;
 
 extern const NVM_GEN2_block_cfg_st fbl_nvm_gen2_fingerprint_block_s;
 extern const NVM_GEN2_block_cfg_st fbl_nvm_gen2_boot_count_block_s;
 extern const NVM_GEN2_block_cfg_st fbl_nvm_gen2_download_attempt_count_block_s;
 extern const NVM_GEN2_block_cfg_st fbl_nvm_gen2_dataset_download_count_block_s;
+extern const NVM_GEN2_block_cfg_st fbl_nvm_gen2_vpm_applied_block_s;
 
 #endif /* FBL_NVM_BLOCKS_H */
 

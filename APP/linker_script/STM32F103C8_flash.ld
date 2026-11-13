@@ -5,7 +5,8 @@
 ** is a "C8" (64 KB nominal) that's physically 128 KB silicon, a known STM32F103 binning quirk):
 **   BM   : 0x08000000 - 0x08001FFF    8 KB
 **   FBL  : 0x08002000 - 0x08007FFF   24 KB
-**   APP  : 0x08008000 - 0x0801E7FF   90 KB  <- this image
+**   APP  : 0x08008000 - 0x0801E3FF   89 KB  <- this image
+**   VPM  : 0x0801E400 - 0x0801E7FF    1 KB  (variant parameter page, VPM_COMMON.h: not an image, nothing is linked into it)
 **   DATASET0 : 0x0801E800 - 0x0801F7FF   4 KB  (field-downloadable via FBL_download_request().
 **                                               Same header fields as APP but a 96 B header - no
 **                                               vector table, so no 256 B VTOR alignment. BM
@@ -45,7 +46,7 @@ __dataset0_code_end__     = 0x0801F7FF;
 
 MEMORY
 {
-    FLASH          (rx)  : ORIGIN = 0x08008000, LENGTH = 90K
+    FLASH          (rx)  : ORIGIN = 0x08008000, LENGTH = 89K
     m_data_shared  (xrw) : ORIGIN = 0x20000000, LENGTH = 0x20
     RAM            (xrw) : ORIGIN = 0x20000020, LENGTH = 0x4FE0
 }

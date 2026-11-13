@@ -325,7 +325,7 @@ static void test_assert_a_power_cut_in_the_compaction_state_keeps_the_last_saves
     TEST_ASSERT_TRUE( last_on_flash > 1u );
 
     test_scramble_the_ram_copies();
-    TMD_INIT_power_cut_ecu();
+    TMD_INIT_power_cut_ecu( TMD_INIT_KEEP_ALL );
 
     TEST_ASSERT_EQUAL_UINT16( last_on_flash, app_generic_data_blk_g.weld_time_ms );
     TEST_ASSERT_EQUAL_MEMORY( chassis_num, app_chassis_num_blk_g.chassis_num, APP_CHASSIS_NUM_LEN );
@@ -670,7 +670,7 @@ void test_a_failed_save_leaves_the_last_good_record_to_recover( void )
 {
     test_save_generic_block();
 
-    TMD_NVM_inject_write_error( 0u, NVM_TOTAL_SIZE );
+    FLASH_SIM_fail_programs( NVM_BASE_ADDRESS, NVM_TOTAL_SIZE );
     app_generic_data_blk_g.weld_time_ms = TEST_SECOND_WELD_TIME;
     test_save_block( APP_GENERIC_BLOCK_ID );
     TEST_ASSERT_EQUAL( NVM_GEN2_STATE_FAULT, NVM_GEN2_get_state() );
@@ -945,26 +945,6 @@ void test_a_corrupt_record_is_replaced_by_the_defaults( void )
 /*!
 ****************************************************************************************************
 *
-*   \brief         Verify the NVM model sees the programs of a save, so a test can count what the firmware wrote
-*
-*   \author        mstewart
-*
-*   \return        none
-*
-*****************************************************************************************************/
-void test_the_nvm_model_counts_the_programs_of_a_save( void )
-{
-    TMD_NVM_reset_statistics();
-
-    test_save_generic_block();
-
-    TEST_ASSERT_TRUE( TMD_NVM_get_statistics().write_count > 0u );
-    TEST_ASSERT_EQUAL_UINT32( 0u, TMD_NVM_get_statistics().error_count );
-}
-
-/*!
-****************************************************************************************************
-*
 *   \brief         Verify a flash that fails every program makes the save fail: the flash controller sets PGERR, the read
 *                  back no longer matches what was written, and NVM_GEN2 goes to its fault state
 *
@@ -975,12 +955,11 @@ void test_the_nvm_model_counts_the_programs_of_a_save( void )
 *****************************************************************************************************/
 void test_a_write_error_puts_nvm_gen2_in_fault( void )
 {
-    TMD_NVM_inject_write_error( 0u, NVM_TOTAL_SIZE );
+    FLASH_SIM_fail_programs( NVM_BASE_ADDRESS, NVM_TOTAL_SIZE );
 
     test_save_generic_block();
 
     TEST_ASSERT_EQUAL( NVM_GEN2_STATE_FAULT, NVM_GEN2_get_state() );
-    TEST_ASSERT_TRUE( TMD_NVM_get_statistics().error_count > 0u );
 }
 
 /*!
@@ -996,7 +975,7 @@ void test_a_write_error_puts_nvm_gen2_in_fault( void )
 *****************************************************************************************************/
 void test_a_power_cycle_recovers_nvm_gen2_from_a_write_error( void )
 {
-    TMD_NVM_inject_write_error( 0u, NVM_TOTAL_SIZE );
+    FLASH_SIM_fail_programs( NVM_BASE_ADDRESS, NVM_TOTAL_SIZE );
     test_save_generic_block();
 
     TMD_INIT_restart_ecu();

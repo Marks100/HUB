@@ -84,6 +84,7 @@
     - ../../xCOMMON_MODULES/test/support/models/TMD_UDS
     - ../../xCOMMON_MODULES/test/support/models/TMD_SH1106
     - ../../xCOMMON_MODULES/test/support/models/TMD_MBA
+    - ../../xCOMMON_MODULES/test/support/models/TMD_SEC
     - ../../xCOMMON_MODULES/test/support/models/TMD_STARTUP
     # sw_stubs: the clock's list and the models every test's setUp() starts a virgin ECU with are the project's own, in
     # SW_TEST_STUBS.c, which is in the library too

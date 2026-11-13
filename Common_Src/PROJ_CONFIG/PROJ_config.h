@@ -48,6 +48,13 @@
 #define NVM_BASE_ADDRESS                ( 0x0801F800UL )
 #define NVM_TOTAL_SIZE                  ( 2u * 1024u )
 
+/* Variant parameter manager (xCOMMON_MODULES/Src/VPM): the patches a 0x3D write is kept as until the bootloader makes it. The block of
+   patches takes 4 + VPM_COMMON_PATCH_COUNT * VPM_COMMON_PATCH_SIZE bytes of the NVM above - 260 for these - so the two trade slots for
+   room per slot in the same space. A write needs ceil( bytes / ( VPM_COMMON_PATCH_SIZE - 5 ) ) slots and a batch has VPM_COMMON_PATCH_COUNT
+   of them. The size is a multiple of 4. Changing them changes the layout of the block, so do it before a unit has kept patches, or blank its NVM. */
+#define VPM_COMMON_PATCH_COUNT          ( 8u )
+#define VPM_COMMON_PATCH_SIZE           ( 32u )
+
 #endif /* PROJ_CONFIG_H multiple inclusion guard */
 
 /****************************** END OF FILE *******************************************************/
