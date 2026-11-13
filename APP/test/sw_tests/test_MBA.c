@@ -20,6 +20,7 @@
 
 #include "INTEGRATION_STUBS.h"
 #include "BOOT_HANDOFF.h"
+#include "vhw.h"
 #include "FLS_STM32F1.h"
 
 #include "TMD_INIT.h"
@@ -815,4 +816,109 @@ void test_a_write_that_starts_before_the_page_or_wraps_the_address_space_is_refu
 
     assert_the_refused_write_was_not_kept();
 }
+/*!
+****************************************************************************************************
+*
+*   \brief         A reset after a kept write hands over in the one reset it makes: the FBL is asked for before the ECU restarts, and
+*                  that restart is the one that makes the write
+*
+*   \author        mstewart
+*
+*   \param[in]     reset_type   The ECU Reset sub-function the tester sends
+*
+*   \return        none
+*
+*****************************************************************************************************/
+static void assert_a_reset_hands_over_in_its_one_reset( u8_t reset_type )
+{
+    u32_t resets_before;
+
+    TEST_ASSERT_EQUAL( TMD_UDS_RESULT_OK, TMD_UDS_unlock( 1u, NULL_P ) );
+    TEST_ASSERT_EQUAL( TMD_UDS_RESULT_OK, TMD_UDS_write_memory_by_address( TEST_PARAMETER_ADDRESS, test_data_c, sizeof( test_data_c ), NULL_P ) );
+
+    resets_before = vhw_core_get_system_resets();
+    TEST_ASSERT_EQUAL( TMD_UDS_RESULT_OK, TMD_UDS_ecu_reset( reset_type, NULL_P ) );
+    TMD_TIME_advance_time_ms( 50u );
+
+    TEST_ASSERT_EQUAL_UINT32( resets_before + 1u, vhw_core_get_system_resets() );
+    TEST_ASSERT_EQUAL( TRUE, BOOT_HANDOFF_get_fbl_request() );    /* asked for before the restart: the application does not have to start to do it */
+
+    TMD_INIT_restart_ecu();
+    TEST_ASSERT_EQUAL( FALSE, BOOT_HANDOFF_get_fbl_request() );
+    assert_flash_holds( TEST_PARAMETER_ADDRESS, test_data_c, sizeof( test_data_c ) );
+}
+
+/*!
+****************************************************************************************************
+*
+*   \brief         Verify a key off/on reset (0x11 0x02) after a kept write hands over in its one reset
+*
+*   \author        mstewart
+*
+*   \return        none
+*
+*****************************************************************************************************/
+void test_a_key_off_on_reset_after_a_write_hands_over_in_its_one_reset( void )
+{
+    assert_a_reset_hands_over_in_its_one_reset( TMD_UDS_RESET_KEY_OFF_ON );
+}
+
+/*!
+****************************************************************************************************
+*
+*   \brief         Verify a hard reset (0x11 0x01) after a kept write hands over in its one reset
+*
+*   \author        mstewart
+*
+*   \return        none
+*
+*****************************************************************************************************/
+void test_a_hard_reset_after_a_write_hands_over_in_its_one_reset( void )
+{
+    assert_a_reset_hands_over_in_its_one_reset( TMD_UDS_RESET_HARD );
+}
+
+/*!
+****************************************************************************************************
+*
+*   \brief         Verify a soft reset (0x11 0x03) after a kept write hands over in its one reset
+*
+*   \author        mstewart
+*
+*   \return        none
+*
+*****************************************************************************************************/
+void test_a_soft_reset_after_a_write_hands_over_in_its_one_reset( void )
+{
+    assert_a_reset_hands_over_in_its_one_reset( TMD_UDS_RESET_SOFT );
+}
+
+/*!
+****************************************************************************************************
+*
+*   \brief         Verify a reset with no write waiting is a plain reset, whichever type it is: the FBL is not asked for
+*
+*   \author        mstewart
+*
+*   \return        none
+*
+*****************************************************************************************************/
+void test_a_reset_with_no_write_waiting_does_not_ask_for_the_fbl( void )
+{
+    const u8_t types[3u] = { TMD_UDS_RESET_HARD, TMD_UDS_RESET_KEY_OFF_ON, TMD_UDS_RESET_SOFT };
+    u8_t       i;
+    u32_t      resets_before;
+
+    for( i = 0u; i < sizeof( types ); i++ )
+    {
+        resets_before = vhw_core_get_system_resets();
+
+        TEST_ASSERT_EQUAL( TMD_UDS_RESULT_OK, TMD_UDS_ecu_reset( types[i], NULL_P ) );
+        TMD_TIME_advance_time_ms( 50u );
+
+        TEST_ASSERT_EQUAL_UINT32( resets_before + 1u, vhw_core_get_system_resets() );
+        TEST_ASSERT_EQUAL( FALSE, BOOT_HANDOFF_get_fbl_request() );
+    }
+}
+
 /****************************** END OF FILE *******************************************************/

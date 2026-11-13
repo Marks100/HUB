@@ -64,19 +64,22 @@
 /***************************************************************************************************
 **                              Private Function Prototypes                                       **
 ***************************************************************************************************/
-STATIC u8_t uds_handle_security_request_seed( u16_t subfunc, u8_t* data_p, u16_t* len_p, UDS_response_code_et* nrc_p );
-STATIC u8_t uds_handle_security_send_key( u16_t subfunc, u8_t* data_p, u16_t* len_p, UDS_response_code_et* nrc_p );
-STATIC u8_t uds_handle_check_programming_preconditions( u16_t subfunc, u8_t* data_p, u16_t* len_p, UDS_response_code_et* nrc_p );
-STATIC u8_t uds_handle_communication_control( u16_t subfunc, u8_t* data_p, u16_t* len_p, UDS_response_code_et* nrc_p );
-STATIC u8_t uds_handle_control_dtc_setting( u16_t subfunc, u8_t* data_p, u16_t* len_p, UDS_response_code_et* nrc_p );
-STATIC u8_t uds_handle_write_key( u16_t subfunc, u8_t* data_p, u16_t* len_p, UDS_response_code_et* nrc_p );
-STATIC u8_t uds_handle_read_app_sw_id( u16_t subfunc, u8_t* data_p, u16_t* len_p, UDS_response_code_et* nrc_p );
-STATIC u8_t uds_handle_read_erx_heartbeats( u16_t subfunc, u8_t* data_p, u16_t* len_p, UDS_response_code_et* nrc_p );
-STATIC u8_t uds_handle_read_dtc_information( u16_t subfunc, u8_t* data_p, u16_t* len_p, UDS_response_code_et* nrc_p );
-STATIC u8_t uds_handle_clear_diagnostic_information( u16_t subfunc, u8_t* data_p, u16_t* len_p, UDS_response_code_et* nrc_p );
-STATIC u8_t uds_handle_write_memory_by_address( u16_t subfunc, u8_t* data_p, u16_t* len_p, UDS_response_code_et* nrc_p );
+STATIC u8_t  uds_handle_security_request_seed( u16_t subfunc, u8_t* data_p, u16_t* len_p, UDS_response_code_et* nrc_p );
+STATIC u8_t  uds_handle_security_send_key( u16_t subfunc, u8_t* data_p, u16_t* len_p, UDS_response_code_et* nrc_p );
+STATIC u8_t  uds_handle_check_programming_preconditions( u16_t subfunc, u8_t* data_p, u16_t* len_p, UDS_response_code_et* nrc_p );
+STATIC u8_t  uds_handle_communication_control( u16_t subfunc, u8_t* data_p, u16_t* len_p, UDS_response_code_et* nrc_p );
+STATIC u8_t  uds_handle_control_dtc_setting( u16_t subfunc, u8_t* data_p, u16_t* len_p, UDS_response_code_et* nrc_p );
+STATIC u8_t  uds_handle_write_key( u16_t subfunc, u8_t* data_p, u16_t* len_p, UDS_response_code_et* nrc_p );
+STATIC u8_t  uds_handle_read_app_sw_id( u16_t subfunc, u8_t* data_p, u16_t* len_p, UDS_response_code_et* nrc_p );
+STATIC u8_t  uds_handle_read_erx_heartbeats( u16_t subfunc, u8_t* data_p, u16_t* len_p, UDS_response_code_et* nrc_p );
+STATIC u8_t  uds_handle_read_dtc_information( u16_t subfunc, u8_t* data_p, u16_t* len_p, UDS_response_code_et* nrc_p );
+STATIC u8_t  uds_handle_clear_diagnostic_information( u16_t subfunc, u8_t* data_p, u16_t* len_p, UDS_response_code_et* nrc_p );
+STATIC u8_t  uds_handle_write_memory_by_address( u16_t subfunc, u8_t* data_p, u16_t* len_p, UDS_response_code_et* nrc_p );
 STATIC u32_t uds_read_big_endian( const u8_t* data_p, u8_t length );
-STATIC void uds_handle_programming_session_notify( void );
+STATIC void  uds_handle_programming_session_notify( void );
+STATIC void  uds_perform_soft_reset( void );
+STATIC void  uds_perform_hard_reset( void );
+STATIC void  uds_perform_key_off_on_reset( void );
 
 /***************************************************************************************************
 **                              Sub-function Tables                                               **
@@ -104,13 +107,13 @@ STATIC const UDS_security_access_entry_st security_access_cfg_s[UDS_SECURITY_ACC
     { uds_handle_security_send_key,     UDS_SES_EXTENDED, 0u },  /* SendKey, level from subfunc */
 };
 
-/* ECU Reset (0x11) is also a row below - see UDS_ecu_reset_cfg_st's comment in UDS.h. Same reset
-   for both halves, matching the old .perform_soft_reset/.perform_hard_reset in app_uds_func_table_s
-   (APP/Src/INT_STUBS/INTEGRATION_STUBS.c) this replaced. */
+/* ECU Reset (0x11) is also a row below - see UDS_ecu_reset_cfg_st's comment in UDS.h. Each type has its own function, so one
+   can be given something of its own without the others; today each resets, into the FBL if variant parameter writes are waiting. */
 STATIC const UDS_ecu_reset_cfg_st ecu_reset_cfg_s =
 {
-    MCU_JUMP_software_reset,
-    MCU_JUMP_software_reset
+    uds_perform_soft_reset,        /* 0x03 */
+    uds_perform_hard_reset,        /* 0x01 */
+    uds_perform_key_off_on_reset   /* 0x02 */
 };
 
 /* TesterPresent (0x3E) is also a row below - see UDS_tester_present_cfg_st's comment in UDS.h.
@@ -802,6 +805,56 @@ STATIC u32_t uds_read_big_endian( const u8_t* data_p, u8_t length )
 STATIC void uds_handle_programming_session_notify( void )
 {
     BOOT_HANDOFF_set_fbl_request( TRUE );
+}
+
+/*!
+****************************************************************************************************
+*
+*   \brief         ECU Reset 0x03 (soft) callback (ecu_reset_cfg_s above): reset, into the FBL if variant parameter writes are waiting
+*
+*   \author        mstewart
+*
+*   \return        none, the reset does not return
+*
+***************************************************************************************************/
+STATIC void uds_perform_soft_reset( void )
+{
+    uds_perform_key_off_on_reset();
+}
+
+/*!
+****************************************************************************************************
+*
+*   \brief         ECU Reset 0x01 (hard) callback (ecu_reset_cfg_s above): reset, into the FBL if variant parameter writes are waiting
+*
+*   \author        mstewart
+*
+*   \return        none, the reset does not return
+*
+***************************************************************************************************/
+STATIC void uds_perform_hard_reset( void )
+{
+    uds_perform_key_off_on_reset();
+}
+
+/*!
+****************************************************************************************************
+*
+*   \brief         ECU Reset 0x02 (key off/on) callback (ecu_reset_cfg_s above): reset, into the FBL if variant parameter writes are waiting
+*
+*   \author        mstewart
+*
+*   \return        none, the reset does not return
+*
+***************************************************************************************************/
+STATIC void uds_perform_key_off_on_reset( void )
+{
+    if( VPM_CLIENT_is_pending( &app_vpm_client_blk_g ) == TRUE )
+    {
+        BOOT_HANDOFF_set_fbl_request( TRUE );
+    }
+    
+    MCU_JUMP_software_reset();
 }
 
 /****************************** END OF FILE *******************************************************/
