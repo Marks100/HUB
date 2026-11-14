@@ -32,6 +32,7 @@
 #include "printf.h"
 #include "BOOT_HANDOFF.h"
 #include "MCU_JUMP.h"
+#include "HAL_CAN.h"
 
 /***************************************************************************************************
 **                              Defines                                                           **
@@ -66,6 +67,7 @@ STATIC u8_t          uds_handle_security_send_key( u16_t subfunc, u8_t* data_p, 
 STATIC u8_t          uds_handle_check_programming_preconditions( u16_t subfunc, u8_t* data_p, u16_t* len_p, UDS_response_code_et* nrc_p );
 STATIC u8_t          uds_handle_communication_control( u16_t subfunc, u8_t* data_p, u16_t* len_p, UDS_response_code_et* nrc_p );
 STATIC u8_t          uds_handle_control_dtc_setting( u16_t subfunc, u8_t* data_p, u16_t* len_p, UDS_response_code_et* nrc_p );
+STATIC u8_t          uds_handle_link_control( u16_t subfunc, u8_t* data_p, u16_t* len_p, UDS_response_code_et* nrc_p );
 STATIC u8_t          uds_handle_write_key( u16_t subfunc, u8_t* data_p, u16_t* len_p, UDS_response_code_et* nrc_p );
 STATIC u8_t          uds_handle_read_app_sw_id( u16_t subfunc, u8_t* data_p, u16_t* len_p, UDS_response_code_et* nrc_p );
 STATIC u8_t          uds_handle_read_erx_heartbeats( u16_t subfunc, u8_t* data_p, u16_t* len_p, UDS_response_code_et* nrc_p );
@@ -142,6 +144,13 @@ STATIC UDS_subfunction_table_st routine_control_subfuncs_s[] =
 STATIC UDS_subfunction_table_st communication_control_subfuncs_s[] =
 {
     { UDS_SUBFUNC_IGNORED, UDS_SUBFUNC_MASK_ANY, uds_handle_communication_control, UDS_SES_EXTENDED, 0u },
+};
+
+/* 0x87 LinkControl hands over to the FBL at another CAN baud rate, so it asks for what the programming session does: the extended session
+   and security level 1 (the FBL starts unlocked on the strength of it). Both sub-functions are one row, as communication_control_subfuncs_s above. */
+STATIC UDS_subfunction_table_st link_control_subfuncs_s[] =
+{
+    { UDS_SUBFUNC_IGNORED, UDS_SUBFUNC_MASK_ANY, uds_handle_link_control, UDS_SES_EXTENDED, APP_SECURITY_LEVEL_1 },
 };
 
 /* Same masked-family approach as communication_control_subfuncs_s above - $01/$02 validated by
@@ -255,6 +264,7 @@ STATIC UDS_service_table_st uds_service_table_s[] =
     { UDS_SID_ROUTINE_CONTROL,            routine_control_subfuncs_s,          UDS_TABLE_ROWS( routine_control_subfuncs_s ) },
     { UDS_SID_COMMUNICATION_CONTROL,      communication_control_subfuncs_s,    UDS_TABLE_ROWS( communication_control_subfuncs_s ) },
     { UDS_SID_CONTROL_DTC_SETTING,        control_dtc_setting_subfuncs_s,      UDS_TABLE_ROWS( control_dtc_setting_subfuncs_s ) },
+    { UDS_SID_LINK_CONTROL,               link_control_subfuncs_s,             UDS_TABLE_ROWS( link_control_subfuncs_s ) },
     { UDS_SID_WRITE_DATA_BY_IDENTIFIER,   write_data_by_identifier_subfuncs_s, UDS_TABLE_ROWS( write_data_by_identifier_subfuncs_s ) },
     { UDS_SID_READ_DTC_INFORMATION,       read_dtc_information_subfuncs_s,     UDS_TABLE_ROWS( read_dtc_information_subfuncs_s ) },
     { UDS_SID_CLEAR_DIAGNOSTIC_INFORMATION, clear_diagnostic_information_subfuncs_s, UDS_TABLE_ROWS( clear_diagnostic_information_subfuncs_s ) },
@@ -781,6 +791,52 @@ STATIC UDS_response_code_et uds_memory_write( u32_t address, const u8_t* data_p,
     return( nrc );
 }
 
+/*!
+****************************************************************************************************
+*   \brief         0x87 - LinkControl: verifyModeTransitionWithFixedParameter (0x01), the hand-over to the FBL at a new baud rate
+*   \details       `87 01 <baud>` with a baud rate parameter of 0x11 (125 kbit/s), 0x12 (250) or 0x13 (500). The FBL does the rest: it sets
+*                  its CAN bit rate and sends the positive response, `C7 01`, at that rate, so the tester must be listening there by then.
+*                  This ECU has two things to do before that: say so, with a response pending (0x78) at the baud rate it has now, and hand over:
+*                  the baud rate, the response the FBL owes and the FBL request go into the handoff RAM, and the reset is scheduled for after the
+*                  0x78 is out (UDS_schedule_reset_after_response()), so the ECU restarts into the FBL, which BM boots for the request. The
+*                  transitionMode (0x03) is the FBL's, not this image's: NRC 0x24, as there is no 0x01 for it to follow. Any other sub-function is
+*                  NRC 0x12, a length that does not fit NRC 0x13, and a baud rate that is none of the three NRC 0x31. The session and the security
+*                  level are the row's (link_control_subfuncs_s).
+***************************************************************************************************/
+STATIC u8_t uds_handle_link_control( u16_t subfunc, u8_t* data_p, u16_t* len_p, UDS_response_code_et* nrc_p )
+{
+    if( subfunc == 0x01u )
+    {
+        if( *len_p != 1u )
+        {
+            *nrc_p = UDS_RC_INCORRECT_MESSAGE_LENGTH_OR_INVALID_FORMAT;
+        }
+        else if( HAL_CAN_baud_is_supported( data_p[0] ) != TRUE )
+        {
+            *nrc_p = UDS_RC_REQUEST_OUT_OF_RANGE;
+        }
+        else
+        {
+            BOOT_HANDOFF_set_baud_param( data_p[0] );
+            BOOT_HANDOFF_set_response_owed( BOOT_HANDOFF_RESPONSE_LINK_CONTROL );
+            BOOT_HANDOFF_set_fbl_request( TRUE );
+            UDS_schedule_reset_after_response();
+
+            *len_p = 0u;
+            *nrc_p = UDS_RC_RESPONSE_PENDING;
+        }
+    }
+    else if( subfunc == 0x03u )
+    {
+        *nrc_p = UDS_RC_REQUEST_SEQUENCE_ERROR;
+    }
+    else
+    {
+        *nrc_p = UDS_RC_SUBFUNCTION_NOT_SUPPORTED;
+    }
+
+    return( 0u );
+}
 /*!
 ****************************************************************************************************
 *   \brief         PROGRAMMING on_transition callback (uds_session_table_s above)

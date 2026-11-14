@@ -120,11 +120,6 @@ STATIC void fbl_download_attempt_notify( void )
 {
     fbl_download_attempt_count_g.count++;
     NVM_GEN2_flush_block( FBL_DOWNLOAD_ATTEMPT_COUNT_BLOCK_ID );
-
-    /* New flash contents are coming, so the old APP's unconfirmed launches no longer count against
-       whatever boots next - otherwise BM would refuse a freshly downloaded APP straight away (see
-       BM_MAX_BOOT_FAILURES, BM.h) until a power cycle. */
-    BOOT_HANDOFF_set_boot_failure_count( 0u );
 }
 
 /* fbl_config_st's dataset_download_notify_func_p - called once per accepted 0x34 RequestDownload
@@ -189,7 +184,6 @@ STATIC void fbl_board_init( void )
         (void)VPM_SERVER_apply( fbl_transfer_sector_buffer_s, (u16_t)sizeof( fbl_transfer_sector_buffer_s ) );
 
         BOOT_HANDOFF_set_fbl_request( FALSE );
-        BOOT_HANDOFF_set_boot_failure_count( 0u );    /* APP started and handed over at once: not a failed start, as in fbl_download_attempt_notify() */
         MCU_JUMP_software_reset();
     }
 }
@@ -417,6 +411,9 @@ STATIC pass_fail_et fbl_cantp_transmit( PDUR_pdu_id_t tx_pdu_id, const u8_t* dat
    of data - enough whether the tester reads maxNumberOfBlockLength as covering those two header
    bytes (ISO 14229-1) or not. Nothing FBL answers is longer. */
 #define FBL_UDS_BUFFER_SIZE     ( FLS_STM32F1_PAGE_SIZE + 2u )
+
+/* LinkControl's sub-function the application's hand-over is for, which the response owed at start echoes: verifyModeTransitionWithFixedParameter */
+#define FBL_LINK_CONTROL_VERIFY_SUBFUNC  ( 0x01u )
 STATIC u8_t fbl_uds_buffer_s[ FBL_UDS_BUFFER_SIZE ];
 
 /* No adapter functions between the CAN layers - same wiring as APP, every signature lines up, and each layer
@@ -552,6 +549,7 @@ STATIC void fbl_comms_init( void )
 {
     GPIO_InitTypeDef gpio_init;
     pass_fail_et     pdur_ok;
+    u8_t             baud_param = BOOT_HANDOFF_get_baud_param();
 
     /* CAN: TJA1051 EN pin - push-pull output, driven via tja1051_en_pin_set() */
     RCC_APB2PeriphClockCmd( RCC_APB2Periph_GPIOB, ENABLE );
@@ -562,6 +560,9 @@ STATIC void fbl_comms_init( void )
 
     TJA1051_init( &fbl_tja1051_instance_s, &tja1051_func_table_s, &tja1051_config_s );
 
+    /* A LinkControl (0x87) hand-over from the application names the baud rate the tester has gone to. A start that is not one has no baud
+       rate in the handoff RAM, which HAL_CAN_set_baud() refuses, and HAL_CAN_init() runs at its own */
+    (void)HAL_CAN_set_baud( baud_param );
     HAL_CAN_init();
 
     CANTP_init( &fbl_cantp_instance_s, &fbl_cantp_cfg_s );
@@ -603,6 +604,18 @@ STATIC void fbl_comms_init( void )
         .security_lockout_ms     = FBL_SECURITY_LOCKOUT_TIME_MS
     };
     UDS_init( &fbl_uds_init_cfg_s );
+
+    /* The positive response to the LinkControl request that handed over, which the application answered with a response pending only: it goes
+       out now, at the new baud rate, queued here and sent by the first comms tick. Taken once - a start that follows this one has nothing owed */
+    if( BOOT_HANDOFF_get_response_owed() == BOOT_HANDOFF_RESPONSE_LINK_CONTROL )
+    {
+        fbl_uds_buffer_s[0u] = (u8_t)( UDS_SID_LINK_CONTROL + UDS_POSITIVE_RESPONSE_SID );
+        fbl_uds_buffer_s[1u] = FBL_LINK_CONTROL_VERIFY_SUBFUNC;
+        (void)PDUR_tx( FBL_PDU_UDS_PHYSICAL, fbl_uds_buffer_s, 2u );
+    }
+
+    BOOT_HANDOFF_set_baud_param( 0u );
+    BOOT_HANDOFF_set_response_owed( BOOT_HANDOFF_RESPONSE_NONE );
 }
 
 /***************************************************************************************************

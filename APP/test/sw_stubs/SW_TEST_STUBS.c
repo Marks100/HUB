@@ -60,6 +60,9 @@ extern void app_main( void );                      /* main.c: the ECU's start, i
 
 u32_t __isr_vector_start = 0u;    /* the start of the vector table, which app_main() hands to the vector table offset register */
 
+u8_t sw_test_fbl_baud_param_g    = 0u;
+u8_t sw_test_fbl_response_owed_g = 0u;
+
 __asm__( ".globl " SW_TEST_SYMBOL_PREFIX "__dataset0_code_start__\n"
          ".set "   SW_TEST_SYMBOL_PREFIX "__dataset0_code_start__, " SW_TEST_STR( SW_TEST_DATASET0_PAYLOAD_ADDRESS ) "\n"
          ".globl " SW_TEST_SYMBOL_PREFIX "__dataset0_code_end__\n"
@@ -238,7 +241,7 @@ static void sw_test_tick_the_models( void )
 *                  the MBA model, and it runs only for what the application hands over for, a write it kept (0x3D
 *                  WriteMemoryByAddress): the application asked for it by the request in the handoff RAM, the FBL starts its NVM as its
 *                  own start does and registers the block it keeps its note in (which the application only reads), makes the write,
-*                  and clears the request and the failed-start count as its start does. The request is gone whatever happened: a power
+*                  and clears the request as its start does. The request is gone whatever happened: a power
 *                  cut in the middle of it loses the handoff RAM. The firmware's RAM is wiped when the FBL is done, as the reset to the
 *                  application does. A pin the application drove reaches its listener on the next sync of the virtual STM32: without
 *                  this, the ERX supply it switched on at start-up would reach the ERXs only when the first millisecond goes by.
@@ -249,9 +252,18 @@ static void sw_test_ecu_start( void )
     /*************************************** BM ***************************************/
     BOOT_HANDOFF_init();
 
+    sw_test_fbl_baud_param_g    = 0u;
+    sw_test_fbl_response_owed_g = BOOT_HANDOFF_RESPONSE_NONE;
+
     /*************************************** FBL, when the application asked for it ***************************************/
     if( BOOT_HANDOFF_get_fbl_request() == TRUE )
     {
+        /* A LinkControl hand-over: the FBL sets its bit rate to the baud rate asked for and sends the response it owes, once */
+        sw_test_fbl_baud_param_g    = BOOT_HANDOFF_get_baud_param();
+        sw_test_fbl_response_owed_g = BOOT_HANDOFF_get_response_owed();
+        BOOT_HANDOFF_set_baud_param( 0u );
+        BOOT_HANDOFF_set_response_owed( BOOT_HANDOFF_RESPONSE_NONE );
+
         NVM_GEN2_init( &nvm_gen2_hw_interface_s );
         NVM_GEN2_register_block( FBL_VPM_APPLIED_BLOCK_ID, &fbl_nvm_gen2_vpm_applied_block_s );
 
@@ -259,7 +271,6 @@ static void sw_test_ecu_start( void )
         {
             (void)TMD_MBA_start_server();
             BOOT_HANDOFF_set_fbl_request( FALSE );
-            BOOT_HANDOFF_set_boot_failure_count( 0u );    /* the application handed over at once: not a failed start */
         }
 
         TMD_STARTUP_init_ram();    /* the reset to the application */
@@ -270,6 +281,8 @@ static void sw_test_ecu_start( void )
                                                                   SW_TEST_DATASET0_PAYLOAD_SIZE ) == TRUE ) ? 0u : 1u );    /* bit 0: DATASET0 */
 
     app_main();
+
+    sw_test_tick_the_models();    /* the main loop's first pass: SysTick counts from the end of the start, not from whichever function the firmware enters next */
 }
 
 /****************************** END OF FILE *******************************************************/

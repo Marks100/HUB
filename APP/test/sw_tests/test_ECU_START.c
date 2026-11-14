@@ -102,8 +102,6 @@ void test_a_new_ecu_is_the_same_whatever_the_last_one_left( void )
     TMD_INIT_init( &sw_test_init_cfg_g );    /* a clean start of its own, for the reference: the one setUp() made may be the first of the run */
 
     const u8_t   reference_request    = BOOT_HANDOFF_get_fbl_request();
-    const u8_t   reference_failures   = BOOT_HANDOFF_get_boot_failure_count();
-    const u8_t   reference_reason     = BOOT_HANDOFF_get_last_failure_reason();
     const u8_t   reference_datasets   = BOOT_HANDOFF_get_dataset_valid_mask();
     const u32_t  reference_timeout    = BOOT_HANDOFF_get_fbl_timeout();
     const u32_t  reference_time_ms    = TMD_TIME_get_current_time_ms();
@@ -122,8 +120,6 @@ void test_a_new_ecu_is_the_same_whatever_the_last_one_left( void )
     }
 
     BOOT_HANDOFF_set_fbl_request( TRUE );
-    BOOT_HANDOFF_set_boot_failure_count( 7u );
-    BOOT_HANDOFF_set_last_failure_reason( 9u );
     BOOT_HANDOFF_set_dataset_valid_mask( 0xFFu );
     BOOT_HANDOFF_set_fbl_timeout( 1234u );
 
@@ -143,8 +139,6 @@ void test_a_new_ecu_is_the_same_whatever_the_last_one_left( void )
     TEST_ASSERT_EQUAL_UINT8_ARRAY( reference_nvm, nvm, NVM_TOTAL_SIZE );    /* what the firmware writes at its first start, and no more */
 
     TEST_ASSERT_EQUAL_UINT8( reference_request, BOOT_HANDOFF_get_fbl_request() );
-    TEST_ASSERT_EQUAL_UINT8( reference_failures, BOOT_HANDOFF_get_boot_failure_count() );
-    TEST_ASSERT_EQUAL_UINT8( reference_reason, BOOT_HANDOFF_get_last_failure_reason() );
     TEST_ASSERT_EQUAL_UINT8( reference_datasets, BOOT_HANDOFF_get_dataset_valid_mask() );
     TEST_ASSERT_EQUAL_UINT32( reference_timeout, BOOT_HANDOFF_get_fbl_timeout() );
     TEST_ASSERT_EQUAL_UINT32( reference_time_ms, TMD_TIME_get_current_time_ms() );    /* before the diagnostics are asked anything: a request takes time on the bus */

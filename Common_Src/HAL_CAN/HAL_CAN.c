@@ -1,9 +1,10 @@
 /*! \file
 *               Author: mstewart
-*   \brief      HAL_CAN — STM32F1 bxCAN1 driver, 500 kbit/s
+*   \brief      HAL_CAN — STM32F1 bxCAN1 driver, 500 kbit/s (125 or 250 kbit/s if HAL_CAN_set_baud() says so)
 *
 *   Timing: 36 MHz APB1 (72 MHz SYSCLK halved by CLK_STM32F1 - see CLK_STM32F1_APB1_MAX_HZ),
-*           prescaler=4, BS1=14tq, BS2=3tq → 18 TQ/bit → 500 kbit/s
+*           prescaler=4, BS1=14tq, BS2=3tq → 18 TQ/bit → 500 kbit/s; prescaler 8 → 250 kbit/s and
+*           16 → 125 kbit/s, the sample point (15/18 = 83.3%) the same at every rate
 *   Pins:   PA11=CAN_RX (IPU), PA12=CAN_TX (AF_PP)
 *   RX ISR: USB_LP_CAN1_RX0_IRQn (shared with USB low-priority; USB not used here)
 */
@@ -13,10 +14,24 @@
 #include "HAL_CAN.h"
 
 /***************************************************************************************************
+**                              Defines                                                           **
+***************************************************************************************************/
+/* bxCAN prescalers for the 18 TQ bit - see the file header */
+#define HAL_CAN_PRESCALER_125K  ( 16u )
+#define HAL_CAN_PRESCALER_250K  ( 8u )
+#define HAL_CAN_PRESCALER_500K  ( 4u )
+
+/***************************************************************************************************
+**                              Private Function Prototypes                                       **
+***************************************************************************************************/
+STATIC u8_t hal_can_baud_prescaler( u8_t baud_param );
+
+/***************************************************************************************************
 **                              Data                                                              **
 ***************************************************************************************************/
 STATIC HAL_CAN_rx_callback_ft hal_can_rx_callback_s = NULL_P;
 STATIC u8_t                   hal_can_channel_s     = 0u;
+STATIC u8_t                   hal_can_prescaler_s   = HAL_CAN_PRESCALER_500K;
 
 /***************************************************************************************************
 **                              Public Functions                                                  **
@@ -59,7 +74,7 @@ void HAL_CAN_init( void )
     GPIO_Init( CAN_RX_PORT, &gpio_init );
 
     /* bxCAN timing: APB1 is 36 MHz here (not 72 - see file header), /4 = 9 MHz TQ clock,
-       1+14+3 = 18 TQ → 500 kbit/s, SP = 15/18 = 83.3% */
+       1+14+3 = 18 TQ → 500 kbit/s, SP = 15/18 = 83.3% (/4 unless HAL_CAN_set_baud() changed it) */
     CAN_StructInit( &can_init );
     can_init.CAN_TTCM      = DISABLE;
     can_init.CAN_ABOM      = ENABLE;   /* auto-recover from bus-off */
@@ -71,7 +86,7 @@ void HAL_CAN_init( void )
     can_init.CAN_SJW       = CAN_SJW_1tq;
     can_init.CAN_BS1       = CAN_BS1_14tq;
     can_init.CAN_BS2       = CAN_BS2_3tq;
-    can_init.CAN_Prescaler = 4u;
+    can_init.CAN_Prescaler = hal_can_prescaler_s;
     CAN_Init( CAN1, &can_init );
 
     /* Filter bank 0 — accept all standard frames */
@@ -98,6 +113,95 @@ void HAL_CAN_init( void )
     NVIC_Init( &nvic_init );
 }
 
+/*!
+****************************************************************************************************
+*
+*   \brief         Whether a LinkControl baud rate parameter is one this driver can run at
+*
+*   \author        MS
+*
+*   \param         baud_param - HAL_CAN_BAUD_PARAM_*
+*
+*   \return        TRUE for 0x11 (125 kbit/s), 0x12 (250 kbit/s) and 0x13 (500 kbit/s)
+*
+***************************************************************************************************/
+false_true_et HAL_CAN_baud_is_supported( u8_t baud_param )
+{
+    false_true_et supported = FALSE;
+
+    if( hal_can_baud_prescaler( baud_param ) != 0u )
+    {
+        supported = TRUE;
+    }
+
+    return( supported );
+}
+
+/*!
+****************************************************************************************************
+*
+*   \brief         Choose the bit rate HAL_CAN_init() sets up
+*
+*   \author        MS
+*
+*   \param         baud_param - HAL_CAN_BAUD_PARAM_*
+*
+*   \return        PASS if it is one this driver can run at, FAIL (and the bit rate is left as it was) if not
+*
+*   \note          Takes effect at the next HAL_CAN_init(), which is what sets the controller up.
+*
+***************************************************************************************************/
+pass_fail_et HAL_CAN_set_baud( u8_t baud_param )
+{
+    pass_fail_et result    = FAIL;
+    u8_t         prescaler = hal_can_baud_prescaler( baud_param );
+
+    if( prescaler != 0u )
+    {
+        hal_can_prescaler_s = prescaler;
+        result              = PASS;
+    }
+
+    return( result );
+}
+
+/*!
+****************************************************************************************************
+*
+*   \brief         The bxCAN prescaler for a baud rate parameter
+*
+*   \author        MS
+*
+*   \param         baud_param - HAL_CAN_BAUD_PARAM_*
+*
+*   \return        The prescaler, 0u for a parameter that is none of them
+*
+***************************************************************************************************/
+STATIC u8_t hal_can_baud_prescaler( u8_t baud_param )
+{
+    u8_t prescaler;
+
+    switch( baud_param )
+    {
+        case HAL_CAN_BAUD_PARAM_125K:
+            prescaler = HAL_CAN_PRESCALER_125K;
+        break;
+
+        case HAL_CAN_BAUD_PARAM_250K:
+            prescaler = HAL_CAN_PRESCALER_250K;
+        break;
+
+        case HAL_CAN_BAUD_PARAM_500K:
+            prescaler = HAL_CAN_PRESCALER_500K;
+        break;
+
+        default:
+            prescaler = 0u;
+        break;
+    }
+
+    return( prescaler );
+}
 /*!
 ****************************************************************************************************
 *

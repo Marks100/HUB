@@ -10,14 +10,14 @@
 /***************************************************************************************************
 **                              Data declarations and definitions                                 **
 ***************************************************************************************************/
-/* Every field starts at zero: no FBL request, no failures, no datasets confirmed */
+/* Every field starts at zero: no FBL request, no datasets confirmed, no baud rate change, nothing owed */
 static const boot_handoff_st boot_handoff_defaults_c =
 {
     .fbl_request         = 0u,
-    .boot_failure_count  = 0u,
-    .last_failure_reason = 0u,
     .dataset_valid_mask  = 0u,
-    .fbl_timeout         = 0u
+    .fbl_timeout         = 0u,
+    .baud_param          = 0u,
+    .response_owed       = BOOT_HANDOFF_RESPONSE_NONE
 };
 
 static const SHARED_RAM_cfg_st boot_handoff_cfg_c =
@@ -41,7 +41,7 @@ static const SHARED_RAM_cfg_st boot_handoff_cfg_c =
 *   \return        none
 *
 *   \note          Only writes defaults where the region is missing or short - a soft reset (BM
-*                  jumping to APP, or vice versa) must not wipe fbl_request/failure state that was
+*                  jumping to APP, or vice versa) must not wipe fbl_request/dataset state that was
 *                  just set for the next stage to read.
 *
 ***************************************************************************************************/
@@ -131,78 +131,6 @@ u32_t BOOT_HANDOFF_get_fbl_timeout( void )
 /*!
 ****************************************************************************************************
 *
-*   \brief         Set the last boot failure reason
-*
-*   \author        MS
-*
-*   \param         reason - See bm_failure_reason_et in BM.h
-*
-*   \return        none
-*
-***************************************************************************************************/
-void BOOT_HANDOFF_set_last_failure_reason( u8_t reason )
-{
-    (void)SHARED_RAM_write_field( boot_handoff_st, last_failure_reason, &reason );
-}
-
-/*!
-****************************************************************************************************
-*
-*   \brief         Get the last boot failure reason
-*
-*   \author        MS
-*
-*   \return        See bm_failure_reason_et in BM.h
-*
-***************************************************************************************************/
-u8_t BOOT_HANDOFF_get_last_failure_reason( void )
-{
-    u8_t value;
-
-    (void)SHARED_RAM_read_field( boot_handoff_st, last_failure_reason, &value );
-
-    return( value );
-}
-
-/*!
-****************************************************************************************************
-*
-*   \brief         Set the count of APP launches not yet confirmed good
-*
-*   \author        MS
-*
-*   \param         count - New count. 0 = APP confirmed good (APP) / new image coming (FBL)
-*
-*   \return        none
-*
-***************************************************************************************************/
-void BOOT_HANDOFF_set_boot_failure_count( u8_t count )
-{
-    (void)SHARED_RAM_write_field( boot_handoff_st, boot_failure_count, &count );
-}
-
-/*!
-****************************************************************************************************
-*
-*   \brief         Get the count of APP launches not yet confirmed good
-*
-*   \author        MS
-*
-*   \return        Current count - see boot_handoff_st.boot_failure_count
-*
-***************************************************************************************************/
-u8_t BOOT_HANDOFF_get_boot_failure_count( void )
-{
-    u8_t value;
-
-    (void)SHARED_RAM_read_field( boot_handoff_st, boot_failure_count, &value );
-
-    return( value );
-}
-
-/*!
-****************************************************************************************************
-*
 *   \brief         Record which datasets BM found valid this boot
 *
 *   \author        MS
@@ -232,6 +160,80 @@ u8_t BOOT_HANDOFF_get_dataset_valid_mask( void )
     u8_t value;
 
     (void)SHARED_RAM_read_field( boot_handoff_st, dataset_valid_mask, &value );
+
+    return( value );
+}
+
+/*!
+****************************************************************************************************
+*
+*   \brief         Set the CAN baud rate the FBL starts at
+*
+*   \author        MS
+*
+*   \param         baud_param - LinkControl baud rate parameter (see HAL_CAN_baud_is_supported()), 0 for none
+*
+*   \return        none
+*
+*   \note          Set by the application's LinkControl (0x87), read and cleared by the FBL at its start.
+*
+***************************************************************************************************/
+void BOOT_HANDOFF_set_baud_param( u8_t baud_param )
+{
+    (void)SHARED_RAM_write_field( boot_handoff_st, baud_param, &baud_param );
+}
+
+/*!
+****************************************************************************************************
+*
+*   \brief         Get the CAN baud rate the FBL starts at
+*
+*   \author        MS
+*
+*   \return        LinkControl baud rate parameter, 0 for none (also if the region is not valid)
+*
+***************************************************************************************************/
+u8_t BOOT_HANDOFF_get_baud_param( void )
+{
+    u8_t value = 0u;
+
+    (void)SHARED_RAM_read_field( boot_handoff_st, baud_param, &value );
+
+    return( value );
+}
+
+/*!
+****************************************************************************************************
+*
+*   \brief         Set the response the next image owes the tester
+*
+*   \author        MS
+*
+*   \param         response - BOOT_HANDOFF_RESPONSE_*
+*
+*   \return        none
+*
+***************************************************************************************************/
+void BOOT_HANDOFF_set_response_owed( u8_t response )
+{
+    (void)SHARED_RAM_write_field( boot_handoff_st, response_owed, &response );
+}
+
+/*!
+****************************************************************************************************
+*
+*   \brief         Get the response the next image owes the tester
+*
+*   \author        MS
+*
+*   \return        BOOT_HANDOFF_RESPONSE_*, none if nothing is owed (also if the region is not valid)
+*
+***************************************************************************************************/
+u8_t BOOT_HANDOFF_get_response_owed( void )
+{
+    u8_t value = BOOT_HANDOFF_RESPONSE_NONE;
+
+    (void)SHARED_RAM_read_field( boot_handoff_st, response_owed, &value );
 
     return( value );
 }

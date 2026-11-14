@@ -44,6 +44,12 @@
 ***************************************************************************************************/
 extern const TMD_INIT_cfg_st sw_test_init_cfg_g;    /* power on, models, blank flash, app_main(): a virgin ECU */
 
+/* What the bootloader found in the handoff RAM at the last start of the ECU, 0 for a start the application did not hand over at. The FBL model
+   takes them, as the FBL does at its start: the baud rate a LinkControl (0x87) hand-over asks for, and the response it owes (BOOT_HANDOFF_RESPONSE_*).
+   The model does not run the FBL's comms, so what it sends at that baud rate is not here to see */
+extern u8_t sw_test_fbl_baud_param_g;
+extern u8_t sw_test_fbl_response_owed_g;
+
 /***************************************************************************************************
 **                                    Function Prototypes                                        **
 ***************************************************************************************************/

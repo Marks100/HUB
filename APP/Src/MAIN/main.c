@@ -130,9 +130,6 @@ void app_main( void )
    SCHED_init( &app_sched_cfg_s );
    SYSTICK_init( &systick_cfg_s, SystemCoreClock );
    NVIC_EnableGlobalIRQ();
-
-   /* Init completed - tells BM this image is good by clearing its boot failure counter */
-   BOOT_HANDOFF_set_boot_failure_count( 0u );
 }
 
 void main( void )
