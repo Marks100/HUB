@@ -87,7 +87,6 @@ FBL_C_SRCS := \
     $(COMMON_MODULES_DIR)/VER/VER.c \
     $(COMMON_MODULES_DIR)/STDC/STDC.c \
     $(COMMON_MODULES_DIR)/SELMATH/SELMATH.c \
-    $(COMMON_MODULES_DIR)/stdio/printf.c \
     ../Common_Src/HAL_CAN/HAL_CAN.c \
     ../Common_Src/HAL_I2C/HAL_I2C.c \
     $(COMMON_MODULES_DIR)/SH1106/SH1106.c \
@@ -161,16 +160,10 @@ INCLUDES  := \
 ####################################################################################################
 # Flags
 ####################################################################################################
-# Same RELEASE/DEBUG toggle APP/Makefile uses, so `make RELEASE=y` still builds the size-optimised
-# image while a plain `make` is debuggable (-Og keeps variables live and control flow in source
-# order, which -Os destroys). MCAL_OPTIMISATION stays pinned to -Os either way: it is vendored code
-# we never step through, and FBL's 21KB partition is tight enough that there is no reason to spend
-# flash making it debuggable.
-ifeq ($(RELEASE),y)
-    FBL_OPTIMISATION  := -Os
-else
-    FBL_OPTIMISATION  := -Og
-endif
+# Always -Os: the 24KB partition is tight (-Og is ~2.9KB bigger). To step through the FBL, build with
+# `make FBL_OPTIMISATION=-Og` (the Makefile does not rebuild on flag changes: delete Build/<variant>/obj
+# when switching). MCAL_OPTIMISATION stays -Os: it is vendored code we never step through.
+FBL_OPTIMISATION  ?= -Os
 MCAL_OPTIMISATION := -Os
 
 # FBL's vector table sits at FBL_CODE_START (0x08002100), not FLASH_BASE (0x08000000).

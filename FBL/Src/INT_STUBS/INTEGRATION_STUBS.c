@@ -36,7 +36,6 @@
 #include "HAL_I2C.h"
 #include "SH1106.h"
 #include "VER.h"
-#include "printf.h"
 #include "stm32f10x_gpio.h"
 #include "stm32f10x_rcc.h"
 
@@ -203,12 +202,104 @@ STATIC SH1106_instance_st fbl_display_instance_s;
 STATIC u8_t               fbl_display_framebuffer_s[SH1106_FRAMEBUFFER_SIZE];
 STATIC bool_et            fbl_display_page_dirty_s[SH1106_NUM_PAGES];
 
+/*!
+****************************************************************************************************
+*
+*   \brief         Append one character to a display line
+*
+*   \author        MS
+*
+*   \param[in,out] line_p   The line, SH1106_MAX_CHARS_PER_LINE + 1 chars
+*   \param[in]     pos      Where the character goes
+*   \param[in]     c        The character
+*
+*   \return        Where the next character goes
+*
+*   \note          A full line drops the character, and the line is always left terminated. The FBL
+*                  has no PRINTF_snprintf (it was ~800 B for these three lines), so the lines are
+*                  built from this, display_put_text() and display_put_u8().
+*
+***************************************************************************************************/
+STATIC u8_t display_put_char( char* line_p, u8_t pos, char c )
+{
+    if( pos < SH1106_MAX_CHARS_PER_LINE )
+    {
+        line_p[pos] = c;
+        pos++;
+    }
+
+    line_p[pos] = '\0';
+
+    return( pos );
+}
+
+/*!
+****************************************************************************************************
+*
+*   \brief         Append a string to a display line
+*
+*   \author        MS
+*
+*   \param[in,out] line_p   The line, SH1106_MAX_CHARS_PER_LINE + 1 chars
+*   \param[in]     pos      Where the string goes
+*   \param[in]     text_p   The string
+*
+*   \return        Where the next character goes
+*
+***************************************************************************************************/
+STATIC u8_t display_put_text( char* line_p, u8_t pos, const char* text_p )
+{
+    while( *text_p != '\0' )
+    {
+        pos = display_put_char( line_p, pos, *text_p );
+        text_p++;
+    }
+
+    return( pos );
+}
+
+/*!
+****************************************************************************************************
+*
+*   \brief         Append a decimal number to a display line
+*
+*   \author        MS
+*
+*   \param[in,out] line_p   The line, SH1106_MAX_CHARS_PER_LINE + 1 chars
+*   \param[in]     pos      Where the number goes
+*   \param[in]     value    The number
+*   \param[in]     width    Minimum width, padded with spaces on the left (0u for none)
+*
+*   \return        Where the next character goes
+*
+***************************************************************************************************/
+STATIC u8_t display_put_u8( char* line_p, u8_t pos, u8_t value, u8_t width )
+{
+    char digit_s[4];
+    u8_t count = (u8_t)( STDC_dec_to_ascii( value, (u8_t*)digit_s ) - (u8_t*)digit_s );
+    u8_t i;
+
+    while( width > count )
+    {
+        pos = display_put_char( line_p, pos, ' ' );
+        width--;
+    }
+
+    for( i = 0u; i < count; i++ )
+    {
+        pos = display_put_char( line_p, pos, digit_s[i] );
+    }
+
+    return( pos );
+}
+
 /*! Implements FBL.h's display_update_func_p - called on download start/each block/exit and once a
  *  second while idle. Redraws the whole screen so a shrinking number leaves no stale digit. */
 STATIC void display_render( u8_t percent, u8_t seconds_remaining )
 {
     char  line[SH1106_MAX_CHARS_PER_LINE + 1u];
     u8_t  sw_version[SW_VERSION_NUM_SIZE];
+    u8_t  pos;
 
     SH1106_buffer_clear( &fbl_display_instance_s );
 
@@ -216,14 +307,22 @@ STATIC void display_render( u8_t percent, u8_t seconds_remaining )
        has already populated this from autoversion.h, same source as the 0xF180 boot-software-ID
        UDS response (FBL_uds_handle_read_boot_sw_id()). */
     VER_get_sw_version_num( sw_version );
-    (void)PRINTF_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "BOOTLOADER v%u.%u.%u",
-                            (unsigned int)sw_version[0], (unsigned int)sw_version[1], (unsigned int)sw_version[2] );
+    pos = display_put_text( line, 0u, "BOOTLOADER v" );
+    pos = display_put_u8( line, pos, sw_version[0], 0u );
+    pos = display_put_char( line, pos, '.' );
+    pos = display_put_u8( line, pos, sw_version[1], 0u );
+    pos = display_put_char( line, pos, '.' );
+    (void)display_put_u8( line, pos, sw_version[2], 0u );
     SH1106_buffer_write_string( &fbl_display_instance_s, 1u, 0u, line, FALSE );
 
-    (void)PRINTF_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "Progress:  %3u%%", (unsigned int)percent );
+    pos = display_put_text( line, 0u, "Progress:  " );
+    pos = display_put_u8( line, pos, percent, 3u );
+    (void)display_put_char( line, pos, '%' );
     SH1106_buffer_write_string( &fbl_display_instance_s, 3u, 0u, line, FALSE );
 
-    (void)PRINTF_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "Auto-boot: %2us", (unsigned int)seconds_remaining );
+    pos = display_put_text( line, 0u, "Auto-boot: " );
+    pos = display_put_u8( line, pos, seconds_remaining, 2u );
+    (void)display_put_char( line, pos, 's' );
     SH1106_buffer_write_string( &fbl_display_instance_s, 5u, 0u, line, FALSE );
 }
 
