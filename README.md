@@ -9,32 +9,32 @@ High-level ROM/RAM usage per image, written by the memory stats step of each bui
 <!-- MEMORY:APP:START -->
 ### APP
 
-_Built 2026-11-13 from `APP.map`_
+_Built 2026-11-14 from `APP.map`_
 
 | Region | Used | Free | Used % |
 |---|---:|---:|---:|
-| ROM (Flash) | 39,196 B | 51,940 B | 43.0% |
-| RAM | 10,808 B | 9,640 B | 52.9% |
+| ROM (Flash) | 39,780 B | 51,356 B | 43.6% |
+| RAM | 10,804 B | 9,644 B | 52.8% |
 
 <p>
-  <img src=".github/badges/memory_APP_rom.svg" alt="APP ROM (Flash): 43.0% used" width="320">
-  <img src=".github/badges/memory_APP_ram.svg" alt="APP RAM: 52.9% used" width="320">
+  <img src=".github/badges/memory_APP_rom.svg" alt="APP ROM (Flash): 43.6% used" width="320">
+  <img src=".github/badges/memory_APP_ram.svg" alt="APP RAM: 52.8% used" width="320">
 </p>
 <!-- MEMORY:APP:END -->
 
 <!-- MEMORY:FBL:START -->
 ### FBL
 
-_Built 2026-11-13 from `FBL.map`_
+_Built 2026-11-14 from `FBL.map`_
 
 | Region | Used | Free | Used % |
 |---|---:|---:|---:|
-| ROM (Flash) | 24,544 B | 32 B | 99.9% |
-| RAM | 6,192 B | 14,256 B | 30.3% |
+| ROM (Flash) | 20,856 B | 3,720 B | 84.9% |
+| RAM | 6,176 B | 14,272 B | 30.2% |
 
 <p>
-  <img src=".github/badges/memory_FBL_rom.svg" alt="FBL ROM (Flash): 99.9% used" width="320">
-  <img src=".github/badges/memory_FBL_ram.svg" alt="FBL RAM: 30.3% used" width="320">
+  <img src=".github/badges/memory_FBL_rom.svg" alt="FBL ROM (Flash): 84.9% used" width="320">
+  <img src=".github/badges/memory_FBL_ram.svg" alt="FBL RAM: 30.2% used" width="320">
 </p>
 <!-- MEMORY:FBL:END -->
 
