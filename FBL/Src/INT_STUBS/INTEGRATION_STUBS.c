@@ -19,6 +19,7 @@
 #include "INTEGRATION_STUBS.h"
 #include "FBL_NVM_BLOCKS.h"
 #include "VPM_config.h"
+#include "DATASET_config.h"
 #include "CHKSUM.h"
 #include "CLK_STM32F1.h"
 #include "BOOT_HANDOFF.h"
@@ -44,9 +45,6 @@
 ***************************************************************************************************/
 extern u32_t __app_header_start__;
 extern u32_t __app_code_end__;
-extern u32_t __dataset0_header_start__;
-extern u32_t __dataset0_code_start__;
-extern u32_t __dataset0_code_end__;
 
 /***************************************************************************************************
 **                              Timekeeping                                                       **
@@ -621,15 +619,6 @@ STATIC void fbl_comms_init( void )
 /***************************************************************************************************
 **                              Field Bootloader Configuration                                    **
 ***************************************************************************************************/
-/* One downloadable/erasable 4KB data block (the tyre pressure table) - see fbl_is_region_valid() in
-   FBL.c. Add/remove entries here (and the matching extern symbols above, defined in this project's
-   own linker script) to change how many datasets this platform has - FBL.c itself has no hardcoded
-   count. Must match bm_dataset_table_s in BM/Src/bm_main.c entry-for-entry, and
-   FBL_DATASET_DOWNLOAD_COUNT_MAX (FBL_NVM_BLOCKS.h). */
-STATIC const FBL_dataset_region_st fbl_dataset_table_s[] =
-{
-    { .header_address = (u32_t)&__dataset0_header_start__, .code_start_address = (u32_t)&__dataset0_code_start__, .code_end_address = (u32_t)&__dataset0_code_end__ },
-};
 
 const fbl_config_st fbl_config_s =
 {
@@ -661,8 +650,10 @@ const fbl_config_st fbl_config_s =
     .transfer_sector_buffer_len = (uint32_t)sizeof( fbl_transfer_sector_buffer_s ),
     .app_header_address         = (u32_t)&__app_header_start__,
     .app_code_end_address       = (u32_t)&__app_code_end__,
-    .dataset_table_p            = fbl_dataset_table_s,
-    .dataset_table_size         = (u8_t)( sizeof( fbl_dataset_table_s ) / sizeof( fbl_dataset_table_s[0] ) ),
+    /* The downloadable/erasable data blocks (a 4KB one, the tyre pressure table) are the table every image shares, dataset_table_g
+       (DATASET_config.h) - see fbl_is_region_valid() in FBL.c, which has no hardcoded count */
+    .dataset_table_p            = dataset_table_g,
+    .dataset_table_size         = (u8_t)DATASET_COUNT,
 };
 
 /****************************** END OF FILE *******************************************************/

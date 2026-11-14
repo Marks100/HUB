@@ -42,8 +42,33 @@
 #include "VPM_config.h"
 #include "TYRE_DATA.h"
 #include "NODE_INFO.h"
+#include "DATASET_config.h"
 
 extern u32_t __isr_vector_start;   /* Linker symbol - APP/linker_script/STM32F103C8_flash.ld */
+
+#if ( HW_VARIANT == SUPER_PILL )
+/*!
+****************************************************************************************************
+*
+*   \brief         Give TYRE_DATA DATASET0's payload, if BM accepted the dataset
+*
+*   \author        mstewart
+*
+*   \return        none
+*
+*   \note          DATASET_get_payload() gives NULL_P and 0 for a dataset BM did not accept, which TYRE_DATA reads as an empty table.
+*
+***************************************************************************************************/
+STATIC void app_init_tyre_data( void )
+{
+    const u8_t* payload_p   = NULL_P;
+    u32_t       payload_len = 0u;
+
+    (void)DATASET_get_payload( DATASET_TYRE_PRESSURES, &payload_p, &payload_len );
+
+    TYRE_DATA_init( payload_p, payload_len );
+}
+#endif /* HW_VARIANT == SUPER_PILL */
 
 void app_main( void )
 {
@@ -90,7 +115,7 @@ void app_main( void )
    VER_init();
    TIME_init( &time_cfg_s );
 #if ( HW_VARIANT == SUPER_PILL )
-   TYRE_DATA_init();   /* after BOOT_HANDOFF_init(), before the menu that lists the table */
+   app_init_tyre_data();   /* after BOOT_HANDOFF_init(), before the menu that lists the table */
    HMI_SH1106_init( &hmi_sh1106_cfg_s );
    MENU_NAV_init();
    BUZZER_init( &buzzer_instance_s, &buzzer_func_table_s );

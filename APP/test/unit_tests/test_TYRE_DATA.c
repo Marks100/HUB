@@ -4,10 +4,10 @@
 *
 *   \details    The first APP unit test: TYRE_DATA.c is compiled by Ceedling itself (unit_project.yml), so it is
 *               instrumented for coverage. The test builds a DATASET0 payload in RAM - 2 makes, 3 models and
-*               4 year ranges, in the layout TYRE_DATA.h describes - and unit_project.yml points the two linker
-*               symbols TYRE_DATA.c reads at it. Each validation check in TYRE_DATA_init() is then driven by
+*               4 year ranges, in the layout TYRE_DATA.h describes - and hands it to TYRE_DATA_init() with its
+*               length. Each validation check in TYRE_DATA_init() is then driven by
 *               corrupting one thing in that payload, and the getters are checked against what was put in.
-*               BOOT_HANDOFF's valid mask is a stub the test sets.
+*               Whether BM accepted the dataset is main.c's business, not the module's: the sw tests (test_TYRE_PRESSURES.c) cover that.
 */
 
 #include "unity.h"
@@ -38,9 +38,6 @@
 /***************************************************************************************************
 **                                        Static variables                                        **
 ***************************************************************************************************/
-/* The symbols unit_project.yml gives __dataset0_code_start__ / __dataset0_code_end__ in TYRE_DATA.c */
-const u8_t* test_dataset0_start_p = NULL_P;
-const u8_t* test_dataset0_end_p   = NULL_P;
 
 /* TYRE_DATA.c's private state, visible because TEST makes STATIC empty */
 extern false_true_et tyre_data_valid_s;
@@ -49,7 +46,6 @@ static u8_t  test_payload_s[TEST_PAYLOAD_MAX];
 static u16_t test_payload_len_s;
 static u16_t test_names_end_s;        /* Offset just past the last name's NUL */
 static u16_t test_variants_off_s;     /* Offset of the first year range */
-static u8_t  test_dataset_mask_s;     /* What the BOOT_HANDOFF stub returns */
 
 /* Makes, then models, in table order: Audi has A3 and A4, BMW has M3 */
 static const char* test_names_s[TEST_NAME_COUNT];
@@ -67,23 +63,6 @@ static const TYRE_DATA_variant_st test_variants_s[TEST_VARIANT_COUNT] =
     { 100u, 120u, 26u, 27u }
 };
 
-/***************************************************************************************************
-**                                        Stubs                                                   **
-***************************************************************************************************/
-/*!
-****************************************************************************************************
-*
-*   \brief         BOOT_HANDOFF stub - the valid mask the test has set
-*
-*   \author        MS
-*
-*   \return        test_dataset_mask_s
-*
-***************************************************************************************************/
-u8_t BOOT_HANDOFF_get_dataset_valid_mask( void )
-{
-    return( test_dataset_mask_s );
-}
 
 /***************************************************************************************************
 **                                        Test helpers                                            **
@@ -140,7 +119,7 @@ static void test_build_payload( void )
 /*!
 ****************************************************************************************************
 *
-*   \brief         Point the linker symbols at the first test_payload_len_s bytes of the payload and run init
+*   \brief         Run init on the first test_payload_len_s bytes of the payload
 *
 *   \author        MS
 *
@@ -149,10 +128,7 @@ static void test_build_payload( void )
 ***************************************************************************************************/
 static void test_init( void )
 {
-    test_dataset0_start_p = &test_payload_s[0];
-    test_dataset0_end_p   = &test_payload_s[test_payload_len_s - 1u];
-
-    TYRE_DATA_init();
+    TYRE_DATA_init( test_payload_s, test_payload_len_s );
 }
 
 /*!
@@ -183,8 +159,7 @@ void setUp( void )
         test_names_s[i] = test_default_names_s[i];
     }
 
-    test_dataset_mask_s = 0x01u;
-    tyre_data_valid_s   = FALSE;
+    tyre_data_valid_s = FALSE;
     test_build_payload();
 }
 
@@ -465,17 +440,19 @@ void test_TYRE_DATA_out_of_range_index_should_read_empty( void )
 /*!
 ****************************************************************************************************
 *
-*   \brief         Verify nothing is read, and the table is empty, when BOOT_HANDOFF's DATASET0 bit is clear
+*   \brief         Verify no payload (NULL_P, as the caller passes when BM did not accept DATASET0) reads as an empty table, and nothing is read
 *
 *   \author        MS
 *
 *   \return        none
 *
 ***************************************************************************************************/
-void test_TYRE_DATA_init_should_reject_when_dataset_bit_is_clear( void )
+void test_TYRE_DATA_init_with_no_payload_should_give_an_empty_table( void )
 {
-    test_dataset_mask_s = 0x00u;
     test_init_valid();
+    TEST_ASSERT_EQUAL( TRUE, TYRE_DATA_is_valid() );
+
+    TYRE_DATA_init( NULL_P, test_payload_len_s );
 
     TEST_ASSERT_EQUAL( FALSE, TYRE_DATA_is_valid() );
     TEST_ASSERT_EQUAL_UINT8( 0u, TYRE_DATA_get_make_count() );
@@ -484,22 +461,20 @@ void test_TYRE_DATA_init_should_reject_when_dataset_bit_is_clear( void )
 /*!
 ****************************************************************************************************
 *
-*   \brief         Verify only bit 0 of the mask decides: other bits alone reject, and extra bits do not
+*   \brief         Verify a payload too short to hold the header is rejected, whatever its first bytes are: the header is not read past the payload
 *
 *   \author        MS
 *
 *   \return        none
 *
 ***************************************************************************************************/
-void test_TYRE_DATA_init_should_only_look_at_bit_0_of_the_mask( void )
+void test_TYRE_DATA_init_should_reject_a_payload_shorter_than_the_header( void )
 {
-    test_dataset_mask_s = 0xFEu;
-    test_init_valid();
+    TYRE_DATA_init( test_payload_s, 0u );
     TEST_ASSERT_EQUAL( FALSE, TYRE_DATA_is_valid() );
 
-    test_dataset_mask_s = 0xFFu;
-    test_init();
-    TEST_ASSERT_EQUAL( TRUE, TYRE_DATA_is_valid() );
+    TYRE_DATA_init( test_payload_s, TEST_HEADER_LEN - 1u );
+    TEST_ASSERT_EQUAL( FALSE, TYRE_DATA_is_valid() );
 }
 
 /*!

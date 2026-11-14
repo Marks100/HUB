@@ -42,6 +42,7 @@
 #include "STDC.h"
 #include "FBL.h"       /* FBL_FINGERPRINT_MAX_LEN */
 #include "NVM_GEN2.h"  /* NVM_GEN2_BLOCK_ID_OWNER_A_FIRST */
+#include "DATASET_config.h"  /* DATASET_COUNT */
 
 /***************************************************************************************************
 **                              Defines                                                           **
@@ -56,13 +57,10 @@
 #define FBL_DATASET_DOWNLOAD_COUNT_BLOCK_ID  ( NVM_GEN2_BLOCK_ID_OWNER_A_FIRST + 3u )
 #define FBL_VPM_APPLIED_BLOCK_ID   ( NVM_GEN2_BLOCK_ID_OWNER_A_FIRST + 4u )   /* an FBL_vpm_applied_blk_st: the sequence number of the last batch of patches APP kept (VPM_COMMON.h) that the FBL applied */
 
-/* Matches this project's current dataset table size (see fbl_dataset_table_s in FBL/Src/INT_STUBS/
-   INTEGRATION_STUBS.c and bm_dataset_table_s in BM/Src/bm_main.c) - NVM_GEN2 blocks are a fixed
-   compile-time shape, so this can't track the table size dynamically the way FBL.c/BM.c's own
-   dataset_table_size does. Bump this (and both table's entries) together if a dataset is ever
-   added or removed - the block's length changes with it, so NVM_GEN2 resets the stored counts to
-   their defaults (zero) on the first boot after. */
-#define FBL_DATASET_DOWNLOAD_COUNT_MAX       ( 1u )
+/* One download count per dataset: the size of the table every image shares (DATASET_COUNT, DATASET_config.h), as an NVM_GEN2 block is
+   a fixed compile-time shape. Adding or removing a dataset changes the block's length, so NVM_GEN2 resets the stored counts to their
+   defaults (zero) on the first boot after. */
+#define FBL_DATASET_DOWNLOAD_COUNT_MAX       ( DATASET_COUNT )
 
 /***************************************************************************************************
 **                              Data Types and Enums                                              **

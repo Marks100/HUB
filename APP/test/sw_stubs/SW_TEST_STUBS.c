@@ -4,7 +4,7 @@
 *
 *   \details    CAN1 reaches its bus through the TJA1051 model, which the firmware has to take out of standby (EN pin,
 *               TJA1051_init) before a frame passes either way; CAN2 is the MCP2515 on SPI1 and its chip model. The
-*               symbols the linker script would give the APP are here too, as addresses in the virtual flash.
+*               DATASET0's addresses are in the virtual flash, where the build flags put them (see SW_TEST_STUBS.h).
 */
 
 /***************************************************************************************************
@@ -47,26 +47,11 @@
 ***************************************************************************************************/
 extern void app_main( void );                      /* main.c: the ECU's start, it returns */
 
-/* The symbols APP's linker script defines, as the addresses they have there: DATASET0's payload is in the virtual flash, where a
-   WriteMemoryByAddress puts it. The assembler defines them, C cannot define an address. */
-#define SW_TEST_STR_( x )    #x
-#define SW_TEST_STR( x )     SW_TEST_STR_( x )
-
-#if defined( _WIN32 )
-    #define SW_TEST_SYMBOL_PREFIX    "_"     /* the host compiler puts an underscore before every C symbol */
-#else
-    #define SW_TEST_SYMBOL_PREFIX    ""
-#endif
-
 u32_t __isr_vector_start = 0u;    /* the start of the vector table, which app_main() hands to the vector table offset register */
 
 u8_t sw_test_fbl_baud_param_g    = 0u;
 u8_t sw_test_fbl_response_owed_g = 0u;
 
-__asm__( ".globl " SW_TEST_SYMBOL_PREFIX "__dataset0_code_start__\n"
-         ".set "   SW_TEST_SYMBOL_PREFIX "__dataset0_code_start__, " SW_TEST_STR( SW_TEST_DATASET0_PAYLOAD_ADDRESS ) "\n"
-         ".globl " SW_TEST_SYMBOL_PREFIX "__dataset0_code_end__\n"
-         ".set "   SW_TEST_SYMBOL_PREFIX "__dataset0_code_end__, "   SW_TEST_STR( SW_TEST_DATASET0_END_ADDRESS ) "\n" );
 
 /***************************************************************************************************
 **                                  Private Function Prototypes                                   **

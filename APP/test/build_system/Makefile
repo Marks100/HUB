@@ -59,7 +59,7 @@ STUBS_DIR     := APP/test/sw_stubs
 MINGW_OBJCOPY ?= $(MINGW)-objcopy
 MINGW_OBJDUMP ?= $(MINGW)-objdump
 
-# Host build. -Og for everything: fast enough, and the firmware and the hardware can both be stepped through. No coverage: the software
+# Host build. DATASET0's three addresses are what the linker scripts give the firmware (DATASET_config.c takes them as macros when they are defined; SW_TEST_STUBS.h has the\n# same numbers for the tests, and test_TYRE_PRESSURES.c checks they agree). -Og for everything: fast enough, and the firmware and the hardware can both be stepped through. No coverage: the software
 # tests do not report it, and its counters cost time in every function
 HOST_CFLAGS := \
 	-m32 \
@@ -70,7 +70,10 @@ HOST_CFLAGS := \
 	-g \
 	-Wno-incompatible-pointer-types \
 	-finstrument-functions \
-	-finstrument-functions-exclude-file-list=$(HARDWARE_DIR),$(STUBS_DIR),$(CRYPTO_DIR)
+	-finstrument-functions-exclude-file-list=$(HARDWARE_DIR),$(STUBS_DIR),$(CRYPTO_DIR) \
+	-DDATASET0_HEADER_ADDRESS=0x0801E800u \
+	-DDATASET0_CODE_START_ADDRESS=0x0801E860u \
+	-DDATASET0_CODE_END_ADDRESS=0x0801F7FFu
 
 CFLAGS := $(COMMON_CFLAGS) $(APP_CFLAGS) $(HOST_CFLAGS) -MMD -MP $(addprefix -I$(ROOT)/,$(INC_REL))
 

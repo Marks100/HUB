@@ -39,8 +39,9 @@ _estack = 0x20005000;   /* top of 20 KB SRAM - same as BM/FBL, see SHARED_RAM.h'
 _Min_Heap_Size  = 0x0;     /* no heap: nothing in the image allocates (no malloc/_sbrk linked) */
 _Min_Stack_Size = 0x400;   /* 1 KB  */
 
-/* DATASET0's payload - APP reads it (TYRE_DATA.c), it does not occupy it. Same names and values as
+/* DATASET0 - APP reads its payload (TYRE_DATA.c, through DATASET_config.c's table), it does not occupy it. Same names and values as
    BM's/FBL's linker scripts. *_code_end__ is inclusive (last valid byte). */
+__dataset0_header_start__ = 0x0801E800;
 __dataset0_code_start__   = 0x0801E860;
 __dataset0_code_end__     = 0x0801F7FF;
 

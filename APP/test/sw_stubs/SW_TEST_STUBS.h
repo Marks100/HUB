@@ -34,7 +34,8 @@
 #define SW_TEST_TESTER_RESPONSE_MAX_LEN ( 128u )    /* what a test's buffer for an answer has to hold */
 #define SW_TEST_BOOT_SETTLE_MS          ( 500u )    /* from the start of the ECU to its first screen drawn: for a test of the display */
 
-/* DATASET0's payload in the flash, APP's linker script (STM32F103C8_flash.ld): plain numbers, the assembler needs them too */
+/* DATASET0 in the flash, APP's linker script (STM32F103C8_flash.ld): the header, the payload after it, and the last byte */
+#define SW_TEST_DATASET0_HEADER_ADDRESS     0x0801E800
 #define SW_TEST_DATASET0_PAYLOAD_ADDRESS    0x0801E860
 #define SW_TEST_DATASET0_END_ADDRESS        0x0801F7FF    /* the last byte of it */
 #define SW_TEST_DATASET0_PAYLOAD_SIZE       ( SW_TEST_DATASET0_END_ADDRESS - SW_TEST_DATASET0_PAYLOAD_ADDRESS + 1 )

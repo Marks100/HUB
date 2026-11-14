@@ -11,6 +11,7 @@
 #include "CHKSUM.h"
 #include "CLK_STM32F1.h"
 #include "BOOT_HANDOFF.h"
+#include "DATASET_config.h"
 #include "MCU_JUMP.h"
 #include "CRYPTO.h"
 #include "secure_boot_hmac_secret.h"
@@ -27,9 +28,6 @@ extern u32_t __fbl_code_end__;
 extern u32_t __app_header_start__;
 extern u32_t __app_code_start__;
 extern u32_t __app_code_end__;
-extern u32_t __dataset0_header_start__;
-extern u32_t __dataset0_code_start__;
-extern u32_t __dataset0_code_end__;
 
 /***************************************************************************************************
 **                              CRC Configuration                                                **
@@ -60,19 +58,6 @@ STATIC void clk_init( void )
    CLK_STM32F1_init( &hse8_72mhz_s );
 }
 
-/***************************************************************************************************
-**                              Dataset Table                                                    **
-***************************************************************************************************/
-/* One field-downloadable 4KB data block (the tyre pressure table - see APP's TYRE_DATA.h), right
-   after APP (see APP/linker_script/STM32F103C8_flash.ld's comment). BM_run() validates it on every
-   boot and records the result in shared RAM (BOOT_HANDOFF_get_dataset_valid_mask()) - informational
-   only, never a reason not to boot. Add/remove entries here (and the matching extern symbols above,
-   defined in this project's own linker script) to change how many datasets this platform has -
-   BM.c itself has no hardcoded count. Must match fbl_dataset_table_s entry-for-entry. */
-STATIC const bm_dataset_region_st bm_dataset_table_s[] =
-{
-   { .header_address = (u32_t)&__dataset0_header_start__, .code_start_address = (u32_t)&__dataset0_code_start__, .code_end_address = (u32_t)&__dataset0_code_end__ },
-};
 
 /***************************************************************************************************
 **                              Boot Manager Configuration                                       **
@@ -115,9 +100,10 @@ STATIC const bm_config_st bm_config_s =
    .fbl_code_start_address  = (u32_t)&__fbl_code_start__,
    .fbl_code_end_address    = (u32_t)&__fbl_code_end__,
 
-   /* Dataset table - see bm_dataset_table_s above */
-   .dataset_table_p    = bm_dataset_table_s,
-   .dataset_table_size = (u8_t)( sizeof( bm_dataset_table_s ) / sizeof( bm_dataset_table_s[0] ) ),
+   /* Dataset table - the one every image shares (DATASET_config.h): BM_run() validates each dataset on every boot and records the result
+      in shared RAM (BOOT_HANDOFF_get_dataset_valid_mask()) - informational only, never a reason not to boot */
+   .dataset_table_p    = dataset_table_g,
+   .dataset_table_size = (u8_t)DATASET_COUNT,
 
    /* Signature configuration - see secure_boot_hmac_secret.h before touching this */
    .firmware_public_key_p    = FIRMWARE_HMAC_SECRET,

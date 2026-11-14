@@ -24,8 +24,10 @@
 *               name padding. Totals are 16-bit, so the payload size is the only real limit; a
 *               single make still holds at most 255 models and a model 255 year ranges.
 *
-*               Nothing here is trusted until TYRE_DATA_init() has checked it: BM's valid bit for
-*               DATASET0 (CRC + signature), then the magic, the format version, that the counts add
+*               The module reads a payload it is given and knows nothing of where it is or whether the
+*               flash it is in was accepted: the caller (main.c) hands it the payload only once BM has
+*               checked DATASET0's CRC and signature, and NULL_P if not. Nothing in it is trusted until
+*               TYRE_DATA_init() has checked it: the magic, the format version, that the counts add
 *               up, that every name is terminated within TYRE_DATA_NAME_MAX_LEN, and that the whole
 *               table fits in the payload. Any failure and the table reads as empty.
 */
@@ -75,8 +77,9 @@ typedef struct
 /***************************************************************************************************
 **                              Function Prototypes                                               **
 ***************************************************************************************************/
-/*!< Checks DATASET0 once - call after BOOT_HANDOFF_init(), before anything reads the table */
-void                        TYRE_DATA_init( void );
+/*!< Checks the payload once, before anything reads the table. NULL_P, or a length that does not hold the header, is no table: it reads as empty.
+ *   The payload has to stay where it is, as the getters read it in place */
+void                        TYRE_DATA_init( const u8_t* payload_p, u32_t payload_len );
 false_true_et               TYRE_DATA_is_valid( void );
 
 /*!< Counts are 0, name getters return FALSE and TYRE_DATA_get_variant() NULL_P for an invalid table

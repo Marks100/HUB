@@ -57,11 +57,8 @@
   :test:
     :*:
       - TEST
-    # TYRE_DATA reads DATASET0 between two linker symbols. The test points them at a payload it builds in RAM:
-    # the symbols become what two pointers point at, so &symbol is the pointer's value
-    :test_TYRE_DATA:
-      - __dataset0_code_start__=(*test_dataset0_start_p)
-      - __dataset0_code_end__=(*test_dataset0_end_p)
+
+
   :release: []
   :use_test_definition: FALSE
 

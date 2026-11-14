@@ -6,13 +6,10 @@
 **                              Includes                                                          **
 ***************************************************************************************************/
 #include "TYRE_DATA.h"
-#include "BOOT_HANDOFF.h"
 
 /***************************************************************************************************
 **                              Defines                                                           **
 ***************************************************************************************************/
-#define TYRE_DATA_DATASET_VALID_BIT  ( 0x01u )   /*!< DATASET0 = bit 0 of the BM valid mask */
-
 /* Both records are bytes only, so the compiler has nothing to pad - these only fail if a field is
    changed to a wider type, which would also break the generator's layout. */
 typedef char tyre_data_header_size_check[  ( sizeof( TYRE_DATA_header_st )  == 8u ) ? 1 : -1 ];
@@ -21,9 +18,6 @@ typedef char tyre_data_variant_size_check[ ( sizeof( TYRE_DATA_variant_st ) == 4
 /***************************************************************************************************
 **                              Data declarations and definitions                                 **
 ***************************************************************************************************/
-/* DATASET0's payload - APP/linker_script/STM32F103C8_flash.ld, end inclusive */
-extern const u8_t __dataset0_code_start__;
-extern const u8_t __dataset0_code_end__;
 
 STATIC false_true_et               tyre_data_valid_s          = FALSE;
 STATIC u8_t                        tyre_data_make_count_s     = 0u;
@@ -50,29 +44,31 @@ STATIC false_true_et tyre_data_copy_name( u16_t name_idx, char* dest_p, u8_t des
 /*!
 ****************************************************************************************************
 *
-*   \brief         Check DATASET0 and point at its sections if it holds a usable tyre table
+*   \brief         Check a payload and point at its sections if it holds a usable tyre table
 *
 *   \author        MS
 *
+*   \param[in]     payload_p    The payload, in place (the getters read it there). NULL_P: no table
+*   \param[in]     payload_len  Its size in bytes
+*
 *   \return        none
 *
-*   \note          BM's CRC/signature result comes first - nothing in the payload is read unless it
-*                  passed. Then each section's size is checked against the payload before the next
+*   \note          Nothing in the payload is read before the header is known to fit in it. Then
+*                  each section's size is checked against the payload before the next
 *                  one is located, the counts are checked to add up to the header's totals, and the
 *                  name pool is walked once so every later lookup can count NULs without a bounds
 *                  check of its own.
 *
 ***************************************************************************************************/
-void TYRE_DATA_init( void )
+void TYRE_DATA_init( const u8_t* payload_p, u32_t payload_len )
 {
-    const u8_t*                payload_p   = &__dataset0_code_start__;
-    u32_t                      payload_len = (u32_t)( &__dataset0_code_end__ - &__dataset0_code_start__ ) + 1u;
-    const TYRE_DATA_header_st* header_p    = (const TYRE_DATA_header_st*)payload_p;
+    const TYRE_DATA_header_st* header_p = (const TYRE_DATA_header_st*)payload_p;
     u32_t                      offset;
 
     tyre_data_valid_s = FALSE;
 
-    if( ( ( BOOT_HANDOFF_get_dataset_valid_mask() & TYRE_DATA_DATASET_VALID_BIT ) != 0u ) &&
+    if( ( payload_p != NULL_P ) &&
+        ( payload_len >= (u32_t)sizeof( TYRE_DATA_header_st ) ) &&
         ( header_p->magic[0] == (u8_t)TYRE_DATA_MAGIC_0 ) &&
         ( header_p->magic[1] == (u8_t)TYRE_DATA_MAGIC_1 ) &&
         ( header_p->format_version == TYRE_DATA_FORMAT_VERSION ) )

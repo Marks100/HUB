@@ -14,6 +14,7 @@
 #include "STDC.h"
 
 #include "INTEGRATION_STUBS.h"
+#include "DATASET_config.h"
 #include "TYRE_DATA.h"
 
 #include "TMD_INIT.h"
@@ -83,6 +84,23 @@ static void test_open_the_tyre_pressures_menu( void )
     TMD_PANEL_press( TMD_PANEL_SELECT );
 }
 
+/*!
+****************************************************************************************************
+*
+*   \brief         Verify the dataset table the host build makes (build_system/Makefile's DATASET0 macros) is the layout these tests put
+*                  DATASET0 in (SW_TEST_STUBS.h)
+*
+*   \author        mstewart
+*
+*   \return        none
+*
+***************************************************************************************************/
+void test_the_dataset_table_is_the_layout_the_tests_assume( void )
+{
+    TEST_ASSERT_EQUAL_HEX32( SW_TEST_DATASET0_HEADER_ADDRESS, dataset_table_g[DATASET_TYRE_PRESSURES].header_address );
+    TEST_ASSERT_EQUAL_HEX32( SW_TEST_DATASET0_PAYLOAD_ADDRESS, dataset_table_g[DATASET_TYRE_PRESSURES].code_start_address );
+    TEST_ASSERT_EQUAL_HEX32( SW_TEST_DATASET0_END_ADDRESS, dataset_table_g[DATASET_TYRE_PRESSURES].code_end_address );
+}
 /*!
 ****************************************************************************************************
 *
