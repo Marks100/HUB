@@ -12,8 +12,9 @@
 *   CAN TX (sensor telemetry + heartbeat), 0x85 gates FAULT_MGR's DTC storage. 0x10, 0x11, 0x27 and
 *   0x3E are all rows in uds_service_table_s (UDS_config.c) like every other service, but UDS.c
 *   still dispatches them specially rather than through the generic subfunction search - see
-*   UDS_service_table_st's comment in UDS.h. WriteMemoryByAddress (0x3D) keeps a write to DATASET0's flash for the FBL to make at the next start
-*   (VPM_CLIENT.h), from EXTENDED behind SecurityAccess level 1.
+*   UDS_service_table_st's comment in UDS.h. WriteMemoryByAddress (0x3D) keeps a write to the variant parameter page's flash for the FBL to make at the next start
+*   (VPM_CLIENT.h), from EXTENDED behind SecurityAccess level 1. ReadMemoryByAddress (0x23) reads that page back, behind the same
+*   session and level, and nothing else of the flash.
 */
 #ifndef UDS_CONFIG_H
 #define UDS_CONFIG_H
@@ -27,6 +28,11 @@
 /***************************************************************************************************
 **                              Defines                                                           **
 ***************************************************************************************************/
+/* UDS.c's compile-time options (see its Compile-time options section) */
+#define UDS_CFG_MEMORY_BY_ADDRESS  ( 1u )    /* 0x23 and 0x3D: what they act on is write_memory_cfg_s and read_memory_cfg_s in UDS_config.c */
+#define UDS_CFG_KEY_OFF_ON_RESET   ( 1u )    /* 0x11 0x02 has its own function: ecu_reset_cfg_s in UDS_config.c */
+#define UDS_CFG_MULTI_DID_READ     ( 1u )    /* 0x22 takes several DIDs, and answers 0xF186 itself */
+
 /* Security levels granted by a successful SecurityAccess. Numbered to match ISO 14229-1's own
    subFunction convention (level N <-> requestSeed/sendKey subFunction 2N-1/2N), each with its own
    SendKey handler so a different key unlocks each one - see uds_handle_security_send_key()'s

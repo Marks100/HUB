@@ -51,6 +51,7 @@ STATIC u8_t fbl_uds_handle_request_seed( u16_t subfunc, u8_t* data_p, u16_t* len
 STATIC u8_t fbl_uds_handle_send_key( u16_t subfunc, u8_t* data_p, u16_t* len_p, UDS_response_code_et* nrc_p );
 STATIC u8_t fbl_uds_handle_write_fingerprint( u16_t subfunc, u8_t* data_p, u16_t* len_p, UDS_response_code_et* nrc_p );
 STATIC u8_t fbl_uds_handle_pre_programming_ack( u16_t subfunc, u8_t* data_p, u16_t* len_p, UDS_response_code_et* nrc_p );
+STATIC u8_t fbl_uds_handle_read_active_session( u16_t subfunc, u8_t* data_p, u16_t* len_p, UDS_response_code_et* nrc_p );
 
 /***************************************************************************************************
 **                              Sub-function Tables                                               **
@@ -155,10 +156,12 @@ STATIC UDS_subfunction_table_st write_data_by_identifier_subfuncs_s[] =
 };
 
 /* UDS_SES_ANY/no security - an identification read, same class of DID as
-   activeDiagnosticSession (0xF186), readable in any session without unlocking anything first. */
+   activeDiagnosticSession (0xF186), readable in any session without unlocking anything first. One DID per request
+   (UDS_CFG_MULTI_DID_READ is 0, UDS_config.h), so 0xF186 is a row of its own rather than answered by UDS.c. */
 STATIC UDS_subfunction_table_st read_data_by_identifier_subfuncs_s[] =
 {
-    { DID_BOOT_SOFTWARE_IDENTIFICATION, UDS_SUBFUNC_MASK_EXACT, FBL_uds_handle_read_boot_sw_id, UDS_SES_ANY, 0u },
+    { DID_BOOT_SOFTWARE_IDENTIFICATION,  UDS_SUBFUNC_MASK_EXACT, FBL_uds_handle_read_boot_sw_id,       UDS_SES_ANY, 0u },
+    { UDS_DID_ACTIVE_DIAGNOSTIC_SESSION, UDS_SUBFUNC_MASK_EXACT, fbl_uds_handle_read_active_session,   UDS_SES_ANY, 0u },
 };
 
 /* FBL's 0x10 policy - a whitelist, anything absent is refused with NRC 0x7E. See
@@ -431,6 +434,35 @@ STATIC u8_t fbl_uds_handle_pre_programming_ack( u16_t subfunc, u8_t* data_p, u16
 
     *len_p = 0u;
     *nrc_p = UDS_RC_POSITIVE_RESPONSE;
+
+    return( 0u );
+}
+
+/*!
+****************************************************************************************************
+*
+*   \brief         0x22 ReadDataByIdentifier 0xF186 (activeDiagnosticSession): the session the FBL is in
+*
+*   \author        mstewart
+*
+*   \param[in]     subfunc  The DID, unused
+*   \param[out]    data_p   The response after the DID
+*   \param[out]    len_p    The response length: one byte
+*   \param[out]    nrc_p    The response code
+*
+*   \return        0, no security level to grant
+*
+*   \note          UDS.c answers this itself when a project takes several DIDs in a request (UDS_CFG_MULTI_DID_READ); the FBL does not, so it
+*                  has the row here, and the read answers the same.
+*
+*****************************************************************************************************/
+STATIC u8_t fbl_uds_handle_read_active_session( u16_t subfunc, u8_t* data_p, u16_t* len_p, UDS_response_code_et* nrc_p )
+{
+    (void)subfunc;
+
+    data_p[0] = (u8_t)UDS_get_current_session();
+    *len_p    = 1u;
+    *nrc_p    = UDS_RC_POSITIVE_RESPONSE;
 
     return( 0u );
 }

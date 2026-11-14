@@ -44,6 +44,11 @@
 /***************************************************************************************************
 **                              Defines                                                           **
 ***************************************************************************************************/
+/* UDS.c's compile-time options (see its Compile-time options section) */
+#define UDS_CFG_MEMORY_BY_ADDRESS  ( 0u )    /* no 0x23 / 0x3D: the FBL has no room for them, and its flash is written by the download services */
+#define UDS_CFG_KEY_OFF_ON_RESET   ( 0u )    /* 0x11 0x02 is a hard reset: all its resets are the same one */
+#define UDS_CFG_MULTI_DID_READ     ( 0u )    /* 0x22 is one DID, from read_data_by_identifier_subfuncs_s (UDS_config.c), which has the 0xF186 row too */
+
 /* CAN IDs - physical request/response pair, matches AUTOCFG_HUB's FBL convention */
 #define FBL_UDS_REQUEST_ID   ( 0x700u )
 #define FBL_UDS_RESPONSE_ID  ( 0x600u )

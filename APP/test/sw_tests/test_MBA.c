@@ -921,4 +921,189 @@ void test_a_reset_with_no_write_waiting_does_not_ask_for_the_fbl( void )
     }
 }
 
+/***************************************************************************************************
+**                                  ReadMemoryByAddress (0x23)                                    **
+***************************************************************************************************/
+
+/*!
+****************************************************************************************************
+*
+*   \brief         Verify a read returns what the variant parameter page holds, the data and nothing else in the response
+*
+*   \author        mstewart
+*
+*   \return        none
+*
+*****************************************************************************************************/
+void test_a_read_returns_what_the_variant_parameter_page_holds( void )
+{
+    u8_t data[4];
+    u8_t nrc = 0xFFu;
+
+    memset( data, 0u, sizeof( data ) );
+    TEST_ASSERT_EQUAL( TMD_UDS_RESULT_OK, TMD_UDS_unlock( 1u, NULL_P ) );
+
+    TEST_ASSERT_EQUAL( TMD_UDS_RESULT_OK, TMD_UDS_read_memory_by_address( TEST_PARAMETER_ADDRESS, data, sizeof( data ), &nrc ) );
+    TEST_ASSERT_EQUAL_UINT8( 0u, nrc );
+    TEST_ASSERT_EQUAL( TRUE, TMD_MBA_flash_is_value( TEST_PARAMETER_ADDRESS, TEST_OLD_BYTE, sizeof( data ) ) );
+    TEST_ASSERT_EQUAL_UINT8( TEST_OLD_BYTE, data[0] );
+    TEST_ASSERT_EQUAL_UINT8( TEST_OLD_BYTE, data[3] );
+}
+
+/*!
+****************************************************************************************************
+*
+*   \brief         Verify a write that is kept is not in a read yet, as the flash is not written until the FBL makes it, and is in it
+*                  after: a tester reads back what a write did
+*
+*   \author        mstewart
+*
+*   \return        none
+*
+*****************************************************************************************************/
+void test_a_write_is_in_a_read_once_the_fbl_has_made_it_and_not_before( void )
+{
+    u8_t data[sizeof( test_data_c )];
+
+    TEST_ASSERT_EQUAL( TMD_UDS_RESULT_OK, TMD_UDS_unlock( 1u, NULL_P ) );
+    TEST_ASSERT_EQUAL( TMD_UDS_RESULT_OK, TMD_UDS_write_memory_by_address( TEST_PARAMETER_ADDRESS, test_data_c, sizeof( test_data_c ), NULL_P ) );
+
+    TEST_ASSERT_EQUAL( TMD_UDS_RESULT_OK, TMD_UDS_read_memory_by_address( TEST_PARAMETER_ADDRESS, data, sizeof( data ), NULL_P ) );
+    TEST_ASSERT_EQUAL_UINT8( TEST_OLD_BYTE, data[0] );                       /* kept, not made */
+
+    apply_the_kept_writes();
+
+    TEST_ASSERT_EQUAL( TMD_UDS_RESULT_OK, TMD_UDS_unlock( 1u, NULL_P ) );    /* the restart ended the session */
+    TEST_ASSERT_EQUAL( TMD_UDS_RESULT_OK, TMD_UDS_read_memory_by_address( TEST_PARAMETER_ADDRESS, data, sizeof( data ), NULL_P ) );
+    TEST_ASSERT_EQUAL_UINT8_ARRAY( test_data_c, data, sizeof( data ) );
+}
+
+/*!
+****************************************************************************************************
+*
+*   \brief         Verify the whole variant parameter page can be read in one request, and its first and its last byte on their own
+*
+*   \author        mstewart
+*
+*   \return        none
+*
+*****************************************************************************************************/
+void test_the_whole_page_and_its_ends_can_be_read( void )
+{
+    u8_t page[FLS_STM32F1_PAGE_SIZE];
+    u8_t one = 0u;
+    u8_t i;
+
+    for( i = 0u; i < 16u; i++ )
+    {
+        TMD_MBA_flash_fill( TEST_VPM_ADDRESS + ( (u32_t)i * 64u ), (u8_t)( 0x10u + i ), 64u );    /* a page that says where each byte is */
+    }
+
+    TEST_ASSERT_EQUAL( TMD_UDS_RESULT_OK, TMD_UDS_unlock( 1u, NULL_P ) );
+
+    TMD_UDS_set_timeout( 3000u );    /* the page is 147 consecutive frames at the tester's 10 ms apart: more than the 500 ms it waits for an answer by default */
+    TEST_ASSERT_EQUAL( TMD_UDS_RESULT_OK, TMD_UDS_read_memory_by_address( TEST_VPM_ADDRESS, page, sizeof( page ), NULL_P ) );
+    assert_flash_holds( TEST_VPM_ADDRESS, page, sizeof( page ) );
+
+    TEST_ASSERT_EQUAL( TMD_UDS_RESULT_OK, TMD_UDS_read_memory_by_address( TEST_VPM_ADDRESS, &one, 1u, NULL_P ) );
+    TEST_ASSERT_EQUAL_UINT8( 0x10u, one );
+    TEST_ASSERT_EQUAL( TMD_UDS_RESULT_OK, TMD_UDS_read_memory_by_address( TEST_DATASET0_ADDRESS - 1u, &one, 1u, NULL_P ) );
+    TEST_ASSERT_EQUAL_UINT8( 0x1Fu, one );
+}
+
+/*!
+****************************************************************************************************
+*
+*   \brief         Verify a read of memory outside the variant parameter page is refused, and so is one that starts in it and reaches out:
+*                  the application, DATASET0 and the NVM, which holds the keys, are not for a tester to read
+*
+*   \author        mstewart
+*
+*   \return        none
+*
+*****************************************************************************************************/
+void test_a_read_outside_the_page_is_refused( void )
+{
+    u8_t data[4];
+    u8_t nrc = 0u;
+
+    TEST_ASSERT_EQUAL( TMD_UDS_RESULT_OK, TMD_UDS_unlock( 1u, NULL_P ) );
+
+    TEST_ASSERT_EQUAL( TMD_UDS_RESULT_ERROR_NEGATIVE_RESPONSE, TMD_UDS_read_memory_by_address( TEST_APP_ADDRESS, data, sizeof( data ), &nrc ) );
+    TEST_ASSERT_EQUAL_UINT8( TMD_UDS_NRC_REQUEST_OUT_OF_RANGE, nrc );
+
+    TEST_ASSERT_EQUAL( TMD_UDS_RESULT_ERROR_NEGATIVE_RESPONSE, TMD_UDS_read_memory_by_address( TEST_NVM_ADDRESS, data, sizeof( data ), &nrc ) );
+    TEST_ASSERT_EQUAL_UINT8( TMD_UDS_NRC_REQUEST_OUT_OF_RANGE, nrc );
+
+    TEST_ASSERT_EQUAL( TMD_UDS_RESULT_ERROR_NEGATIVE_RESPONSE, TMD_UDS_read_memory_by_address( TEST_DATASET0_ADDRESS, data, sizeof( data ), &nrc ) );
+    TEST_ASSERT_EQUAL_UINT8( TMD_UDS_NRC_REQUEST_OUT_OF_RANGE, nrc );
+
+    TEST_ASSERT_EQUAL( TMD_UDS_RESULT_ERROR_NEGATIVE_RESPONSE, TMD_UDS_read_memory_by_address( TEST_VPM_ADDRESS - 1u, data, sizeof( data ), &nrc ) );    /* a byte before the page */
+    TEST_ASSERT_EQUAL_UINT8( TMD_UDS_NRC_REQUEST_OUT_OF_RANGE, nrc );
+
+    TEST_ASSERT_EQUAL( TMD_UDS_RESULT_ERROR_NEGATIVE_RESPONSE, TMD_UDS_read_memory_by_address( TEST_DATASET0_ADDRESS - 2u, data, sizeof( data ), &nrc ) );    /* two bytes in the page, two out */
+    TEST_ASSERT_EQUAL_UINT8( TMD_UDS_NRC_REQUEST_OUT_OF_RANGE, nrc );
+}
+
+/*!
+****************************************************************************************************
+*
+*   \brief         Verify a read request the ECU cannot take is refused: in a format it does not take, or with bytes after the size, as an
+*                  incorrect length, and a size of nothing as out of range
+*
+*   \author        mstewart
+*
+*   \return        none
+*
+*****************************************************************************************************/
+void test_a_read_request_the_ecu_cannot_take_is_refused( void )
+{
+    const u8_t no_format[1]    = { TMD_UDS_SID_READ_MEMORY_BY_ADDRESS };
+    const u8_t no_lengths[4]   = { TMD_UDS_SID_READ_MEMORY_BY_ADDRESS, 0x00u, 0x11u, 0x22u };
+    const u8_t no_address[4]   = { TMD_UDS_SID_READ_MEMORY_BY_ADDRESS, 0x20u, 0x00u, 0x02u };                     /* a 2-byte size and no address */
+    const u8_t long_address[8] = { TMD_UDS_SID_READ_MEMORY_BY_ADDRESS, 0x15u, 0x00u, 0x08u, 0x01u, 0xE4u, 0x20u, 0x01u };    /* a 5-byte address */
+    const u8_t short_request[7]= { TMD_UDS_SID_READ_MEMORY_BY_ADDRESS, TMD_UDS_ADDRESS_AND_LENGTH_FORMAT, 0x08u, 0x01u, 0xE4u, 0x20u, 0x00u };    /* a byte of the size missing */
+    const u8_t extra_byte[9]   = { TMD_UDS_SID_READ_MEMORY_BY_ADDRESS, TMD_UDS_ADDRESS_AND_LENGTH_FORMAT, 0x08u, 0x01u, 0xE4u, 0x20u, 0x00u, 0x04u, 0x99u };    /* a byte after the size */
+    const u8_t zero_size[8]    = { TMD_UDS_SID_READ_MEMORY_BY_ADDRESS, TMD_UDS_ADDRESS_AND_LENGTH_FORMAT, 0x08u, 0x01u, 0xE4u, 0x20u, 0x00u, 0x00u };
+    const u8_t* requests[7]    = { no_format, no_lengths, no_address, long_address, short_request, extra_byte, zero_size };
+    const u16_t lengths[7]     = { sizeof( no_format ), sizeof( no_lengths ), sizeof( no_address ), sizeof( long_address ), sizeof( short_request ), sizeof( extra_byte ), sizeof( zero_size ) };
+    u8_t        response[16];
+    u16_t       response_length = 0u;
+    u8_t        nrc;
+    u8_t        i;
+
+    TEST_ASSERT_EQUAL( TMD_UDS_RESULT_OK, TMD_UDS_unlock( 1u, NULL_P ) );
+
+    for( i = 0u; i < 7u; i++ )
+    {
+        nrc = 0u;
+        TEST_ASSERT_EQUAL( TMD_UDS_RESULT_ERROR_NEGATIVE_RESPONSE, TMD_UDS_send_request( requests[i], lengths[i], response, sizeof( response ), &response_length, &nrc ) );
+        TEST_ASSERT_EQUAL_UINT8( ( i == 6u ) ? TMD_UDS_NRC_REQUEST_OUT_OF_RANGE : TMD_UDS_NRC_INCORRECT_LENGTH, nrc );
+    }
+}
+
+/*!
+****************************************************************************************************
+*
+*   \brief         Verify a read is refused without the security access, in the extended session, and in the default session: it is behind
+*                  the same session and security level as a write
+*
+*   \author        mstewart
+*
+*   \return        none
+*
+*****************************************************************************************************/
+void test_a_read_without_the_session_and_the_security_access_is_refused( void )
+{
+    u8_t data[4];
+    u8_t nrc = 0u;
+
+    TEST_ASSERT_EQUAL( TMD_UDS_RESULT_ERROR_NEGATIVE_RESPONSE, TMD_UDS_read_memory_by_address( TEST_PARAMETER_ADDRESS, data, sizeof( data ), &nrc ) );    /* the default session */
+    TEST_ASSERT_EQUAL_UINT8( TMD_UDS_NRC_SUBFUNCTION_NOT_SUPPORTED_IN_ACTIVE_SESSION, nrc );
+
+    TEST_ASSERT_EQUAL( TMD_UDS_RESULT_OK, TMD_UDS_diagnostic_session_control( TMD_UDS_SESSION_EXTENDED, NULL_P ) );
+    TEST_ASSERT_EQUAL( TMD_UDS_RESULT_ERROR_NEGATIVE_RESPONSE, TMD_UDS_read_memory_by_address( TEST_PARAMETER_ADDRESS, data, sizeof( data ), &nrc ) );
+    TEST_ASSERT_EQUAL_UINT8( TMD_UDS_NRC_SECURITY_ACCESS_DENIED, nrc );
+}
+
 /****************************** END OF FILE *******************************************************/
