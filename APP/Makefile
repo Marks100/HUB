@@ -33,7 +33,6 @@ APP_MAP_FILE                 := $(OUTPUT_NAME).map
 APP_HEX_FILE                 := $(OUTPUT_NAME).hex
 APP_BIN_FILE                 := $(OUTPUT_NAME).bin
 APP_SREC_FILE                := $(OUTPUT_NAME).srec
-APP_HEX_PADDED_FILE          := $(OUTPUT_NAME)_padded.hex
 APP_HEX_WITH_CRC_FILE        := $(OUTPUT_NAME)_with_CRC.hex
 APP_HEX_SIGNED_FILE          := $(OUTPUT_NAME)_signed.hex
 APP_S19_SIGNED_FILE          := $(OUTPUT_NAME)_signed.s19
@@ -329,9 +328,10 @@ $(APP_ELF_FILE): build_banner autoversion $(APP_OBJ_DIR)
 # leaves the previous build's bytes in the tail pages when the flasher rewrites only the pages a hex
 # touches, so the CRC no longer matches and BM falls back to FBL. 0xFF is what both tools assume for
 # the gap, so the CRC and signature values are unchanged.
-	@$(SREC) $(APP_HEX_FILE) -Intel -fill 0xFF $(APP_FLASH_START) $(APP_FLASH_LIMIT) -o $(APP_HEX_PADDED_FILE) -Intel
+	@$(SREC) $(APP_HEX_FILE) -Intel -fill 0xFF $(APP_FLASH_START) $(APP_FLASH_LIMIT) -o $(APP_HEX_FILE).tmp -Intel
+	@mv -f $(APP_HEX_FILE).tmp $(APP_HEX_FILE)
 	@echo "--> Injecting CRC32 into APP header (HEX file)..."
-	@$(BUILD_ENV_BIN)/app_crc_injector $(APP_HEX_PADDED_FILE) --output=$(APP_HEX_WITH_CRC_FILE) --header-addr=$(APP_HEADER_ADDR) --code-start=$(APP_CODE_START) --code-end=$(APP_CODE_END) --crc-type=$(APP_CRC_TYPE)
+	@$(BUILD_ENV_BIN)/app_crc_injector $(APP_HEX_FILE) --output=$(APP_HEX_WITH_CRC_FILE) --header-addr=$(APP_HEADER_ADDR) --code-start=$(APP_CODE_START) --code-end=$(APP_CODE_END) --crc-type=$(APP_CRC_TYPE)
 	@echo "--> Signing firmware ($(SIGN_ALGORITHM))..."
 	@$(BUILD_ENV_BIN)/app_signer $(APP_HEX_WITH_CRC_FILE) --output=$(APP_HEX_SIGNED_FILE) --header-addr=$(APP_HEADER_ADDR) --code-start=$(APP_CODE_START) --code-end=$(APP_CODE_END) --algorithm=$(SIGN_ALGORITHM) --signing-key=$(SIGNING_KEY)
 	@echo "--> Converting signed HEX to S19 format..."
