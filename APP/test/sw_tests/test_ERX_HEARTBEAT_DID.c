@@ -86,8 +86,8 @@ void test_a_tester_reads_the_erx_heartbeat_state( void )
     /* Port 1, slot 0: the outer left wheel, alive, 4 frames, counter 2 */
     TEST_ASSERT_EQUAL_HEX8( APP_ISO_AXLE_1_OUTER_LEFT, data[TEST_PORT_1] );
     TEST_ASSERT_EQUAL_HEX8( AUTOCFG_HEARTBEAT_INFO_ALIVE, data[TEST_PORT_1 + 1u] );
-    TEST_ASSERT_EQUAL_UINT32( 4u, STDC_make_32_bit( data[TEST_PORT_1 + 2u], data[TEST_PORT_1 + 3u], data[TEST_PORT_1 + 4u], data[TEST_PORT_1 + 5u] ) );
-    TEST_ASSERT_EQUAL_UINT32( 2u, STDC_make_32_bit( data[TEST_PORT_1 + 6u], data[TEST_PORT_1 + 7u], data[TEST_PORT_1 + 8u], data[TEST_PORT_1 + 9u] ) );
+    TEST_ASSERT_EQUAL_UINT32( 4u, STDC_make_32bit( data[TEST_PORT_1 + 2u], data[TEST_PORT_1 + 3u], data[TEST_PORT_1 + 4u], data[TEST_PORT_1 + 5u] ) );
+    TEST_ASSERT_EQUAL_UINT32( 2u, STDC_make_32bit( data[TEST_PORT_1 + 6u], data[TEST_PORT_1 + 7u], data[TEST_PORT_1 + 8u], data[TEST_PORT_1 + 9u] ) );
 
     /* Port 1, slots 1 to 4 */
     TEST_ASSERT_EQUAL_HEX8_ARRAY( empty, &data[TEST_PORT_1 + TEST_SLOT], len - ( TEST_PORT_1 + TEST_SLOT ) );
@@ -118,7 +118,7 @@ void test_a_tester_sees_an_erx_that_was_unplugged_as_lost( void )
     TEST_ASSERT_EQUAL_UINT16( AUTOCFG_HEARTBEAT_INFO_SIZE, len );
     TEST_ASSERT_EQUAL_HEX8( APP_ISO_AXLE_1_OUTER_LEFT, data[TEST_PORT_1] );
     TEST_ASSERT_EQUAL_HEX8( AUTOCFG_HEARTBEAT_INFO_LOST, data[TEST_PORT_1 + 1u] );
-    TEST_ASSERT_EQUAL_UINT32( 2u, STDC_make_32_bit( data[TEST_PORT_1 + 2u], data[TEST_PORT_1 + 3u], data[TEST_PORT_1 + 4u], data[TEST_PORT_1 + 5u] ) );
+    TEST_ASSERT_EQUAL_UINT32( 2u, STDC_make_32bit( data[TEST_PORT_1 + 2u], data[TEST_PORT_1 + 3u], data[TEST_PORT_1 + 4u], data[TEST_PORT_1 + 5u] ) );
 }
 
 /*!

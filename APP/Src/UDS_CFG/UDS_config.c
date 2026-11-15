@@ -653,9 +653,9 @@ STATIC u8_t uds_handle_read_dtc_information( u16_t subfunc, u8_t* data_p, u16_t*
                 if( subfunc != DTC_REPORT_NUMBER_BY_STATUS_MASK )
                 {
                     dtc_number            = FAULT_MGR_get_dtc_number( fault_id );
-                    data_p[out_len]       = STDC_get_32_bit_msb( dtc_number );
-                    data_p[out_len + 1u]  = STDC_get_32_bit_lsb( dtc_number );
-                    data_p[out_len + 2u]  = STDC_get_32_bit_llsb( dtc_number );
+                    data_p[out_len]       = STDC_get_32bit_msb( dtc_number );
+                    data_p[out_len + 1u]  = STDC_get_32bit_lsb( dtc_number );
+                    data_p[out_len + 2u]  = STDC_get_32bit_llsb( dtc_number );
                     data_p[out_len + 3u]  = status;
                     out_len              += DTC_RECORD_LEN;
                 }
@@ -694,7 +694,7 @@ STATIC u8_t uds_handle_clear_diagnostic_information( u16_t subfunc, u8_t* data_p
     {
         *nrc_p = UDS_RC_INCORRECT_MESSAGE_LENGTH_OR_INVALID_FORMAT;
     }
-    else if( STDC_make_32_bit( 0u, data_p[0], data_p[1], data_p[2] ) != DTC_GROUP_ALL )
+    else if( STDC_make_32bit( 0u, data_p[0], data_p[1], data_p[2] ) != DTC_GROUP_ALL )
     {
         *nrc_p = UDS_RC_REQUEST_OUT_OF_RANGE;
     }
