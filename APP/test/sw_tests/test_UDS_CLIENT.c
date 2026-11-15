@@ -342,7 +342,7 @@ void test_nothing_is_sent_to_a_node_that_is_not_configured( void )
 {
     const u8_t not_configured = 1u;    /* ISO position APP_ISO_POSITION_FIRST + 1: no row of app_autocfg_init_s */
 
-    TEST_ASSERT_EQUAL( FALSE, app_node_is_available( not_configured ) );
+    TEST_ASSERT_EQUAL( FALSE, AUTOCFG_is_erx_available( (u8_t)( APP_ISO_POSITION_FIRST + not_configured ) ) );
     TEST_ASSERT_EQUAL( PASS, NODE_INFO_select_node( not_configured ) );
 
     TMD_TIME_advance_time_ms( TEST_NODE_INFO_MS );
@@ -369,7 +369,7 @@ void test_nothing_is_sent_to_a_node_that_is_unplugged( void )
 
     TMD_TIME_advance_time_ms( TEST_NODE_INFO_MS );
 
-    TEST_ASSERT_EQUAL( FALSE, app_node_is_available( 0u ) );
+    TEST_ASSERT_EQUAL( FALSE, AUTOCFG_is_erx_available( APP_ISO_POSITION_FIRST ) );
     TEST_ASSERT_EQUAL( 0u, TMD_CAN_get_message_count_from_ecu( TEST_BUS_NODES, APP_NODE_REQUEST_BASE_ID ) );
     TEST_ASSERT_EQUAL( 0u, TMD_ERX_UDS_get_request_count( TMD_ERX_find_instance( APP_ISO_AXLE_1_OUTER_LEFT ) ) );
     TEST_ASSERT_NULL( NODE_INFO_get( NODE_INFO_PART_NUMBER, NULL_P ) );

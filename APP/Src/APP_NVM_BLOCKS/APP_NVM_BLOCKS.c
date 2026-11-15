@@ -27,7 +27,7 @@ APP_generic_data_blk_st app_generic_data_blk_g;
 APP_key_blk_st          app_key_1_blk_g;
 APP_key_blk_st          app_key_2_blk_g;
 APP_chassis_num_blk_st  app_chassis_num_blk_g;
-VPM_COMMON_blk_st      app_vpm_client_blk_g;
+VPM_COMMON_blk_st       app_vpm_client_blk_g;
 
 /* Populated once at start-up by app_main()'s APP_read_fbl_fingerprint() call - this is NOT a
    live mirror the way app_generic_data_blk_g is: FBL owns this block, APP never registers it,

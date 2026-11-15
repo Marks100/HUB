@@ -94,10 +94,10 @@ STATIC void app_autocfg_port_1_power( AUTOCFG_port_power_state_et state )
 
 /* The ERXs the HUB follows and powers: the port each is on and its ISO position, at most AUTOCFG_V2_MAX_ERX_PER_PORT
    per port. A port with no row is not powered. */
-AUTOCFG_init_st app_autocfg_init_s =
+const AUTOCFG_init_st app_autocfg_init_s =
 {
-    .get_time_ms         = TIME_get_cumulative_run_time_ms_64,
-    .has_time_elapsed_ms = TIME_has_time_elapsed_ms_64,
+    .get_time_ms         = TIME_get_cumulative_run_time_ms,
+    .has_time_elapsed_ms = TIME_has_time_elapsed_ms,
     .port_pwr_ctrl       = { app_autocfg_port_0_power, app_autocfg_port_1_power },
     .erx_locations       =
     {
@@ -106,29 +106,6 @@ AUTOCFG_init_st app_autocfg_init_s =
     },
     .autocfg_enabled     = FALSE
 };
-
-/* A node is the ISO position (APP_ISO_POSITION_FIRST + node) of one of the ERXs above. It is talked to only while it is configured
-   (a row of erx_locations), its port is switched on and its heartbeat is coming in - a node that is unplugged, unpowered or dead
-   would only time out, and hold the gateway while it did. DIAG_GW asks it (node_available_func_p) before reserving a node for the
-   HUB's client, and NODE_INFO to know when to start. */
-false_true_et app_node_is_available( u8_t node )
-{
-    false_true_et available    = FALSE;
-    const u8_t    iso_position = (u8_t)( APP_ISO_POSITION_FIRST + node );
-    u8_t          i;
-
-    for( i = 0u; ( i < AUTOCFG_V2_MAX_ERXS ) && ( available == FALSE ); i++ )
-    {
-        if( ( app_autocfg_init_s.erx_locations[i].iso_position == iso_position ) &&
-            ( AUTOCFG_get_port_power_state( app_autocfg_init_s.erx_locations[i].port ) == PORT_POWER_ON ) &&
-            ( AUTOCFG_is_erx_alive( iso_position ) == TRUE ) )
-        {
-            available = TRUE;
-        }
-    }
-
-    return( available );
-}
 
 /***************************************************************************************************
 **                              WDG                                                               **
@@ -466,7 +443,7 @@ const DIAG_GW_cfg_st app_diag_gw_cfg_s =
 {
     .tester_idle_ms   = 5500u,
     .local_ms         = 1000u,
-    .node_available_func_p = app_node_is_available,
+    .node_available_func_p = AUTOCFG_is_erx_available,    /* a node is the ISO position of an ERX, APP_ISO_POSITION_FIRST + node: only one that is configured, powered and heard is reserved */
     .time_ms_func_p   = TIME_get_cumulative_run_time_ms,
     .set_tx_id_func_p = CANIF_set_dynamic_tx_id,
     .tx_func_p        = app_diag_gw_tx,
@@ -475,7 +452,8 @@ const DIAG_GW_cfg_st app_diag_gw_cfg_s =
     .tester_tx_pdu_id = APP_CANIF_PDU_GW_TESTER_TX,
     .local_tx_pdu_id  = APP_CANIF_PDU_HUB_TX,
     .request_base_id  = APP_NODE_REQUEST_BASE_ID,
-    .response_base_id = APP_NODE_RESPONSE_BASE_ID
+    .response_base_id = APP_NODE_RESPONSE_BASE_ID,
+    .node_available_base = APP_ISO_POSITION_FIRST
 };
 
 /***************************************************************************************************

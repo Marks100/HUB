@@ -84,7 +84,9 @@ CFLAGS :=  \
 # APP only, shared with the x86 test library: FAULT_MGR slot cap. APP defines no faults yet (no fault table, no
 # monitors), so the module's default of 64 slots only costs RAM. 8 is a placeholder - raise it when APP gets a real
 # fault table; init rejects a table larger than this, so it cannot silently overflow.
-APP_CFLAGS := -DFAULT_MGR_MAX_FAULTS=8
+# CANTP: APP is classic CAN only, so the frames it queues need 8 bytes, not the 64 of CAN FD (56 bytes less for each of the 10 queued frames of the
+# two instances), and the two instances between them use 2 transport ID pairs, not 10. A table with more pairs does not compile; an FD configuration is refused.
+APP_CFLAGS := -DFAULT_MGR_MAX_FAULTS=8 -DCANTP_MAX_FRAME_SIZE=8u -DCANTP_MAX_NUM_TP_IDS=2u
 
 #either s32k or stm32 currently supported
 CPU_TYPE                 := stm32f103

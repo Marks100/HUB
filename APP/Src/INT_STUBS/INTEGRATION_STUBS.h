@@ -61,8 +61,12 @@
    is refused by CANTP with FC_OVERLOAD (the ISO-TP maximum on classic CAN is 4095). One buffer, shared by CANTP's
    reassembly and the UDS working buffer - two of this size would not fit in RAM. UDS_tx_confirmation releases it
    once a response has gone out, so a tester must not start a new request before the response to the last one is
-   complete. */
-#define APP_UDS_BUFFER_SIZE                     ( 2048u )
+   complete.
+   The size is the largest legal message: the reply to a 0x23 read of the whole 1 KB variant parameter page, the service byte and the 1024
+   bytes of the page. The others are smaller: a 0x3D write that fills every VPM patch slot is about 225 bytes, and 0x22 reading
+   UDS_MAX_DIDS_PER_READ identifiers, all of the largest (the ERX heartbeats, 100 bytes), is 817. A reply that would not fit is answered
+   with NRC 0x14 by UDS. */
+#define APP_UDS_BUFFER_SIZE                     ( 1025u )
 
 /* Clock, timing, debug and watchdog */
 extern const SYSTICK_cfg_st             systick_cfg_s;
@@ -70,7 +74,7 @@ extern const hw_crc_config_st           hw_crc_cfg_s;
 extern const DBG_MGR_cfg_st             dbg_mgr_cfg_s;
 extern const TIME_cfg_st                time_cfg_s;
 extern const WDG_HW_STM32_config_st     wdg_cfg_s;
-extern AUTOCFG_init_st                  app_autocfg_init_s;
+extern const AUTOCFG_init_st            app_autocfg_init_s;
 
 /* Not fitted on BLUE_PILL: the display, buzzer and LEDs, the onboard button, the radio, and WiFi and cloud */
 #if ( HW_VARIANT == SUPER_PILL )
@@ -87,10 +91,6 @@ extern const ESP01_cfg_st               esp01_cfg_s;
 extern const WIFI_config_st             wifi_cfg_s;
 extern       TB_config_st               tb_cfg_s;
 #endif /* HW_VARIANT == SUPER_PILL */
-
-/* Whether the HUB may talk to a node (its number as UDS_CLIENT_set_node() and DIAG_GW take it): it is one of the ERXs in
-   app_autocfg_init_s, the port it is on is powered and its heartbeat is coming in. Nothing is sent to a node that is not. */
-extern false_true_et app_node_is_available( u8_t node );
 
 /* Storage and messages */
 extern const NVM_GEN2_hw_interface_st   nvm_gen2_hw_interface_s;

@@ -6,7 +6,7 @@
 **                              Includes                                                          **
 ***************************************************************************************************/
 #include "NODE_INFO.h"
-#include "INTEGRATION_STUBS.h"   /* app_node_is_available() */
+#include "INTEGRATION_STUBS.h"   /* APP_ISO_POSITION_FIRST, AUTOCFG_is_erx_available() */
 #include "TIME_MGR.h"
 
 /***************************************************************************************************
@@ -82,7 +82,7 @@ void NODE_INFO_init( void )
 *   \return        none
 *
 *   \note          Nothing is asked of a node that is not available (not configured, its port off or its
-*                  heartbeat missing, see app_node_is_available()): the machine waits in READ and asks the moment
+*                  heartbeat missing, see AUTOCFG_is_erx_available()): the machine waits in READ and asks the moment
 *                  it is. A refused reservation, a negative response or a timeout moves on to the next item's
 *                  turn a period later. A client that is busy with someone else's request is tried again on
 *                  the next tick.
@@ -94,7 +94,7 @@ void NODE_INFO_tick( void )
     {
         case NODE_INFO_STATE_READ:
         {
-            if( ( UDS_CLIENT_is_busy() == FALSE ) && ( app_node_is_available( UDS_CLIENT_get_node() ) == TRUE ) )
+            if( ( UDS_CLIENT_is_busy() == FALSE ) && ( AUTOCFG_is_erx_available( (u8_t)( APP_ISO_POSITION_FIRST + UDS_CLIENT_get_node() ) ) == TRUE ) )
             {
                 if( UDS_CLIENT_read_did( node_info_dids_c[node_info_item_s], NODE_INFO_response ) == PASS )
                 {
