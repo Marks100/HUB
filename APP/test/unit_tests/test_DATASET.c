@@ -3,8 +3,8 @@
 *   \brief      DATASET module - Unit Test Suite
 *
 *   \details    DATASET_get_payload() joins two things: the table of where each dataset is in the flash (dataset_table_g) and BM's verdict
-*               on it (bit n of the handoff RAM's valid mask). The table is DATASET_config.c's, built from the linker symbols, which the test
-*               stubs as variables, and the test stubs BOOT_HANDOFF's mask, so it checks what is given back for each mask and each index and that nothing is handed out for a
+*               on it (bit n of the handoff RAM's valid mask). The table is DATASET_config.c's, which the test compiles as the firmware does:
+*               it needs no stub, as the datasets are in no linker script. The test stubs BOOT_HANDOFF's mask, so it checks what is given back for each mask and each index and that nothing is handed out for a
 *               dataset BM did not accept.
 */
 
@@ -20,9 +20,9 @@
 /***************************************************************************************************
 **                                        Defines                                                 **
 ***************************************************************************************************/
-/* What the module is given: DATASET0's payload as its linker symbols name it (see the stubs below) - the first byte, and the last, inclusive */
-#define TEST_PAYLOAD_ADDRESS   ( (u32_t)&__dataset0_code_start__ )
-#define TEST_PAYLOAD_LEN       ( ( (u32_t)&__dataset0_code_end__ - (u32_t)&__dataset0_code_start__ ) + 1u )
+/* What the module is given for DATASET0: its payload, after the header to the end of its slot (DATASET_config.h) */
+#define TEST_PAYLOAD_ADDRESS   ( DATASET0_START + DATASET_HEADER_SIZE )
+#define TEST_PAYLOAD_LEN       ( DATASET0_SIZE - DATASET_HEADER_SIZE )
 #define TEST_OTHER_ADDRESS     ( 0x00020000ul )    /* not the payload: what an output holds before a call that must not touch it */
 
 /***************************************************************************************************
@@ -33,12 +33,6 @@ static u8_t test_dataset_mask_s;     /* What the BOOT_HANDOFF stub returns */
 /***************************************************************************************************
 **                                        Stubs                                                   **
 ***************************************************************************************************/
-/* The linker symbols DATASET_config.c builds its table from, which the firmware's linker scripts define as addresses. Here they are variables, so
-   their addresses are the test's: the module only hands them on and the test checks them against the same symbols. Never read */
-u32_t __dataset0_header_start__;
-u32_t __dataset0_code_start__;
-u32_t __dataset0_code_end__;
-
 /*!
 ****************************************************************************************************
 *

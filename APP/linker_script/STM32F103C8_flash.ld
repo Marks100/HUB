@@ -7,7 +7,8 @@
 **   FBL  : 0x08002000 - 0x08007FFF   24 KB
 **   APP  : 0x08008000 - 0x0801E3FF   89 KB  <- this image
 **   VPM  : 0x0801E400 - 0x0801E7FF    1 KB  (variant parameter page, VPM_COMMON.h: not an image, nothing is linked into it)
-**   DATASET0 : 0x0801E800 - 0x0801F7FF   4 KB  (field-downloadable via FBL_download_request().
+**   DATASETS : 0x0801E800 - 0x0801F7FF   4 KB  (DATASET_config.h: up to 8, each its own size. DATASET0 is the whole of it today;
+**                                               field-downloadable via FBL_download_request().
 **                                               Same header fields as APP but a 96 B header - no
 **                                               vector table, so no 256 B VTOR alignment. BM
 **                                               validates it informationally only - check bit 0
@@ -39,11 +40,6 @@ _estack = 0x20005000;   /* top of 20 KB SRAM - same as BM/FBL, see SHARED_RAM.h'
 _Min_Heap_Size  = 0x0;     /* no heap: nothing in the image allocates (no malloc/_sbrk linked) */
 _Min_Stack_Size = 0x400;   /* 1 KB  */
 
-/* DATASET0 - APP reads its payload (TYRE_DATA.c, through DATASET_config.c's table), it does not occupy it. Same names and values as
-   BM's/FBL's linker scripts. *_code_end__ is inclusive (last valid byte). */
-__dataset0_header_start__ = 0x0801E800;
-__dataset0_code_start__   = 0x0801E860;
-__dataset0_code_end__     = 0x0801F7FF;
 
 MEMORY
 {

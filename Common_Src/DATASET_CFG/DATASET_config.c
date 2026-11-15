@@ -9,32 +9,20 @@
 #include "BOOT_HANDOFF.h"
 
 /***************************************************************************************************
-**                              Linker Symbols                                                    **
+**                              Defines                                                           **
 ***************************************************************************************************/
-/* DATASET0, as BM's, the FBL's and the application's linker scripts all define it (the same names and values in each): the header at the
-   start of the region, the payload after it, and the last byte of both. A host build gives the three addresses as macros instead, so there
-   is nothing to link */
-#if !defined( DATASET0_HEADER_ADDRESS )
-extern u32_t __dataset0_header_start__;
-extern u32_t __dataset0_code_start__;
-extern u32_t __dataset0_code_end__;
-
-#define DATASET0_HEADER_ADDRESS       ( (u32_t)&__dataset0_header_start__ )
-#define DATASET0_CODE_START_ADDRESS   ( (u32_t)&__dataset0_code_start__ )
-#define DATASET0_CODE_END_ADDRESS     ( (u32_t)&__dataset0_code_end__ )
-#endif
+/* One row of the table for DATASETn: its header at its start, its payload after the header to its last byte, and its id */
+#define DATASET_ROW( n )  { .header_address     = DATASET##n##_START,                           \
+                            .code_start_address = DATASET##n##_START + DATASET_HEADER_SIZE,     \
+                            .code_end_address   = DATASET##n##_START + DATASET##n##_SIZE - 1ul, \
+                            .dataset_id         = DATASET##n##_ID }
 
 /***************************************************************************************************
 **                              Data declarations and definitions                                 **
 ***************************************************************************************************/
 const HEADER_region_st dataset_table_g[DATASET_COUNT] =
 {
-    [DATASET_TYRE_PRESSURES] =
-    {
-        .header_address     = DATASET0_HEADER_ADDRESS,
-        .code_start_address = DATASET0_CODE_START_ADDRESS,
-        .code_end_address   = DATASET0_CODE_END_ADDRESS
-    },
+    [DATASET_TYRE_PRESSURES] = DATASET_ROW( 0 ),
 };
 
 /***************************************************************************************************

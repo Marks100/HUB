@@ -29,7 +29,7 @@
 **
 ** Must stay numerically consistent with BM/linker_script/STM32F103C8_BM_flash.ld and
 ** APP/linker_script/STM32F103C8_flash.ld / APP/Makefile's FBL_FLASH_START/SIZE (and, for
-** DATASET0, APP/Makefile's DATASET0_FLASH_START/SIZE) - all three linker scripts encode the same
+** the datasets, Common_Src/DATASET_CFG/DATASET_config.h's region) - all three linker scripts encode the same
 ** partition map.
 */
 
@@ -41,16 +41,14 @@ _estack = 0x20005000;   /* top of 20 KB SRAM - same as BM/APP, so a soft reset b
 _Min_Heap_Size  = 0x0;
 _Min_Stack_Size = 0x400;   /* 1 KB */
 
-/* APP/DATASET0 regions FBL writes into - not occupied by any section here, just constants
+/* The APP region FBL writes into - not occupied by any section here, just constants
    INTEGRATION_STUBS.c's fbl_config_s is built from. Must match BM's own
-   __app_header_start__/__app_code_end__/__dataset0_*__ (BM/linker_script/
+   __app_header_start__/__app_code_end__ (BM/linker_script/
    STM32F103C8_BM_flash.ld) - same names, same values, both describing the identical physical
-   addresses. Every *_code_end__ is inclusive (last valid byte). */
+   addresses. Every *_code_end__ is inclusive (last valid byte). The datasets it writes into are
+   DATASET_config.h's, not symbols. */
 __app_header_start__  = 0x08008000;
 __app_code_end__      = 0x0801E3FF;
-__dataset0_header_start__ = 0x0801E800;
-__dataset0_code_start__   = 0x0801E860;
-__dataset0_code_end__     = 0x0801F7FF;
 
 MEMORY
 {

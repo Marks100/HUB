@@ -37,11 +37,17 @@ APP_HEX_PADDED_FILE          := $(OUTPUT_NAME)_padded.hex
 APP_HEX_WITH_CRC_FILE        := $(OUTPUT_NAME)_with_CRC.hex
 APP_HEX_SIGNED_FILE          := $(OUTPUT_NAME)_signed.hex
 APP_S19_SIGNED_FILE          := $(OUTPUT_NAME)_signed.s19
-DATASET0_CSV                 := ../Tool_cfg/TYRE_DATA/tyre_pressures.csv
-DATASET0_GEN                 := ../scripts/tyre_dataset_gen
-DATASET0_HEX_FILE            := $(BUILD_OUT_DIR)/DATASET0.hex
-DATASET0_HEX_WITH_CRC_FILE   := $(BUILD_OUT_DIR)/DATASET0_with_CRC.hex
-DATASET0_HEX_SIGNED_FILE     := $(BUILD_OUT_DIR)/DATASET0_signed.hex
+# The datasets: one block each, built completely by its own script (see the dataset target). The script is given the dataset's source,
+# where it starts (its header) and where it ends (its last byte), and its id. These must be the ones in Common_Src/DATASET_CFG/DATASET_config.h.
+# A new dataset adds its own block here, its own target under `dataset`, and its signed file to the combined image (variant_image).
+
+# DATASET0: the tyre pressure table
+DATASET_TYRE_PRESSURES_GEN   := ../scripts/tyre_dataset_gen
+DATASET_TYRE_PRESSURES_INPUT := ../Tool_cfg/TYRE_DATA/tyre_pressures.csv
+DATASET_TYRE_PRESSURES_START := 0x0801E800
+DATASET_TYRE_PRESSURES_END   := 0x0801F7FF
+DATASET_TYRE_PRESSURES_ID    := 0x54595245
+DATASET_TYRE_PRESSURES_HEX   := $(BUILD_OUT_DIR)/DATASET_TYRE_PRESSURES_signed.hex
 OBJECT_SIZE_FILE             := $(BUILD_OUT_DIR)/object_sizes.txt
 APP_COMPILER_OUTPUT          := $(BUILD_OUT_DIR)/compiler_warnings.txt
 APP_MEM_OUTPUT_FILE          := $(BUILD_OUT_DIR)/memory_analysis.txt
@@ -54,7 +60,7 @@ RELEASE_PACKAGE_NAME         := $(RELEASE_PACKAGE_BASE_DIR)/$(PROJECT_TYPE)_$(VE
 
 # Flash layout - must match the linker scripts in BM/, FBL/, APP/. Change a size in all three.
 # STM32F103C8T6: 128KB at 0x08000000 (a "C8" is 64KB nominal but 128KB silicon, confirmed by reading
-# F_SIZE at 0x1FFFF7E0). BM=8KB  FBL=24KB  APP=89KB  VPM=1KB  DATASET0=4KB  NVM=2KB.
+# F_SIZE at 0x1FFFF7E0). BM=8KB  FBL=24KB  APP=89KB  VPM=1KB  DATASETS=4KB (DATASET_config.h)  NVM=2KB.
 # The top 2KB (0x0801F800-0x0801FFFF) is the NVM_GEN2 pages, fixed in Common_Src/PROJ_CONFIG/PROJ_config.h:
 # APP and DATASET0 must stay below them. FBL and APP share those pages, see NVM_GEN2/README.md.
 # DATASET0 is downloaded through FBL and validated by BM at boot.
@@ -74,21 +80,12 @@ APP_FLASH_END                 := $(shell printf '0x%08X' $$(( $(BM_FLASH_START) 
 # $(APP_ELF_FILE)'s recipe below for why the built hex is padded to the whole region.
 APP_FLASH_LIMIT               := $(shell printf '0x%08X' $$(( $(APP_FLASH_START) + $(APP_FLASH_SIZE) )))
 
-# DATASET0 - a 4KB slot after APP, before the NVM pages: 96B header + 4000B payload. The header is the
-# APP_header_st of HEADER.h, but smaller than APP's: no vector table, so no 256B VTOR alignment (see the
-# region constants in BM/linker_script/STM32F103C8_BM_flash.ld). Built by the `dataset` target, not the APP build.
-# Must match the __dataset0_* constants in the BM, FBL and APP linker scripts, as FBL_CODE_END does for the FBL.
 # The variant parameter page (VPM_COMMON.h, VPM_config.h): after APP, before DATASET0. Nothing signs or downloads it - APP keeps writes for it in the NVM
 # and the FBL makes them at the next start - so it is not in any image and stays blank (0xFF) until the first write.
 VPM_FLASH_START              := $(shell printf '0x%08X' $$(( $(BM_FLASH_START) + $(BM_FLASH_SIZE) + $(FBL_FLASH_SIZE) + $(APP_FLASH_SIZE) )))
 VPM_FLASH_SIZE               := 0x400
 VPM_FLASH_END                := $(shell printf '0x%08X' $$(( $(VPM_FLASH_START) + $(VPM_FLASH_SIZE) - 1 )))
 
-DATASET0_FLASH_START          := $(shell printf '0x%08X' $$(( $(BM_FLASH_START) + $(BM_FLASH_SIZE) + $(FBL_FLASH_SIZE) + $(APP_FLASH_SIZE) + $(VPM_FLASH_SIZE) )))
-DATASET0_FLASH_SIZE           := 0x1000
-DATASET0_FLASH_END            := $(shell printf '0x%08X' $$(( $(DATASET0_FLASH_START) + $(DATASET0_FLASH_SIZE) - 1 )))
-DATASET0_HEADER_SIZE          := 0x60
-DATASET0_CODE_START           := $(shell printf '0x%08X' $$(( $(DATASET0_FLASH_START) + $(DATASET0_HEADER_SIZE) )))
 
 APP_HEADER_ADDR               := $(APP_FLASH_START)
 APP_CODE_START                := $(shell printf '0x%08X' $$(( $(APP_FLASH_START) + 0x100 )))
@@ -204,7 +201,7 @@ LDFLAGS := \
 .PHONY: doc_functions doc_functions_clean
 .PHONY: list analyse_app_mapfile tree files
 .PHONY: build_banner autoversion warnings_parser memory_stats object_stats
-.PHONY: release_package mux_dbc dataset
+.PHONY: release_package mux_dbc dataset dataset_tyre_pressures
 
 ####################################################################################################
 #                      All (Default) Target and other Build Targets                                #
@@ -252,22 +249,21 @@ $(BM_IMAGE):
 $(FBL_IMAGE):
 	@$(MAKE) -C ../FBL fbl_build
 
-# Tyre pressure table -> signed DATASET0 hex, downloadable on its own through FBL. Same CRC and
-# signing steps as APP, over the dataset's own header/payload addresses. The generator already
-# defines every byte of the region, so no separate padding step.
-dataset:
-	@mkdir -p $(BUILD_OUT_DIR)
-	@echo "--> Generating DATASET0 (tyre pressures) from $(notdir $(DATASET0_CSV))..."
-	@ruby $(DATASET0_GEN) $(DATASET0_CSV) --output=$(DATASET0_HEX_FILE) --header-addr=$(DATASET0_FLASH_START) --code-start=$(DATASET0_CODE_START) --code-end=$(DATASET0_FLASH_END)
-	@$(BUILD_ENV_BIN)/app_crc_injector $(DATASET0_HEX_FILE) --output=$(DATASET0_HEX_WITH_CRC_FILE) --header-addr=$(DATASET0_FLASH_START) --code-start=$(DATASET0_CODE_START) --code-end=$(DATASET0_FLASH_END) --crc-type=$(APP_CRC_TYPE)
-	@$(BUILD_ENV_BIN)/app_signer $(DATASET0_HEX_WITH_CRC_FILE) --output=$(DATASET0_HEX_SIGNED_FILE) --header-addr=$(DATASET0_FLASH_START) --code-start=$(DATASET0_CODE_START) --code-end=$(DATASET0_FLASH_END) --algorithm=$(SIGN_ALGORITHM) --signing-key=$(SIGNING_KEY)
-	@echo "   $(notdir $(DATASET0_HEX_SIGNED_FILE))   (DATASET0 signed - download via FBL)"
+# One target per dataset, each downloadable on its own through FBL. The dataset's script does all of it: builds the image from its source between
+# its start and end, writes its id, then adds the CRC and signature. `dataset` makes them all.
+dataset: dataset_tyre_pressures
 
-# The full image of the one variant this make is for: BM, FBL, APP and the dataset, the combined image and the flash pack
+dataset_tyre_pressures:
+	@mkdir -p $(BUILD_OUT_DIR)
+	@echo "--> Building DATASET_TYRE_PRESSURES from $(notdir $(DATASET_TYRE_PRESSURES_INPUT))..."
+	@ruby $(DATASET_TYRE_PRESSURES_GEN) $(DATASET_TYRE_PRESSURES_INPUT) --start=$(DATASET_TYRE_PRESSURES_START) --end=$(DATASET_TYRE_PRESSURES_END) --dataset-id=$(DATASET_TYRE_PRESSURES_ID) --output=$(DATASET_TYRE_PRESSURES_HEX)
+	@echo "   $(notdir $(DATASET_TYRE_PRESSURES_HEX))   (signed - download via FBL)"
+
+# The full image of the one variant this make is for: BM, FBL, APP and the datasets, the combined image and the flash pack
 variant_image: $(BM_IMAGE) $(FBL_IMAGE) app_variant dataset
-	@$(SREC) $(BM_IMAGE) -Intel --multiple $(FBL_IMAGE) -Intel --multiple $(APP_HEX_SIGNED_FILE) -Intel --multiple $(DATASET0_HEX_SIGNED_FILE) -Intel --multiple -o $(COMBINED_IMAGE) -intel
+	@$(SREC) $(BM_IMAGE) -Intel --multiple $(FBL_IMAGE) -Intel --multiple $(APP_HEX_SIGNED_FILE) -Intel --multiple $(DATASET_TYRE_PRESSURES_HEX) -Intel --multiple -o $(COMBINED_IMAGE) -intel
 	@echo "--> Combined image created: $(COMBINED_IMAGE)"
-	@echo "    Contains: BM ($(BM_FLASH_START)-$(BM_FLASH_END)) + FBL ($(FBL_FLASH_START)-$(FBL_FLASH_END)) + APP ($(APP_FLASH_START)-$(APP_FLASH_END)) + DATASET0 ($(DATASET0_FLASH_START)-$(DATASET0_FLASH_END))"
+	@echo "    Contains: BM ($(BM_FLASH_START)-$(BM_FLASH_END)) + FBL ($(FBL_FLASH_START)-$(FBL_FLASH_END)) + APP ($(APP_FLASH_START)-$(APP_FLASH_END)) + DATASET_TYRE_PRESSURES ($(DATASET_TYRE_PRESSURES_START)-$(DATASET_TYRE_PRESSURES_END))"
 	@echo "--> Generating flash pack..."
 	@ruby -S $(FLASH_PACK_SCRIPT) $(FLASH_PACK_PROFILE) $(APP_HEX_SIGNED_FILE) \
 		--output=$(FLASH_PACK_OUTPUT) \

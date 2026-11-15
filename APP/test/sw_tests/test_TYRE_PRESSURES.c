@@ -15,7 +15,9 @@
 
 #include "INTEGRATION_STUBS.h"
 #include "DATASET_config.h"
+#include "PROJ_config.h"
 #include "TYRE_DATA.h"
+#include "VPM_config.h"
 
 #include "TMD_INIT.h"
 #include "TMD_PANEL.h"
@@ -87,8 +89,8 @@ static void test_open_the_tyre_pressures_menu( void )
 /*!
 ****************************************************************************************************
 *
-*   \brief         Verify the dataset table the host build makes (build_system/Makefile's DATASET0 macros) is the layout these tests put
-*                  DATASET0 in (SW_TEST_STUBS.h)
+*   \brief         Verify the dataset table is the layout these tests put DATASET0 in (SW_TEST_STUBS.h), that the datasets' region sits between
+*                  the variant parameter page and the NVM, and that DATASET0's id is the one in its header. This is the only check of DATASET_config.h's layout
 *
 *   \author        mstewart
 *
@@ -100,6 +102,10 @@ void test_the_dataset_table_is_the_layout_the_tests_assume( void )
     TEST_ASSERT_EQUAL_HEX32( SW_TEST_DATASET0_HEADER_ADDRESS, dataset_table_g[DATASET_TYRE_PRESSURES].header_address );
     TEST_ASSERT_EQUAL_HEX32( SW_TEST_DATASET0_PAYLOAD_ADDRESS, dataset_table_g[DATASET_TYRE_PRESSURES].code_start_address );
     TEST_ASSERT_EQUAL_HEX32( SW_TEST_DATASET0_END_ADDRESS, dataset_table_g[DATASET_TYRE_PRESSURES].code_end_address );
+
+    TEST_ASSERT_EQUAL_HEX32( VPM_REGION_END + 1ul, DATASET_REGION_START );    /* the datasets start after the variant parameter page */
+    TEST_ASSERT_TRUE( dataset_table_g[DATASET_COUNT - 1u].code_end_address < NVM_BASE_ADDRESS );    /* and the last ends before the NVM */
+    TEST_ASSERT_EQUAL_HEX32( DATASET0_ID, dataset_table_g[DATASET_TYRE_PRESSURES].dataset_id );
 }
 /*!
 ****************************************************************************************************

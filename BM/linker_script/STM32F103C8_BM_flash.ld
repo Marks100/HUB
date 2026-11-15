@@ -40,9 +40,10 @@ _Min_Stack_Size = 0x400;   /* 1 KB */
 
 /* Flash regions BM validates but does not occupy - constants MAIN.c's bm_config_s is built
    from. Each *_code_end__ MUST exactly equal the matching Makefile value (APP_CODE_END,
-   FBL_CODE_END, DATASET0_FLASH_END) - that's the range app_crc_injector/
+   FBL_CODE_END) - that's the range app_crc_injector/
    app_signer sign over, so a mismatch fails validation of every correctly-signed image. FBL's
-   linker script defines the APP/dataset symbols with the same names and values.
+   linker script defines the APP symbols with the same names and values. The datasets are not here: their addresses are
+   Common_Src/DATASET_CFG/DATASET_config.h's, which BM, the FBL and the APP all build their dataset table from.
 
    Convention (shared by BM.h, FBL.h and the Makefiles): *_header_start__ is the first byte of
    a region, *_code_start__ the first byte of code, *_code_end__ the LAST VALID BYTE
@@ -51,8 +52,8 @@ _Min_Stack_Size = 0x400;   /* 1 KB */
    Header size differs by region: APP/FBL headers are 256 B (code at header+0x100) because
    their vector tables need a 256-byte-aligned VTOR (see HEADER.h). Datasets have no vector
    table, so their header is 96 B (code at header+0x60): 76 B (0x4C) used by app_crc_injector/
-   app_signer's hardcoded offsets, +20 B reserved for future fields. The dataset hex is built by
-   APP/Makefile's `dataset` target with these addresses - no image compiles a dataset
+   app_signer's hardcoded offsets, then the dataset id (HEADER.h), +16 B reserved for future fields. The dataset hexes are built by
+   APP/Makefile's `dataset` target from DATASET_config.h's sizes - no image compiles a dataset
    .app_header section. */
 __fbl_header_start__  = 0x08002000;
 __fbl_code_start__    = 0x08002100;
@@ -60,9 +61,6 @@ __fbl_code_end__      = 0x08007FFF;
 __app_header_start__  = 0x08008000;
 __app_code_start__    = 0x08008100;
 __app_code_end__      = 0x0801E3FF;
-__dataset0_header_start__ = 0x0801E800;
-__dataset0_code_start__   = 0x0801E860;
-__dataset0_code_end__     = 0x0801F7FF;
 
 MEMORY
 {

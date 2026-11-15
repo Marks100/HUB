@@ -4,8 +4,10 @@
 # Tyre Dataset Generator
 #===================================================================================
 # Purpose: Turn a tyre pressure CSV into the DATASET0 image APP's TYRE_DATA module
-#          reads - an Intel HEX covering the whole dataset region (96 B header +
-#          payload), ready for app_crc_injector and app_signer.
+#          reads, complete: an Intel HEX covering the whole dataset (96 B header +
+#          payload), with its CRC and signature in the header, ready to download
+#          through the FBL. It builds the image, then runs app_crc_injector and
+#          app_signer on it - nothing else is needed.
 #
 # The payload layout MUST match APP/Src/TYRE_DATA/TYRE_DATA.h exactly (format 2,
 # packed, 16-bit fields little-endian):
@@ -20,16 +22,17 @@
 # name, models by name within their make, and variants by year within their model
 # - so each menu level is a contiguous run and no start index needs storing.
 #
-# The header's presence pattern is written here; its CRC, code_size and
-# signature are left erased (0xFF) for app_crc_injector/app_signer to fill in.
-# The rest of the region is 0xFF-filled so the hex defines every byte BM's CRC
-# and signature cover - same reasoning as the APP hex padding in APP/Makefile.
+# The header's presence pattern and dataset id are written here; its CRC, code_size
+# and signature are filled in by app_crc_injector and app_signer, which this script
+# runs. The rest of the dataset is 0xFF-filled so the hex defines every byte BM's
+# CRC and signature cover - same reasoning as the APP hex padding in APP/Makefile.
 #
 # CSV columns (header row required, '#' lines ignored):
 #   make,model,year_from,year_to,front_bar,rear_bar
 #===================================================================================
 
 require 'csv'
+require 'rbconfig'
 
 FORMAT_VERSION    = 2
 NAME_MAX_LEN      = 20           # TYRE_DATA_NAME_MAX_LEN
@@ -37,16 +40,24 @@ MAX_PER_PARENT    = 255          # a make's models / a model's year ranges are u
 MAX_TOTAL         = 0xFFFF       # header totals are u16
 YEAR_BASE         = 1900
 PRESENCE_PATTERN  = 0xDEADBEEF   # APP_HEADER_PRESENCE_PATTERN, HEADER.h
+DATASET_ID_OFFSET = 0x4C         # APP_header_st.dataset_id, HEADER.h: BM compares it with the slot's id (DATASET_config.h)
+HEADER_SIZE       = 0x60         # DATASET_HEADER_SIZE, DATASET_config.h: the payload starts this far into the dataset
+
+# What BM checks the dataset with: the same CRC and signature as APP (APP/Makefile: APP_CRC_TYPE, SIGN_ALGORITHM, SIGNING_KEY)
+CRC_TYPE          = 'stm32-hw-crc32'
+SIGN_ALGORITHM    = 'hmac-sha256'
+SIGNING_KEY       = File.expand_path( '../Tool_cfg/SigningKeys/hmac_secret.txt', __dir__ )
+BUILD_ENV_BIN     = File.expand_path( '../BuildEnv/xBuildEnv/bin', __dir__ )
 
 def usage
   puts <<~USAGE
     Usage:
-      #{File.basename(__FILE__)} <csv> --header-addr=ADDR --code-start=ADDR --code-end=ADDR --output=FILE
+      #{File.basename(__FILE__)} <csv> --start=ADDR --end=ADDR --dataset-id=ID --output=FILE
 
-      --header-addr ADDR   Dataset header address in hex (DATASET0_FLASH_START)
-      --code-start ADDR    First payload byte in hex (header + 0x60)
-      --code-end ADDR      LAST payload byte in hex, inclusive (DATASET0_FLASH_END)
-      --output FILE        Intel HEX to write
+      --start ADDR        Where the dataset starts, its header, in hex (DATASET0 in DATASET_config.h)
+      --end ADDR          The dataset's LAST byte in hex, inclusive
+      --dataset-id ID     The dataset's id in hex (DATASET0_ID), written into its header for BM to check
+      --output FILE       The finished dataset: Intel HEX with its CRC and signature, to download through the FBL
   USAGE
   exit 1
 end
@@ -70,7 +81,7 @@ def parse_args( argv )
     end
   end
 
-  usage if csv.nil? || %w[header-addr code-start code-end output].any? { |k| opts[k].nil? }
+  usage if csv.nil? || %w[start end dataset-id output].any? { |k| opts[k].nil? }
   [csv, opts]
 end
 
@@ -174,13 +185,20 @@ def write_ihex( path, base, image )
   File.write( path, lines.join( "\n" ) + "\n" )
 end
 
-csv_path, opts = parse_args( ARGV )
-header_addr    = Integer( opts['header-addr'] )
-code_start     = Integer( opts['code-start'] )
-code_end       = Integer( opts['code-end'] )
+def run_tool( name, input, output, header_addr, code_start, code_end, *extra )
+  tool = File.join( BUILD_ENV_BIN, name )
+  ok   = system( RbConfig.ruby, tool, input, "--output=#{output}", format( '--header-addr=0x%08X', header_addr ),
+                 format( '--code-start=0x%08X', code_start ), format( '--code-end=0x%08X', code_end ), *extra, out: File::NULL )
+  fail!( "#{name} failed on #{input}" ) unless ok
+end
 
-fail!( 'code-start must be after header-addr' ) unless code_start > header_addr
-fail!( 'code-end must not be before code-start' ) unless code_end >= code_start
+csv_path, opts = parse_args( ARGV )
+header_addr    = Integer( opts['start'] )
+code_start     = header_addr + HEADER_SIZE
+code_end       = Integer( opts['end'] )
+dataset_id     = Integer( opts['dataset-id'] )
+
+fail!( "end must be after the header (start + 0x#{HEADER_SIZE.to_s( 16 )})" ) unless code_end >= code_start
 
 payload, n_makes, n_models, n_variants = build_payload( load_rows( csv_path ) )
 payload_room = code_end - code_start + 1
@@ -188,9 +206,19 @@ fail!( "table is #{payload.size} B but the dataset payload holds #{payload_room}
 
 image = Array.new( code_end - header_addr + 1, 0xFF )
 image[0, 4] = [PRESENCE_PATTERN].pack( 'V' ).bytes
+image[DATASET_ID_OFFSET, 4] = [dataset_id].pack( 'V' ).bytes
 image[( code_start - header_addr ), payload.size] = payload
 
-write_ihex( opts['output'], header_addr, image )
+output  = opts['output']
+stem    = output.sub( /\.hex\z/i, '' )
+image_f = "#{stem}.image.hex"        # the image as built, and then with its CRC: not kept
+crc_f   = "#{stem}.crc.hex"
+
+write_ihex( image_f, header_addr, image )
+run_tool( 'app_crc_injector', image_f, crc_f, header_addr, code_start, code_end, "--crc-type=#{CRC_TYPE}" )
+run_tool( 'app_signer', crc_f, output, header_addr, code_start, code_end,
+          "--algorithm=#{SIGN_ALGORITHM}", "--signing-key=#{SIGNING_KEY}" )
+File.delete( image_f, crc_f )
 
 puts "tyre_dataset_gen: #{n_makes} makes, #{n_models} models, #{n_variants} year ranges - " \
-     "#{payload.size} of #{payload_room} B used -> #{opts['output']}"
+     "#{payload.size} of #{payload_room} B used -> #{output} (CRC and signed)"
