@@ -13,12 +13,12 @@ _Built 2026-11-15 from `APP.map`_
 
 | Region | Used | Free | Used % |
 |---|---:|---:|---:|
-| ROM (Flash) | 39,968 B | 51,168 B | 43.9% |
-| RAM | 10,828 B | 9,620 B | 53.0% |
+| ROM (Flash) | 40,012 B | 51,124 B | 43.9% |
+| RAM | 10,824 B | 9,624 B | 52.9% |
 
 <p>
   <img src=".github/badges/memory_APP_rom.svg" alt="APP ROM (Flash): 43.9% used" width="320">
-  <img src=".github/badges/memory_APP_ram.svg" alt="APP RAM: 53.0% used" width="320">
+  <img src=".github/badges/memory_APP_ram.svg" alt="APP RAM: 52.9% used" width="320">
 </p>
 <!-- MEMORY:APP:END -->
 
