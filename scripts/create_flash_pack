@@ -174,11 +174,11 @@ def build_pack(options)
 
   zip.write
 
-  puts "Flash pack created: #{output_path}"
-  puts "  Profile:  #{File.basename(profile_path)}"
-  puts "  Security: #{security_path ? File.basename(security_path) : '(none)'}"
-  puts "  Firmware: #{firmware_list.map { |f| File.basename(f) }.join(', ')}"
-  puts "  SW version: #{sw_version}" if sw_version
+  puts "--> Flash pack created: #{output_path}"
+  puts "--> Profile: #{File.basename(profile_path)}"
+  puts "--> Security: #{security_path ? File.basename(security_path) : '(none)'}"
+  puts "--> Firmware: #{firmware_list.map { |f| File.basename(f) }.join(', ')}"
+  puts "--> SW version: #{sw_version}" if sw_version
 end
 
 # Tiny stand-in for FileUtils.mkdir_p so this script needs no extra require beyond

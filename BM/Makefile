@@ -178,6 +178,10 @@ $(BM_MAP_FILE): $(BM_ELF_FILE)
 README_ARGS := $(if $(or $(CI),$(UPDATE_README)),--readme ../README.md --tag BM)
 
 memory_stats: $(BM_ELF_FILE)
+	@echo ""
+	@echo "======================================================================"
+	@echo "                    BM memory usage for $(HW_VARIANT)"
+	@echo "======================================================================"
 	@$(BUILD_ENV_BIN)/memory_analyser_stm32 $(BM_MAP_FILE) $(BM_ELF_FILE) $(BM_LINKER_SCRIPT) --out $(BM_MEM_OUTPUT_FILE) --csv $(BM_MEM_CSV_FILE) $(README_ARGS)
 
 # Size of every function in every object, for finding what to trim

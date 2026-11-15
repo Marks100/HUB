@@ -220,5 +220,5 @@ run_tool( 'app_signer', crc_f, output, header_addr, code_start, code_end,
           "--algorithm=#{SIGN_ALGORITHM}", "--signing-key=#{SIGNING_KEY}" )
 File.delete( image_f, crc_f )
 
-puts "tyre_dataset_gen: #{n_makes} makes, #{n_models} models, #{n_variants} year ranges - " \
+puts "--> #{n_makes} makes, #{n_models} models, #{n_variants} year ranges - " \
      "#{payload.size} of #{payload_room} B used -> #{output} (CRC and signed)"
