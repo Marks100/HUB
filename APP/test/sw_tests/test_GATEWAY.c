@@ -19,8 +19,6 @@
 #include "HAL_BRD.h"
 #include "HAL_CAN.h"
 #include "HAL_SPI.h"
-#include "SCHED_config.h"
-#include "TIME_MGR.h"
 
 #include "vhw.h"
 #include "stm32f10x_can.h"
@@ -32,7 +30,6 @@
 #include "TMD_ERX_UDS.h"
 #include "TMD_INIT.h"
 #include "TMD_MCP2515.h"
-#include "TMD_SYSTICK.h"
 #include "TMD_TIME.h"
 #include "TMD_TJA1051.h"
 
@@ -265,70 +262,4 @@ void test_a_reply_waits_in_the_mailbox_until_the_tja1051_is_back_in_normal_mode(
     TEST_ASSERT_EQUAL_HEX32( TEST_RESPONSE_ID, sent.message_id );
 }
 
-/*!
-****************************************************************************************************
-*
-*   \brief         Verify SysTick ticks the scheduler once per tick period the firmware set: advancing the time by a
-*                  whole number of periods runs SysTick_Handler that many times
-*
-*   \author        mstewart
-*
-*   \return        none
-*
-*****************************************************************************************************/
-void test_systick_ticks_once_per_tick_period_of_the_time_advanced( void )
-{
-    TMD_TIME_advance_time_ms( 20u * SCHED_TICK_RATE_MSECS );
-
-    TEST_ASSERT_EQUAL_UINT32( 20u, TMD_SYSTICK_get_tick_count() );
-
-    TMD_TIME_advance_time_ms( 5u * SCHED_TICK_RATE_MSECS );
-
-    TEST_ASSERT_EQUAL_UINT32( 25u, TMD_SYSTICK_get_tick_count() );
-}
-
-/*!
-****************************************************************************************************
-*
-*   \brief         Verify a part of a tick period does not tick: the tick comes on the last millisecond of the
-*                  period, and the part left over counts towards the next one
-*
-*   \author        mstewart
-*
-*   \return        none
-*
-*****************************************************************************************************/
-void test_a_part_of_a_tick_period_does_not_tick( void )
-{
-    TMD_TIME_advance_time_ms( SCHED_TICK_RATE_MSECS - 1u );
-
-    TEST_ASSERT_EQUAL_UINT32( 0u, TMD_SYSTICK_get_tick_count() );
-
-    TMD_TIME_advance_time_ms( 1u );
-
-    TEST_ASSERT_EQUAL_UINT32( 1u, TMD_SYSTICK_get_tick_count() );
-
-    TMD_TIME_advance_time_ms( SCHED_TICK_RATE_MSECS + 1u );
-
-    TEST_ASSERT_EQUAL_UINT32( 2u, TMD_SYSTICK_get_tick_count() );
-}
-
-/*!
-****************************************************************************************************
-*
-*   \brief         Verify the scheduler ran its rows at their period: the firmware's own run time, which a 10 ms row
-*                  adds to, advances by the time the test advanced
-*
-*   \author        mstewart
-*
-*   \return        none
-*
-*****************************************************************************************************/
-void test_the_firmware_run_time_advances_with_the_time_advanced( void )
-{
-    u64_t run_time_at_start_ms = TIME_get_cumulative_run_time_ms_64();
-
-    TMD_TIME_advance_time_ms( 1000u );
-
-    TEST_ASSERT_EQUAL_UINT32( 1000u, (u32_t)( TIME_get_cumulative_run_time_ms_64() - run_time_at_start_ms ) );
-}
+/****************************** END OF FILE *******************************************************/

@@ -8,8 +8,8 @@
 *               ERX with TMD_CANTP_set_ids()): it answers a first frame with a flow control, which the HUB has to carry to
 *               the ERX the same way, and puts the frames together.
 *
-*               The tests look only at what the tester gets back: they never ask the ERX what it received. Every test case
-*               starts as a virgin ECU (setUp, SW_TEST_STUBS.c).
+*               The tests look at what the tester gets back, and where a request has to reach one ERX and not another, at which
+*               ERX's session changed. Every test case starts as a virgin ECU (setUp, SW_TEST_STUBS.c).
 */
 #include "unity.h"
 #include "test_timing.h"
@@ -17,6 +17,7 @@
 #include "STDC.h"
 
 #include "INTEGRATION_STUBS.h"
+#include "NODE_INFO.h"
 
 #include "TMD_CANTP.h"
 #include "TMD_ERX.h"
@@ -25,8 +26,6 @@
 #include "TMD_TIME.h"
 #include "TMD_UDS.h"
 
-#include "UDS_CLIENT.h"
-#include "NODE_INFO.h"
 #include "SW_TEST_STUBS.h"
 
 /* The diagnostic IDs of the ERXs under test: the tester asks on 0x700 plus the position and the ERX answers on 0x600 plus it */
@@ -41,6 +40,7 @@
 #define TEST_PART_NUMBER_DID        ( 0xF187u )
 #define TEST_PART_NUMBER            "PN-1234567"  /* what the ERX reports for DID 0xF187: 10 bytes, so an answer of several frames */
 #define TEST_PART_NUMBER_LEN        ( 10u )
+#define TEST_HARDWARE_VERSION_DID   ( 0xF193u )   /* 3 bytes in the ERX model, so an answer of one frame */
 #define TEST_GATEWAY_HOLD_MS        ( 2000u )     /* how long a tester waits for P2*: longer than the gateway holds its request for the HUB's own client (1000 ms) */
 #define TEST_CLIENT_READ_MS         ( 2500u )     /* longer than the HUB's client waits between its reads */
 #define TEST_ERX_UP_MS              ( 700u )      /* the ERX's heartbeat is coming in and the HUB's client has started reading it */
@@ -76,8 +76,8 @@ void tearDown( void )
 /*!
 ****************************************************************************************************
 *
-*   \brief         Verify a DiagnosticSessionControl from the tester reaches the ERX and its answer comes back: a positive
-*                  response for the extended session
+*   \brief         Verify a DiagnosticSessionControl from the tester reaches the ERX and its answer comes back byte for byte: a
+*                  positive response for the extended session with the ERX's P2 and P2* times
 *
 *   \author        mstewart
 *
@@ -86,15 +86,15 @@ void tearDown( void )
 *****************************************************************************************************/
 void test_a_session_request_from_a_tester_is_answered_by_the_erx( void )
 {
-    const u8_t request[2u] = { TMD_UDS_SID_DIAGNOSTIC_SESSION_CONTROL, TMD_UDS_SESSION_EXTENDED };
+    const u8_t request[2u]  = { TMD_UDS_SID_DIAGNOSTIC_SESSION_CONTROL, TMD_UDS_SESSION_EXTENDED };
+    const u8_t expected[6u] = { 0x50u, TMD_UDS_SESSION_EXTENDED, 0x00u, 0x32u, 0x01u, 0xF4u };    /* 0x50 positive response to 0x10, the session, P2 50 ms, P2* 5000 ms */
     u8_t       response[SW_TEST_TESTER_RESPONSE_MAX_LEN];
     u16_t      len = 0u;
 
     TEST_ASSERT_EQUAL( TMD_UDS_RESULT_OK, TMD_UDS_send_request( request, 2u, response, sizeof( response ), &len, NULL_P ) );
 
-    TEST_ASSERT_TRUE( len >= 2u );
-    TEST_ASSERT_EQUAL_HEX8( 0x50u, response[0u] );    /* positive response to 0x10 */
-    TEST_ASSERT_EQUAL_HEX8( TMD_UDS_SESSION_EXTENDED, response[1u] );
+    TEST_ASSERT_EQUAL_UINT16( sizeof( expected ), len );
+    TEST_ASSERT_EQUAL_HEX8_ARRAY( expected, response, sizeof( expected ) );
 }
 
 /*!
@@ -140,6 +140,31 @@ void test_a_tester_reads_a_multi_frame_did_from_the_erx( void )
 
     TEST_ASSERT_EQUAL_UINT16( TEST_PART_NUMBER_LEN, len );
     TEST_ASSERT_EQUAL_HEX8_ARRAY( TEST_PART_NUMBER, data, TEST_PART_NUMBER_LEN );
+}
+
+/*!
+****************************************************************************************************
+*
+*   \brief         Verify a tester reads a DID that fits one frame: the ERX's hardware version is 3 bytes, so the answer crosses
+*                  the HUB as a single frame, with no flow control, and the tester holds the value the ERX has for it
+*
+*   \author        mstewart
+*
+*   \return        none
+*
+*****************************************************************************************************/
+void test_a_tester_reads_a_single_frame_did_from_the_erx( void )
+{
+    u8_t        data[SW_TEST_TESTER_RESPONSE_MAX_LEN];
+    u16_t       len          = 0u;
+    u8_t        expected_len = 0u;
+    const u8_t* expected_p   = TMD_ERX_UDS_get_did_value( TMD_ERX_UDS_DID_HARDWARE_VERSION, &expected_len );
+
+    TEST_ASSERT_NOT_NULL( expected_p );
+    TEST_ASSERT_EQUAL( TMD_UDS_RESULT_OK, TMD_UDS_read_data_by_identifier( TEST_HARDWARE_VERSION_DID, data, sizeof( data ), &len, NULL_P ) );
+
+    TEST_ASSERT_EQUAL_UINT16( expected_len, len );
+    TEST_ASSERT_EQUAL_HEX8_ARRAY( expected_p, data, expected_len );
 }
 
 /*!
@@ -357,4 +382,5 @@ void test_a_tester_reaches_each_configured_erx_one_at_a_time_in_the_other_order(
     TEST_ASSERT_EQUAL_HEX8( TMD_UDS_SESSION_EXTENDED, test_session_of( APP_ISO_AXLE_1_CENTRE ) );
     TEST_ASSERT_EQUAL_HEX8( TMD_UDS_SESSION_DEFAULT, test_session_of( APP_ISO_AXLE_1_OUTER_LEFT ) );
 }
+
 /****************************** END OF FILE *******************************************************/

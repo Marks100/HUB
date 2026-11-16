@@ -1,14 +1,14 @@
 /*! \file
 *               Author: mstewart
-*   \brief      UDS client and the gateway's diagnostics - software test
+*   \brief      UDS client - software test
 *
 *   \details    The nodes of CAN2 are TMD_ERX instances (xCOMMON, test/support/models/TMD_ERX) placed at an ISO position and
 *               powered by the HUB's own supply pins: with TMD_ERX_UDS they answer the ECU's UDS requests through ISO-TP as a real node would,
 *               from the table of DIDs built into the model, on 0x700 plus their position. The ECU's client
 *               has NODE_INFO read the part number of its selected node (DID 0xF187) through UDS_CLIENT,
 *               PDUR, DIAG_GW, the real CANTP, CANIF and the MCP2515 driver; a test moves the time on and looks at what the
-*               client holds. A tester on CAN1 reaches a node through the gateway the same way. Every test case starts as a
-*               virgin ECU (setUp, SW_TEST_STUBS.c).
+*               client holds. A tester on CAN1 reaching a node through the gateway is in test_UDS_TESTER.c. Every test case
+*               starts as a virgin ECU (setUp, SW_TEST_STUBS.c).
 */
 #include "unity.h"
 #include "test_timing.h"
@@ -16,8 +16,8 @@
 #include "STDC.h"
 
 #include "INTEGRATION_STUBS.h"
-#include "UDS_CLIENT.h"
 #include "NODE_INFO.h"
+#include "UDS_CLIENT.h"
 
 #include "TMD_CAN.h"
 #include "TMD_ERX.h"
@@ -27,9 +27,7 @@
 
 #include "SW_TEST_STUBS.h"
 
-#define TEST_TESTER_REQUEST_ID      ( TMD_ERX_UDS_REQUEST_BASE_ID  + APP_ISO_AXLE_2_INNER_RIGHT )
-#define TEST_TESTER_RESPONSE_ID     ( TMD_ERX_UDS_RESPONSE_BASE_ID + APP_ISO_AXLE_2_INNER_RIGHT )
-#define TEST_NODE_INFO_MS           ( 2500u )                    /* the node is up after about 0.6 s, and NODE_INFO's two reads are a period (1 s) apart: both done */
+#define TEST_NODE_INFO_MS          ( 2500u )                    /* the node is up after about 0.6 s, and NODE_INFO's two reads are a period (1 s) apart: both done */
 #define TEST_NODE_UP_AND_READ_MS    ( 800u )                     /* the node is up after about 0.6 s and NODE_INFO has read its part number a moment later */
 #define TEST_WRITE_MS               ( 500u )                     /* a 19 byte request across the gateway and back: well inside the gateway's hold of the node */
 #define TEST_TESTER_ANSWER_MS       ( 50u )                      /* the request crosses the gateway, the node answers, the answer crosses back */
@@ -38,7 +36,7 @@
 ****************************************************************************************************
 *
 *   \brief         Every test case starts as a virgin ECU, with the ERX at the client's position (the front axle's outer left wheel) on CAN2 answering the
-*                  client's requests and an ERX at the second axle's inner right wheel answering the tester's
+*                  client's requests
 *
 *   \author        mstewart
 *
@@ -50,7 +48,6 @@ void setUp( void )
     TMD_INIT_init( &sw_test_init_cfg_g );
 
     TMD_ERX_place_instance( APP_ISO_AXLE_1_OUTER_LEFT, TMD_ERX_PORT_B );    /* the ERX the HUB's UDS client reads by itself: request ID 0x716, the first of the gateway's range */
-    TMD_ERX_place_instance( APP_ISO_AXLE_2_INNER_RIGHT, TMD_ERX_PORT_A );    /* the ERX for the tester's requests: request ID 0x729, response ID 0x629 */
 
     TEST_TIMING_START();
 }
@@ -58,30 +55,6 @@ void setUp( void )
 void tearDown( void )
 {
     TEST_TIMING_STOP();
-}
-
-/*!
-****************************************************************************************************
-*
-*   \brief         A tester's request as the CAN bus model takes it: a single frame carrying the service and its data
-*
-*   \author        mstewart
-*
-*   \param[out]    frame_p - The frame, to the node of the tester's address
-*   \param[in]     data_p  - The service ID and its data
-*   \param[in]     len     - How many bytes, at most 7
-*
-*   \return        none
-*
-*****************************************************************************************************/
-static void test_make_request( TMD_CAN_message_st* frame_p, const u8_t* data_p, u8_t len )
-{
-    STDC_memset( frame_p, 0x00u, (u16_t)sizeof( TMD_CAN_message_st ) );
-
-    frame_p->message_id  = TEST_TESTER_REQUEST_ID;
-    frame_p->data_length = 8u;
-    frame_p->data[0u]    = len;
-    STDC_memcpy( &frame_p->data[1u], data_p, len );
 }
 
 /*!
@@ -216,6 +189,7 @@ void test_a_node_that_refuses_the_chassis_number_keeps_nothing( void )
     TEST_ASSERT_NULL( TMD_ERX_UDS_get_written_value( TMD_ERX_find_instance( APP_ISO_AXLE_1_OUTER_LEFT ), &written_len ) );
     TEST_ASSERT_EQUAL( FALSE, UDS_CLIENT_is_busy() );
 }
+
 /*!
 ****************************************************************************************************
 *
@@ -297,6 +271,7 @@ void test_tester_present_ends_when_sent_without_waiting_for_a_response( void )
     TEST_ASSERT_EQUAL_UINT32( responses, TMD_ERX_UDS_get_response_count( slot ) );
     TEST_ASSERT_EQUAL( FALSE, UDS_CLIENT_is_busy() );
 }
+
 /*!
 ****************************************************************************************************
 *
@@ -327,6 +302,7 @@ void test_a_request_straight_after_a_reply_is_not_refused( void )
     TEST_ASSERT_NOT_NULL( written_p );
     TEST_ASSERT_EQUAL_HEX8_ARRAY( chassis, written_p, sizeof( chassis ) );
 }
+
 /*!
 ****************************************************************************************************
 *
@@ -397,6 +373,7 @@ void test_a_write_to_a_node_that_is_not_there_is_refused( void )
     TEST_ASSERT_EQUAL( FALSE, UDS_CLIENT_is_busy() );
     TEST_ASSERT_EQUAL( 0u, TMD_CAN_get_message_count_from_ecu( TEST_BUS_NODES, APP_NODE_REQUEST_BASE_ID ) );
 }
+
 /*!
 ****************************************************************************************************
 *
@@ -422,120 +399,6 @@ void test_selecting_another_node_clears_the_part_number( void )
     TEST_ASSERT_NULL( NODE_INFO_get( NODE_INFO_PART_NUMBER, &len ) );
     TEST_ASSERT_EQUAL_UINT8( 0u, len );
     TEST_ASSERT_EQUAL_UINT8( 1u, UDS_CLIENT_get_node() );
-}
-/*!
-****************************************************************************************************
-*
-*   \brief         Verify a tester on CAN1 reaches a node through the gateway and gets its answer back: a
-*                  DiagnosticSessionControl (extended) goes out on CAN2, the node enters the session and answers, and the
-*                  answer leaves on CAN1
-*
-*   \author        mstewart
-*
-*   \return        none
-*
-*****************************************************************************************************/
-void test_a_tester_session_request_is_answered_by_the_node_through_the_gateway( void )
-{
-    const u8_t         request_data[ 2u ]  = { 0x10u, 0x03u };
-    const u8_t         response_data[ 8u ] = { 0x06u, 0x50u, 0x03u, 0x00u, 0x32u, 0x01u, 0xF4u, 0x00u };
-    TMD_CAN_message_st request;
-    TMD_CAN_message_st answer;
-
-    test_make_request( &request, request_data, 2u );
-
-    TMD_CAN_inject_frame_to_ecu( TEST_BUS_TESTER, &request );
-    TMD_TIME_advance_time_ms( TEST_TESTER_ANSWER_MS );
-
-    TEST_ASSERT_EQUAL_UINT8( 0x03u, TMD_ERX_UDS_get_session( TMD_ERX_find_instance( APP_ISO_AXLE_2_INNER_RIGHT ) ) );
-    TEST_ASSERT_EQUAL( 1u, TMD_CAN_get_message_count_from_ecu( TEST_BUS_TESTER, TEST_TESTER_RESPONSE_ID ) );
-    TEST_ASSERT_EQUAL( TRUE, TMD_CAN_consume_message_from_ecu( TEST_BUS_TESTER, TEST_TESTER_RESPONSE_ID, &answer ) );
-    TEST_ASSERT_EQUAL_HEX8_ARRAY( response_data, answer.data, 8u );
-}
-
-/*!
-****************************************************************************************************
-*
-*   \brief         Verify a tester reads a DID that fits one frame through the gateway: the node's hardware version is
-*                  3 bytes, so the answer is a single frame, 0x62, the DID and the value
-*
-*   \author        mstewart
-*
-*   \return        none
-*
-*****************************************************************************************************/
-void test_a_tester_reads_a_short_did_from_the_node_through_the_gateway( void )
-{
-    const u8_t         request_data[ 3u ] = { 0x22u, 0xF1u, 0x93u };
-    u8_t               expected_len       = 0u;
-    const u8_t*        expected_p         = TMD_ERX_UDS_get_did_value( TMD_ERX_UDS_DID_HARDWARE_VERSION, &expected_len );
-    TMD_CAN_message_st request;
-    TMD_CAN_message_st answer;
-
-    test_make_request( &request, request_data, 3u );
-
-    TMD_CAN_inject_frame_to_ecu( TEST_BUS_TESTER, &request );
-    TMD_TIME_advance_time_ms( TEST_TESTER_ANSWER_MS );
-
-    TEST_ASSERT_EQUAL( TRUE, TMD_CAN_consume_message_from_ecu( TEST_BUS_TESTER, TEST_TESTER_RESPONSE_ID, &answer ) );
-    TEST_ASSERT_EQUAL_UINT8( 3u + expected_len, answer.data[0u] );
-    TEST_ASSERT_EQUAL_HEX8( 0x62u, answer.data[1u] );
-    TEST_ASSERT_EQUAL_HEX8( 0xF1u, answer.data[2u] );
-    TEST_ASSERT_EQUAL_HEX8( 0x93u, answer.data[3u] );
-    TEST_ASSERT_EQUAL_HEX8_ARRAY( expected_p, &answer.data[4u], expected_len );
-}
-
-/*!
-****************************************************************************************************
-*
-*   \brief         Verify an ERX that is unplugged does not answer: the tester's request reaches CAN2 but nothing comes back
-*
-*   \author        mstewart
-*
-*   \return        none
-*
-*****************************************************************************************************/
-void test_an_unplugged_erx_does_not_answer_the_tester( void )
-{
-    const u8_t         request_data[ 2u ] = { 0x10u, 0x03u };
-    TMD_CAN_message_st request;
-
-    TMD_ERX_unplug_instance( TMD_ERX_find_instance( APP_ISO_AXLE_2_INNER_RIGHT ) );
-
-    test_make_request( &request, request_data, 2u );
-
-    TMD_CAN_inject_frame_to_ecu( TEST_BUS_TESTER, &request );
-    TMD_TIME_advance_time_ms( TEST_TESTER_ANSWER_MS );
-
-    TEST_ASSERT_EQUAL_UINT32( 0u, TMD_ERX_UDS_get_request_count( TMD_ERX_find_instance( APP_ISO_AXLE_2_INNER_RIGHT ) ) );
-    TEST_ASSERT_EQUAL( 0u, TMD_CAN_get_message_count_from_ecu( TEST_BUS_TESTER, TEST_TESTER_RESPONSE_ID ) );
-}
-
-/*!
-****************************************************************************************************
-*
-*   \brief         Verify a tester that reads a DID the node does not have gets 'request out of range' back through the
-*                  gateway
-*
-*   \author        mstewart
-*
-*   \return        none
-*
-*****************************************************************************************************/
-void test_a_tester_reading_an_unknown_did_gets_a_negative_response_through_the_gateway( void )
-{
-    const u8_t         request_data[ 3u ]  = { 0x22u, 0xF1u, 0xFFu };
-    const u8_t         response_data[ 8u ] = { 0x03u, 0x7Fu, 0x22u, 0x31u, 0x00u, 0x00u, 0x00u, 0x00u };
-    TMD_CAN_message_st request;
-    TMD_CAN_message_st answer;
-
-    test_make_request( &request, request_data, 3u );
-
-    TMD_CAN_inject_frame_to_ecu( TEST_BUS_TESTER, &request );
-    TMD_TIME_advance_time_ms( TEST_TESTER_ANSWER_MS );
-
-    TEST_ASSERT_EQUAL( TRUE, TMD_CAN_consume_message_from_ecu( TEST_BUS_TESTER, TEST_TESTER_RESPONSE_ID, &answer ) );
-    TEST_ASSERT_EQUAL_HEX8_ARRAY( response_data, answer.data, 8u );
 }
 
 /****************************** END OF FILE *******************************************************/

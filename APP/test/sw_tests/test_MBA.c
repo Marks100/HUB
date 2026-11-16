@@ -20,8 +20,9 @@
 
 #include "INTEGRATION_STUBS.h"
 #include "BOOT_HANDOFF.h"
-#include "vhw.h"
 #include "FLS_STM32F1.h"
+
+#include "vhw.h"
 
 #include "TMD_INIT.h"
 #include "TMD_MBA.h"

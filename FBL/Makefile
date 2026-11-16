@@ -18,7 +18,6 @@ FBL_ELF_FILE          := $(OUTPUT_NAME).elf
 FBL_MAP_FILE          := $(OUTPUT_NAME).map
 FBL_HEX_FILE          := $(OUTPUT_NAME).hex
 FBL_BIN_FILE          := $(OUTPUT_NAME).bin
-FBL_HEX_PADDED_FILE   := $(OUTPUT_NAME)_padded.hex
 FBL_HEX_WITH_CRC_FILE := $(OUTPUT_NAME)_with_CRC.hex
 FBL_HEX_SIGNED_FILE   := $(OUTPUT_NAME)_signed.hex
 FBL_MEM_OUTPUT_FILE   := $(BUILD_OUT_DIR)/memory_analysis.txt
@@ -222,9 +221,10 @@ $(FBL_ELF_FILE): $(FBL_C_OBJS) $(MCAL_C_OBJS) $(FBL_LINKER_SCRIPT)
 # bytes in the untouched tail pages, breaking that CRC. Defining every byte of the region makes the hex
 # self-contained. The 0xFF fill is what both tools already assume for the gap, so CRC and signature
 # values are unchanged. See the matching step in APP/Makefile.
-	@$(SREC) $(FBL_HEX_FILE) -Intel -fill 0xFF $(FBL_HEADER_ADDR) $(FBL_FLASH_LIMIT) -o $(FBL_HEX_PADDED_FILE) -Intel
+	@$(SREC) $(FBL_HEX_FILE) -Intel -fill 0xFF $(FBL_HEADER_ADDR) $(FBL_FLASH_LIMIT) -o $(FBL_HEX_FILE).tmp -Intel
+	@mv -f $(FBL_HEX_FILE).tmp $(FBL_HEX_FILE)
 	@echo "--> Injecting CRC32 into FBL header (HEX file)..."
-	@$(BUILD_ENV_BIN)/app_crc_injector $(FBL_HEX_PADDED_FILE) --output=$(FBL_HEX_WITH_CRC_FILE) --header-addr=$(FBL_HEADER_ADDR) --code-start=$(FBL_CODE_START) --code-end=$(FBL_CODE_END) --crc-type=$(FBL_CRC_TYPE)
+	@$(BUILD_ENV_BIN)/app_crc_injector $(FBL_HEX_FILE) --output=$(FBL_HEX_WITH_CRC_FILE) --header-addr=$(FBL_HEADER_ADDR) --code-start=$(FBL_CODE_START) --code-end=$(FBL_CODE_END) --crc-type=$(FBL_CRC_TYPE)
 	@echo "--> Signing firmware ($(SIGN_ALGORITHM))..."
 	@$(BUILD_ENV_BIN)/app_signer $(FBL_HEX_WITH_CRC_FILE) --output=$(FBL_HEX_SIGNED_FILE) --header-addr=$(FBL_HEADER_ADDR) --code-start=$(FBL_CODE_START) --code-end=$(FBL_CODE_END) --algorithm=$(SIGN_ALGORITHM) --signing-key=$(SIGNING_KEY)
 	@echo "--> FBL image: $(realpath $(FBL_HEX_SIGNED_FILE))  (FLASH THIS!)"

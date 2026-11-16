@@ -74,6 +74,8 @@ typedef enum
     MENU_NAV_SCREEN_TYRE_YEAR,
     MENU_NAV_SCREEN_TYRE_PRESSURE,
 
+    MENU_NAV_SCREEN_3D,                 /*!< Tumbling wireframe cube - see GFX3D.h */
+
     MENU_NAV_SCREEN_ABOUT,
     MENU_NAV_SCREEN_BOOTLOADER,
     MENU_NAV_SCREEN_NOT_IMPLEMENTED,

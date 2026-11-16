@@ -20,6 +20,7 @@
 #include "INTEGRATION_STUBS.h"
 #include "BOOT_HANDOFF.h"
 #include "HAL_CAN.h"
+
 #include "vhw.h"
 
 #include "TMD_INIT.h"
@@ -319,3 +320,5 @@ void test_the_can_driver_runs_at_125_250_and_500_kbit_and_no_other_parameter( vo
         }
     }
 }
+
+/****************************** END OF FILE *******************************************************/

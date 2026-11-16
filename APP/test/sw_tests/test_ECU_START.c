@@ -2,20 +2,14 @@
 *               Author: mstewart
 *   \brief      How the ECU starts - software test
 *
-*   \details    Every test case starts as a virgin ECU, and a restart in the middle of one says what happens to the ECU's memories.
-*
-*               A new ECU (TMD_INIT_init(), which every test's setUp calls) is the same whatever the one before it left: its flash
-*               blank but for what the firmware writes at its first start, its handoff RAM as it is at a power-on, its models and its
-*               firmware's RAM as they are at the first start, and the time the first start took. A restart keeps them all
-*               (TMD_INIT_restart_ecu()); a power cut loses the handoff RAM, and wipes or corrupts the memories it is told to
-*               (TMD_INIT_power_cut_ecu()).
+*   \details    Every test case starts as a virgin ECU, and a restart or a power cut in the middle of one says what happens to the ECU's
+*               memories. A restart keeps them all (TMD_INIT_restart_ecu()); a power cut loses the handoff RAM, and wipes or corrupts
+*               the memories it is told to (TMD_INIT_power_cut_ecu()).
 *
 *               The ECU's data that these tests watch is a write it kept for the VPM server (0x3D, TMD_UDS_write_memory_by_address()):
 *               it is in the NVM, so whether the NVM is kept shows in whether the write is still pending, and the variant parameter
 *               page of the flash is the VPM server's.
 */
-#include <string.h>
-
 #include "unity.h"
 #include "test_timing.h"
 
@@ -27,15 +21,11 @@
 
 #include "TMD_INIT.h"
 #include "TMD_MBA.h"
-#include "TMD_TIME.h"
 #include "TMD_UDS.h"
 
 #include "SW_TEST_STUBS.h"
 
-#define TEST_FLASH_BASE                 ( 0x08000000ul )    /* the flash of the virtual STM32 at its real address */
-#define TEST_FLASH_SIZE                 ( 0x00080000ul )    /* the largest device, 512 KB: all of it is the ECU's flash */
-#define TEST_FILL_CHUNK                 ( 0x8000u )
-#define TEST_VPM_ADDRESS                ( 0x0801E400ul )    /* the variant parameter page: one page, 1 KB */
+#define TEST_VPM_ADDRESS               ( 0x0801E400ul )    /* the variant parameter page: one page, 1 KB */
 #define TEST_PARAMETER_ADDRESS          ( TEST_VPM_ADDRESS + 0x20u )    /* a parameter in it, in the first half of the page */
 #define TEST_OLD_BYTE                   ( 0xA5u )           /* what a page held before */
 
@@ -79,72 +69,6 @@ static void keep_a_write_over_a_page_that_holds_something( void )
 
     TEST_ASSERT_EQUAL( TMD_UDS_RESULT_OK, TMD_UDS_unlock( 1u, NULL_P ) );
     TEST_ASSERT_EQUAL( TMD_UDS_RESULT_OK, TMD_UDS_write_memory_by_address( TEST_PARAMETER_ADDRESS, test_data_c, sizeof( test_data_c ), NULL_P ) );
-}
-
-/*!
-****************************************************************************************************
-*
-*   \brief         Verify a new ECU is the one a clean start gives, however much the last one left behind: the flash (all 512 KB), the
-*                  handoff RAM, the session of the diagnostics, the VPM server's work, and the time
-*
-*   \author        mstewart
-*
-*   \return        none
-*
-*****************************************************************************************************/
-void test_a_new_ecu_is_the_same_whatever_the_last_one_left( void )
-{
-    u8_t  reference_nvm[NVM_TOTAL_SIZE];
-    u8_t  nvm[NVM_TOTAL_SIZE];
-    u8_t  session = 0u;
-    u32_t address;
-
-    TMD_INIT_init( &sw_test_init_cfg_g );    /* a clean start of its own, for the reference: the one setUp() made may be the first of the run */
-
-    const u8_t   reference_request    = BOOT_HANDOFF_get_fbl_request();
-    const u8_t   reference_datasets   = BOOT_HANDOFF_get_dataset_valid_mask();
-    const u32_t  reference_timeout    = BOOT_HANDOFF_get_fbl_timeout();
-    const u32_t  reference_time_ms    = TMD_TIME_get_current_time_ms();
-
-    TMD_MBA_flash_read( NVM_BASE_ADDRESS, reference_nvm, NVM_TOTAL_SIZE );
-
-    /* The last ECU: the diagnostics in the extended session and unlocked, a write kept, time gone by, and then every byte of its flash
-       and every field of its handoff RAM something else */
-    TEST_ASSERT_EQUAL( TMD_UDS_RESULT_OK, TMD_UDS_diagnostic_session_control( TMD_UDS_SESSION_EXTENDED, NULL_P ) );
-    keep_a_write_over_a_page_that_holds_something();
-    TMD_TIME_advance_time_ms( 500u );
-
-    for( address = TEST_FLASH_BASE; address < ( TEST_FLASH_BASE + TEST_FLASH_SIZE ); address += TEST_FILL_CHUNK )
-    {
-        TMD_MBA_flash_fill( address, TEST_OLD_BYTE, TEST_FILL_CHUNK );
-    }
-
-    BOOT_HANDOFF_set_fbl_request( TRUE );
-    BOOT_HANDOFF_set_dataset_valid_mask( 0xFFu );
-    BOOT_HANDOFF_set_fbl_timeout( 1234u );
-
-    TMD_INIT_init( &sw_test_init_cfg_g );
-
-    for( address = TEST_FLASH_BASE; address < NVM_BASE_ADDRESS; address += TEST_FILL_CHUNK )
-    {
-        TEST_ASSERT_EQUAL( TRUE, TMD_MBA_flash_is_value( address, 0xFFu, (u16_t)( ( NVM_BASE_ADDRESS - address ) < TEST_FILL_CHUNK ? ( NVM_BASE_ADDRESS - address ) : TEST_FILL_CHUNK ) ) );
-    }
-
-    for( address = NVM_BASE_ADDRESS + NVM_TOTAL_SIZE; address < ( TEST_FLASH_BASE + TEST_FLASH_SIZE ); address += TEST_FILL_CHUNK )
-    {
-        TEST_ASSERT_EQUAL( TRUE, TMD_MBA_flash_is_value( address, 0xFFu, TEST_FILL_CHUNK ) );    /* nothing above the NVM either */
-    }
-
-    TMD_MBA_flash_read( NVM_BASE_ADDRESS, nvm, NVM_TOTAL_SIZE );
-    TEST_ASSERT_EQUAL_UINT8_ARRAY( reference_nvm, nvm, NVM_TOTAL_SIZE );    /* what the firmware writes at its first start, and no more */
-
-    TEST_ASSERT_EQUAL_UINT8( reference_request, BOOT_HANDOFF_get_fbl_request() );
-    TEST_ASSERT_EQUAL_UINT8( reference_datasets, BOOT_HANDOFF_get_dataset_valid_mask() );
-    TEST_ASSERT_EQUAL_UINT32( reference_timeout, BOOT_HANDOFF_get_fbl_timeout() );
-    TEST_ASSERT_EQUAL_UINT32( reference_time_ms, TMD_TIME_get_current_time_ms() );    /* before the diagnostics are asked anything: a request takes time on the bus */
-
-    TEST_ASSERT_EQUAL( TMD_UDS_RESULT_OK, TMD_UDS_get_session( &session, NULL_P ) );
-    TEST_ASSERT_EQUAL_UINT8( TMD_UDS_SESSION_DEFAULT, session );
 }
 
 /*!

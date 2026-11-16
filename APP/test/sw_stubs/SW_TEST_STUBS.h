@@ -6,9 +6,13 @@
 *               models wired to it, a blank flash and then the real app_main(). setUp() of a test is
 *               TMD_INIT_init( &sw_test_init_cfg_g ), so every test case begins as a virgin ECU.
 *
-*               The includes of a software test are in this order, in blocks, so the tests read the same: the test framework
-*               (unity.h, test_timing.h), STDC.h, the firmware (INTEGRATION_STUBS.h, HAL_config.h, then its modules A to Z),
-*               the virtual STM32 (vhw.h, then stm32f10x_*.h A to Z), the TMD models A to Z, and this header last.
+*               The includes of a software test are in this order, in blocks with a blank line between them, so the tests read the
+*               same: the C standard library (<string.h> and the like), the test framework (unity.h, test_timing.h), STDC.h, the
+*               firmware (INTEGRATION_STUBS.h, HAL_config.h, then its modules A to Z), the virtual STM32 (vhw.h, then
+*               stm32f10x_*.h A to Z), the TMD models A to Z, and this header last. A block that a test does not need is left out.
+*
+*               The TMD models are there to drive the firmware and to look at what it does: a test asserts on the firmware, the
+*               screen, or what comes out on a bus. A model's own behaviour is not tested here.
 */
 #ifndef SW_TEST_STUBS_H
 #define SW_TEST_STUBS_H

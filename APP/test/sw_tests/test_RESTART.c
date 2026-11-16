@@ -3,10 +3,9 @@
 *   \brief      The firmware's RAM across a restart - software test
 *
 *   \details    On the target the startup code gives the firmware its RAM as the program left the factory at every start: the
-*               initialised variables get their initial values and the rest is zero. TMD_STARTUP does the same for the host
-*               library, so a restart in a test starts the firmware as the target does. What the firmware keeps across a
-*               reset on the target (the shared RAM BM and APP hand over through) is kept here too. Every test case starts as a
-*               virgin ECU (setUp, SW_TEST_STUBS.c).
+*               initialised variables get their initial values and the rest is zero. A test changes a setting on the panel,
+*               restarts the ECU and reads the setting on the screen again, so what the user sees after a restart is what the
+*               firmware's variables start as. Every test case starts as a virgin ECU (setUp, SW_TEST_STUBS.c).
 */
 #include "unity.h"
 #include "test_timing.h"
@@ -14,7 +13,6 @@
 #include "STDC.h"
 
 #include "INTEGRATION_STUBS.h"
-#include "BOOT_HANDOFF.h"
 
 #include "TMD_INIT.h"
 #include "TMD_PANEL.h"
@@ -107,27 +105,6 @@ void test_a_restart_gives_an_initialised_variable_its_initial_value( void )
     TMD_PANEL_move_the_cursor_to( "Brightness" );
     TMD_PANEL_press( TMD_PANEL_SELECT );
     TMD_PANEL_assert_on_screen( "75%" );
-}
-
-/*!
-****************************************************************************************************
-*
-*   \brief         Verify what the firmware keeps across a reset on the target survives a restart here too: the request BM and APP
-*                  hand over in the shared RAM, which the startup code leaves alone
-*
-*   \author        mstewart
-*
-*   \return        none
-*
-*****************************************************************************************************/
-void test_the_shared_ram_survives_a_restart( void )
-{
-    BOOT_HANDOFF_set_fbl_request( TRUE );
-
-    TMD_INIT_restart_ecu();
-    TMD_TIME_advance_time_ms( SW_TEST_BOOT_SETTLE_MS );
-
-    TEST_ASSERT_EQUAL( TRUE, BOOT_HANDOFF_get_fbl_request() );
 }
 
 /****************************** END OF FILE *******************************************************/

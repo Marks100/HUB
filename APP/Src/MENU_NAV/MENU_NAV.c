@@ -18,6 +18,7 @@
 #include "TB.h"
 #include "PRESS_CONV.h"
 #include "GFX.h"
+#include "GFX3D.h"
 #include "VEHICLE_SIM_config.h"
 #include "printf.h"
 #include "BOOT_HANDOFF.h"
@@ -179,6 +180,8 @@ STATIC void menu_nav_enter_sensors( void );
 STATIC void menu_nav_draw_vehicle( void );
 STATIC void menu_nav_draw_tire( u8_t tire_x, u8_t tire_y, u8_t label_col, u8_t label_page, const menu_nav_tire_reading_st* reading_p );
 STATIC void menu_nav_draw_about( void );
+STATIC void menu_nav_draw_3d( void );
+STATIC void menu_nav_handle_3d( HMI_SH1106_input_et input );
 STATIC void menu_nav_draw_bootloader( void );
 STATIC void menu_nav_handle_bootloader( HMI_SH1106_input_et input );
 STATIC void menu_nav_draw_not_implemented( void );
@@ -241,7 +244,8 @@ STATIC const MENU_NAV_item_st menu_nav_main_items_s[] =
     { "Rev Counter",         MENU_NAV_SCREEN_REV_COUNTER     },
     { "Rev Counter (Bar)",   MENU_NAV_SCREEN_REV_COUNTER_BAR },
     { "Tyre Pressures",      MENU_NAV_SCREEN_TYRE_MAKE       },
-    { "About",               MENU_NAV_SCREEN_ABOUT           },
+    { "3D",                  MENU_NAV_SCREEN_3D              },
+    { "About",              MENU_NAV_SCREEN_ABOUT           },
     { "Bootloader",          MENU_NAV_SCREEN_BOOTLOADER      },
 };
 
@@ -716,6 +720,13 @@ STATIC const MENU_NAV_screen_st menu_nav_screens_s[MENU_NAV_NUM_SCREENS] =
         .back_screen   = MENU_NAV_SCREEN_TYRE_YEAR,
     },
 
+    [MENU_NAV_SCREEN_3D] =
+    {
+        .draw_func_p   = menu_nav_draw_3d,
+        .handle_func_p = menu_nav_handle_3d,     /* SELECT/CONFIRM swap the shape, BACK leaves */
+        .back_screen   = MENU_NAV_SCREEN_MAIN_MENU,
+    },
+
     [MENU_NAV_SCREEN_ABOUT] =
     {
         .draw_func_p  = menu_nav_draw_about,
@@ -756,6 +767,9 @@ typedef struct
 
 STATIC menu_nav_pos_st menu_nav_pos_s[MENU_NAV_NUM_SCREENS];
 
+/* Which shape the 3D screen shows: FALSE the cube, TRUE the pyramid */
+STATIC false_true_et menu_nav_3d_pyramid_s = FALSE;
+
 /* The list currently being drawn. Set immediately before HMI_SH1106_draw_list() and read only by
    menu_nav_get_label(), which the panel calls back into for each visible row - the panel is
    handed a getter rather than an array so this module never has to flatten its typed rows into a
@@ -790,6 +804,7 @@ void MENU_NAV_init( void )
     menu_nav_tyre_make_s    = 0u;
     menu_nav_tyre_model_s   = 0u;
     menu_nav_tyre_variant_s = 0u;
+    menu_nav_3d_pyramid_s   = FALSE;
 
     MENU_NAV_goto( MENU_NAV_SCREEN_HOME );
 }
@@ -2153,6 +2168,102 @@ STATIC void menu_nav_draw_about( void )
     VER_get_hw_version_num( hw_ver );
     (void)PRINTF_snprintf( (u8_t*)line, (u16_t)sizeof( line ), "HW v%u.%u", hw_ver[0], hw_ver[1] );
     HMI_SH1106_draw_text( 5u, 0u, line, FALSE );
+}
+
+/* Centred in the area under the title row. At this zoom and distance the cube's corners stay inside
+   the 28 pixels above and below the centre. */
+#define MENU_NAV_3D_CENTRE_X        ( 64 )
+#define MENU_NAV_3D_CENTRE_Y        ( 36 )
+#define MENU_NAV_3D_ZOOM_Q8         ( 96u )
+#define MENU_NAV_3D_DISTANCE        ( 150u )
+
+/* Milliseconds for one 256th of a turn about each axis: a full turn takes 10 s about Y, 16 s about X */
+#define MENU_NAV_3D_Y_MS_PER_STEP   ( 40u )
+#define MENU_NAV_3D_X_MS_PER_STEP   ( 64u )
+
+STATIC const GFX3D_view_st menu_nav_3d_view_s =
+{
+    .centre_x = MENU_NAV_3D_CENTRE_X,
+    .centre_y = MENU_NAV_3D_CENTRE_Y,
+    .zoom_q8  = MENU_NAV_3D_ZOOM_Q8,
+    .distance = MENU_NAV_3D_DISTANCE,
+};
+
+/*!
+****************************************************************************************************
+*
+*   \brief         3D - a wireframe cube or pyramid tumbling about two axes
+*
+*   \author        MS
+*
+*   \return        none
+*
+*   \note          The angles come from the run time clock, not from a counter bumped on each
+*                  repaint, so the speed is the same however often the panel repaints (every
+*                  refresh period, and again on each input). The title names the shape, and is
+*                  at most 10 characters so it stays left of the shape.
+*
+***************************************************************************************************/
+STATIC void menu_nav_draw_3d( void )
+{
+    GFX_target_st         target = HMI_SH1106_get_target();
+    u32_t                 now_ms = TIME_get_cumulative_run_time_ms();
+    const GFX3D_model_st* model_p;
+    const char*           title_p;
+    GFX3D_rotation_st     rotation;
+
+    rotation.x = (u8_t)( now_ms / MENU_NAV_3D_X_MS_PER_STEP );
+    rotation.y = (u8_t)( now_ms / MENU_NAV_3D_Y_MS_PER_STEP );
+    rotation.z = 0u;
+
+    if( menu_nav_3d_pyramid_s == TRUE )
+    {
+        model_p = &GFX3D_model_pyramid;
+        title_p = "3D PYRAMID";
+    }
+    else
+    {
+        model_p = &GFX3D_model_cube;
+        title_p = "3D CUBE";
+    }
+
+    HMI_SH1106_draw_text( 0u, 0u, title_p, FALSE );
+
+    GFX3D_draw_model( &target, model_p, &menu_nav_3d_view_s, &rotation );
+}
+
+/*!
+****************************************************************************************************
+*
+*   \brief         3D - SELECT or CONFIRM swaps the shape, BACK leaves
+*
+*   \author        MS
+*
+*   \param         input - What the panel reported
+*
+*   \return        none
+*
+*   \note          The shape chosen is kept when leaving and coming back, until MENU_NAV_init().
+*
+***************************************************************************************************/
+STATIC void menu_nav_handle_3d( HMI_SH1106_input_et input )
+{
+    switch( input )
+    {
+        case HMI_SH1106_INPUT_SELECT:
+        case HMI_SH1106_INPUT_CONFIRM:
+            menu_nav_3d_pyramid_s = ( menu_nav_3d_pyramid_s == TRUE ) ? FALSE : TRUE;
+            HMI_SH1106_request_redraw();
+        break;
+
+        case HMI_SH1106_INPUT_BACK:
+            MENU_NAV_goto( menu_nav_screens_s[MENU_NAV_SCREEN_3D].back_screen );
+        break;
+
+        default:
+            /* The knob and the long presses do nothing here */
+        break;
+    }
 }
 
 /*!
