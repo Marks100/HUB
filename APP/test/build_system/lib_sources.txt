@@ -236,6 +236,7 @@ xCOMMON_MODULES/test/support/models/TMD_TIME/TMD_TIME.c
 xCOMMON_MODULES/test/support/models/TMD_TJA1051/TMD_TJA1051.c
 xCOMMON_MODULES/test/support/models/TMD_UDS/TMD_UDS.c
 APP/test/sw_stubs/SW_TEST_STUBS.c
-APP/test/sw_stubs/TMD_FBL.c
+xCOMMON_MODULES/test/support/models/TMD_BM/TMD_BM.c
+xCOMMON_MODULES/test/support/models/TMD_FBL/TMD_FBL.c
 APP/Src/MAIN/main.c
 xCOMMON_MODULES/test/support/VHW_STM32F10X/system_stm32f10x.c

@@ -4,7 +4,7 @@
 *
 *   \details    CAN1 reaches its bus through the TJA1051 model, which the firmware has to take out of standby (EN pin,
 *               TJA1051_init) before a frame passes either way; CAN2 is the MCP2515 on SPI1 and its chip model. The
-*               DATASET0's addresses are in the virtual flash, where the build flags put them (see SW_TEST_STUBS.h).
+*               DATASET0's addresses are in the virtual flash, where the build flags put them (see TMD_BM.h).
 */
 
 /***************************************************************************************************
@@ -35,6 +35,7 @@
 #include "TMD_MCP2515.h"
 #include "TMD_STARTUP.h"
 #include "TMD_MBA.h"
+#include "TMD_BM.h"
 #include "TMD_FBL.h"
 #include "VPM_config.h"
 #include "NVM_GEN2.h"
@@ -52,7 +53,6 @@ extern void app_main( void );                      /* main.c: the ECU's start, i
 
 u32_t __isr_vector_start = 0u;    /* the start of the vector table, which app_main() hands to the vector table offset register */
 
-
 /***************************************************************************************************
 **                                  Private Function Prototypes                                   **
 ***************************************************************************************************/
@@ -68,6 +68,39 @@ u32_t __isr_vector_start = 0u;    /* the start of the vector table, which app_ma
    1 is every function, the finest; more is a faster run, and an interrupt that falls due waits for the next tick */
 #define SW_TEST_ENTRIES_PER_TICK    ( 8u )
 
+/* The block the FBL keeps its note of the batch it applied in, which the firmware's note (vpm_config_note_applied) writes and the application only reads */
+static const NVM_GEN2_block_entry_st sw_test_fbl_nvm_blocks_c[] =
+{
+    { FBL_VPM_APPLIED_BLOCK_ID, &fbl_nvm_gen2_vpm_applied_block_s }
+};
+
+/* The HUB's handoff RAM, as the boot manager and the FBL reach it, and the NVM the FBL starts */
+static const TMD_FBL_cfg_st sw_test_fbl_cfg_s =
+{
+    .get_request_func_p      = BOOT_HANDOFF_get_fbl_request,
+    .set_request_func_p      = BOOT_HANDOFF_set_fbl_request,
+    .get_baud_param_func_p   = BOOT_HANDOFF_get_baud_param,
+    .set_baud_param_func_p   = BOOT_HANDOFF_set_baud_param,
+    .get_response_owed_func_p = BOOT_HANDOFF_get_response_owed,
+    .set_response_owed_func_p = BOOT_HANDOFF_set_response_owed,
+    .response_none           = BOOT_HANDOFF_RESPONSE_NONE,
+    .nvm_hw_interface_p      = &nvm_gen2_hw_interface_s,
+    .nvm_blocks_p            = sw_test_fbl_nvm_blocks_c,
+    .nvm_block_count         = NVM_GEN2_BLOCK_TABLE_SIZE( sw_test_fbl_nvm_blocks_c )
+};
+
+static const TMD_BM_dataset_st sw_test_datasets_c[] =
+{
+    { SW_TEST_DATASET0_PAYLOAD_ADDRESS, SW_TEST_DATASET0_PAYLOAD_SIZE }    /* bit 0 of the mask: DATASET0 */
+};
+
+static const TMD_BM_cfg_st sw_test_bm_cfg_s =
+{
+    .handoff_init_func_p           = BOOT_HANDOFF_init,
+    .set_dataset_valid_mask_func_p = BOOT_HANDOFF_set_dataset_valid_mask,
+    .datasets_p                    = sw_test_datasets_c,
+    .dataset_count                 = (u8_t)( sizeof( sw_test_datasets_c ) / sizeof( sw_test_datasets_c[0u] ) )
+};
 
 static const TMD_CANTP_config_st    sw_test_tester_cfg_s =                         /* the tester starts on CAN1, at the ECU's own UDS server */
 {
@@ -96,6 +129,7 @@ const TMD_INIT_cfg_st sw_test_init_cfg_g =
 /***************************************************************************************************
 **                                  Public Functions                                              **
 ***************************************************************************************************/
+/* None */
 
 /***************************************************************************************************
 **                                  Private Functions                                             **
@@ -166,7 +200,8 @@ static void sw_test_power_on( false_true_et blank_nvm )
     TMD_TESTER_init();
     TMD_UDS_set_timeout( SW_TEST_TESTER_TIMEOUT_MS );
     TMD_MBA_init( &sw_test_bootloader_cfg_s );            /* the tester's writes are made by the bootloader, which the library does not run: the model is it */
-    TMD_FBL_init();
+    TMD_FBL_init( &sw_test_fbl_cfg_s );
+    TMD_BM_init( &sw_test_bm_cfg_s );
     TMD_SH1106_init();                                    /* the OLED of the panel */
     TMD_PANEL_init( &panel_cfg );                         /* the buttons and the knob of the panel, released */
 
@@ -234,15 +269,7 @@ static void sw_test_tick_the_models( void )
 *****************************************************************************************************/
 static void sw_test_ecu_start( void )
 {
-    /*************************************** BM ***************************************/
-    BOOT_HANDOFF_init();
-
-    /*************************************** FBL, when the application asked for it ***************************************/
-    TMD_FBL_start();
-
-    /*************************************** BM again, then the application ***************************************/
-    BOOT_HANDOFF_set_dataset_valid_mask( ( STDC_memcompare_value( (void*)SW_TEST_DATASET0_PAYLOAD_ADDRESS, 0xFFu,
-                                                                  SW_TEST_DATASET0_PAYLOAD_SIZE ) == TRUE ) ? 0u : 1u );    /* bit 0: DATASET0 */
+    TMD_BM_run();
 
     app_main();
 

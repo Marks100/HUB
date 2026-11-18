@@ -43,8 +43,8 @@
 #define TEST_ERX_SETTLE_MS          ( 2500u )     /* the ERX is up, and the HUB's own client has read what it wants from it: the gateway is free for the tester */
 #define TEST_BUS_ERX_DIRECT         ( TMD_CAN_INSTANCE_2 )    /* a bus with no ECU on it, that a tester wired straight to an ERX shares with it: the ERX's speed, SW_TEST_NODES_BUS_BIT_RATE */
 #define TEST_ERX_ISO_POSITION       ( APP_ISO_AXLE_1_CENTRE )    /* the first axle's centre line: IDs 0x718 and 0x618 */
-#define TEST_IMAGE_MAX_MS           ( 75000u )    /* through the HUB: the 1204 blocks of 253 bytes took 71.8 s, about 60 ms a block, of which CAN2 is 37 ms. A 5 ms gateway tick and 2 ms separation took 138 s */
-#define TEST_DIRECT_IMAGE_MAX_MS    ( 65000u )    /* straight to the ERX: the same 1204 blocks took 60.1 s, the wire and the ERX's writes with no HUB, which is 11 s less */
+#define TEST_IMAGE_MAX_MS           ( 101000u )   /* through the HUB: the 1204 blocks of 253 bytes took 96.3 s, 80 ms a block, of which CAN2 is 35 ms, the ERX's flow control 7 ms and its write 28 ms. A 5 ms gateway tick and 2 ms separation took ~40% longer */
+#define TEST_DIRECT_IMAGE_MAX_MS    ( 88000u )    /* straight to the ERX: the same 1204 blocks took 84.2 s (70 ms a block), the wire and the ERX with no HUB, which is 12 s less. A real ERX flashed with CANFLASH took 73 ms a block (88.3 s for the four segments); the 3 ms a block between them is the real wire's bit stuffing, which the model does not have */
 #define TEST_FC_STMIN_MIN_MS        ( 1u )        /* the least separation CAN2 and the MCP2515 can keep up with (a frame is about 1 ms on CAN2), which the tester has to be told */
 #define TEST_FC_STMIN_MAX_MS        ( 0x7Fu )     /* above this the field is not milliseconds */
 #define TEST_MESSAGE_LEN            ( 120u )
