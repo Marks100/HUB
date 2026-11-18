@@ -24,7 +24,7 @@
 typedef enum
 {
    APP_CAN_CH_MAIN = 0u,        /* bxCAN1 via TJA1051, 500 kbit/s */
-   APP_CAN_CH_CAN2,             /* MCP2515 on SPI1 - the node's diagnostic bus, see INTEGRATION_STUBS.c */
+   APP_CAN_CH_CAN2,             /* MCP2515 on SPI1 - the nodes' diagnostic bus, 125 kbit/s, see INTEGRATION_STUBS.c */
    APP_CAN_NUM_CHANNELS
 } app_can_channel_et;
 

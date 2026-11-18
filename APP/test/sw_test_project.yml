@@ -70,6 +70,7 @@
   # clock, ECU start and diagnostic models) are in the library with the virtual STM32 (build_system/lib_sources.txt), built once:
   # only their headers are here
     - ../../xCOMMON_MODULES/test/support/models/TMD_CAN
+    - ../../xCOMMON_MODULES/test/support/models/TMD_TESTER
     - ../../xCOMMON_MODULES/test/support/models/TMD_DEBUG
     - ../../xCOMMON_MODULES/test/support/models/TMD_TJA1051
     - ../../xCOMMON_MODULES/test/support/models/TMD_MCP2515

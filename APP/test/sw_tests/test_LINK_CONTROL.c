@@ -23,6 +23,8 @@
 
 #include "vhw.h"
 
+#include "TMD_CANTP.h"
+#include "TMD_FBL.h"
 #include "TMD_INIT.h"
 #include "TMD_TIME.h"
 #include "TMD_UDS.h"
@@ -67,7 +69,7 @@ void tearDown( void )
 *   \param[in]     request_p   The request, SID first
 *   \param[in]     length      Its length
 *
-*   \return        The negative response code, 0 if the ECU did not answer with a negative response
+*   \return        The negative response code, 0 if the ECU did not answer with a negative response (a response pending is the answer here)
 *
 *****************************************************************************************************/
 static u8_t send_link_control( const u8_t* request_p, u16_t length )
@@ -75,6 +77,8 @@ static u8_t send_link_control( const u8_t* request_p, u16_t length )
     u8_t  response[SW_TEST_TESTER_RESPONSE_MAX_LEN];
     u16_t response_length = 0u;
     u8_t  nrc             = 0u;
+
+    TMD_CANTP_set_wait_for_pending( FALSE );    /* the ECU says 0x78 and resets: the FBL's own response, after the reset, is not modelled, so the 0x78 is the answer */
 
     (void)TMD_UDS_send_request( request_p, length, response, (u16_t)sizeof( response ), &response_length, &nrc );
 
@@ -112,8 +116,8 @@ static void assert_a_baud_rate_hands_over( u8_t baud_param )
 
     TMD_INIT_restart_ecu();
 
-    TEST_ASSERT_EQUAL_HEX8( baud_param, sw_test_fbl_baud_param_g );    /* what the FBL found at its start */
-    TEST_ASSERT_EQUAL_UINT8( BOOT_HANDOFF_RESPONSE_LINK_CONTROL, sw_test_fbl_response_owed_g );
+    TEST_ASSERT_EQUAL_HEX8( baud_param, TMD_FBL_get_baud_param() );    /* what the FBL found at its start */
+    TEST_ASSERT_EQUAL_UINT8( BOOT_HANDOFF_RESPONSE_LINK_CONTROL, TMD_FBL_get_response_owed() );
     TEST_ASSERT_EQUAL_UINT8( 0u, BOOT_HANDOFF_get_baud_param() );    /* and took: nothing is left for the start after it */
     TEST_ASSERT_EQUAL_UINT8( BOOT_HANDOFF_RESPONSE_NONE, BOOT_HANDOFF_get_response_owed() );
 }

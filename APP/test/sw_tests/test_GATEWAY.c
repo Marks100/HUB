@@ -19,6 +19,7 @@
 #include "HAL_BRD.h"
 #include "HAL_CAN.h"
 #include "HAL_SPI.h"
+#include "MCP2515.h"
 
 #include "vhw.h"
 #include "stm32f10x_can.h"
@@ -36,6 +37,17 @@
 #include "SW_TEST_STUBS.h"
 
 #define TEST_FRAME_SETTLE_MS     ( 10u )    /* two scheduler passes: a frame that arrived crosses the gateway */
+#define TEST_MCP2515_OSCILLATOR_HZ  ( 8000000u )    /* the crystal on the MCP2515 board */
+#define TEST_NODES               ( 4u )     /* the nodes a burst goes to: DIAG_GW tracks four at once */
+
+/* Request IDs of four nodes the HUB's own UDS client is not reading, so the gateway passes a tester's frame to each at once */
+static const u32_t test_node_ids_c[ TEST_NODES ] =
+{
+    TMD_ERX_UDS_REQUEST_BASE_ID + APP_ISO_AXLE_3_CENTRE,
+    TMD_ERX_UDS_REQUEST_BASE_ID + APP_ISO_AXLE_2_INNER_RIGHT,
+    TMD_ERX_UDS_REQUEST_BASE_ID + APP_ISO_AXLE_2_OUTER_RIGHT,
+    TMD_ERX_UDS_REQUEST_BASE_ID + APP_ISO_AXLE_5_OUTER_RIGHT
+};
 #define TEST_REQUEST_ID          ( TMD_ERX_UDS_REQUEST_BASE_ID  + APP_ISO_AXLE_3_CENTRE )    /* 0x738: a node's request, the third axle's centre line */
 #define TEST_RESPONSE_ID         ( TMD_ERX_UDS_RESPONSE_BASE_ID + APP_ISO_AXLE_3_CENTRE )    /* 0x638: and its response */
 
@@ -260,6 +272,167 @@ void test_a_reply_waits_in_the_mailbox_until_the_tja1051_is_back_in_normal_mode(
     TEST_ASSERT_EQUAL( 0u, CAN_SIM_get_mailboxes_in_use() );
     TEST_ASSERT_EQUAL( TRUE, TMD_CAN_consume_message_from_ecu( TEST_BUS_TESTER, TEST_RESPONSE_ID, &sent ) );
     TEST_ASSERT_EQUAL_HEX32( TEST_RESPONSE_ID, sent.message_id );
+}
+
+/*!
+****************************************************************************************************
+*
+*   \brief         Verify the firmware sets CAN2, the MCP2515, to the bit rate the ERXs run at: the rate that the bit timing registers
+*                  it wrote say, from the 8 MHz crystal, is the one the test bus runs at (SW_TEST_NODES_BUS_BIT_RATE, 125 kbit/s)
+*
+*   \author        mstewart
+*
+*   \return        none
+*
+*   \note          A bit is a number of time quanta: the sync segment (1), the propagation segment and phase segment 1 (CNF2) and
+*                  phase segment 2 (CNF3, which the controller takes from there when BTLMODE, bit 7 of CNF2, is set). A time quantum
+*                  is 2 x ( BRP + 1 ) oscillator periods, BRP being CNF1's low six bits.
+*
+*****************************************************************************************************/
+void test_the_firmware_sets_can2_to_the_bit_rate_of_the_erxs( void )
+{
+    const u8_t  cnf1        = TMD_MCP2515_read_register( MCP2515_REG_CNF1 );
+    const u8_t  cnf2        = TMD_MCP2515_read_register( MCP2515_REG_CNF2 );
+    const u8_t  cnf3        = TMD_MCP2515_read_register( MCP2515_REG_CNF3 );
+    const u32_t quanta      = 1u + ( (u32_t)( cnf2 & 0x07u ) + 1u ) + ( (u32_t)( ( cnf2 >> 3u ) & 0x07u ) + 1u ) + ( (u32_t)( cnf3 & 0x07u ) + 1u );
+    const u32_t quantum_div = 2u * ( (u32_t)( cnf1 & 0x3Fu ) + 1u );
+
+    TEST_ASSERT_BITS_HIGH( 0x80u, cnf2 );    /* BTLMODE: phase segment 2 is CNF3's */
+    TEST_ASSERT_EQUAL_UINT32( SW_TEST_NODES_BUS_BIT_RATE, TEST_MCP2515_OSCILLATOR_HZ / ( quantum_div * quanta ) );
+}
+
+/*!
+****************************************************************************************************
+*
+*   \brief         Take the frames the ECU has sent on CAN2, in the order they went, that carry one of four node request IDs
+*
+*   \author        mstewart
+*
+*   \param[out]    frames_p - Room for TEST_NODES frames
+*
+*   \return        How many there were. Anything else the ECU sent on CAN2 is dropped.
+*
+*****************************************************************************************************/
+static u8_t test_take_node_frames( TMD_CAN_message_st* frames_p )
+{
+    TMD_CAN_message_st frame;
+    u8_t               count = 0u;
+    u8_t               i;
+
+    while( TMD_CAN_pop_frame_from_ecu( TEST_BUS_NODES, &frame ) == TRUE )
+    {
+        for( i = 0u; ( i < TEST_NODES ) && ( count < TEST_NODES ); i++ )
+        {
+            if( frame.message_id == test_node_ids_c[i] )
+            {
+                frames_p[count] = frame;
+                count++;
+            }
+        }
+    }
+
+    return( count );
+}
+
+/*!
+****************************************************************************************************
+*
+*   \brief         A tester request to a node as the CAN bus model takes it: a single frame, DiagnosticSessionControl, whose last
+*                  data byte says which of a run of requests it is
+*
+*   \author        mstewart
+*
+*   \param[in]     node_index - Which of the four nodes: the ID is test_node_ids_c[node_index]
+*   \param[in]     sequence   - Last data byte
+*
+*   \return        none
+*
+*****************************************************************************************************/
+static void test_inject_request( u8_t node_index, u8_t sequence )
+{
+    const u8_t         data[ 8u ] = { 0x02u, 0x10u, 0x03u, 0x00u, 0x00u, 0x00u, 0x00u, sequence };
+    TMD_CAN_message_st request;
+
+    test_make_frame( &request, test_node_ids_c[node_index], data );
+    TMD_CAN_inject_frame_to_ecu( TEST_BUS_TESTER, &request );
+}
+
+/*!
+****************************************************************************************************
+*
+*   \brief         Verify a burst of frames for the nodes leaves CAN2 in the order it came, each once, when the bus is busy: the chip
+*                  holds three, the fourth waits in the interface layer, and when the bus is free all four go, none lost and none
+*                  twice
+*
+*   \author        mstewart
+*
+*   \return        none
+*
+*****************************************************************************************************/
+void test_a_burst_for_the_nodes_leaves_in_order_and_once_when_the_bus_is_busy( void )
+{
+    TMD_CAN_message_st frames[ TEST_NODES ];
+    u8_t               i;
+
+    TMD_MCP2515_set_tx_hold( TRUE );
+
+    for( i = 0u; i < TEST_NODES; i++ )
+    {
+        test_inject_request( i, i );
+    }
+
+    TMD_TIME_advance_time_ms( TEST_FRAME_SETTLE_MS );
+
+    TEST_ASSERT_EQUAL_UINT8( 0u, test_take_node_frames( frames ) );    /* the bus is busy: not one has gone */
+
+    TMD_MCP2515_set_tx_hold( FALSE );
+    TMD_TIME_advance_time_ms( TEST_FRAME_SETTLE_MS );
+
+    TEST_ASSERT_EQUAL_UINT8( TEST_NODES, test_take_node_frames( frames ) );
+
+    for( i = 0u; i < TEST_NODES; i++ )
+    {
+        TEST_ASSERT_EQUAL_HEX32( test_node_ids_c[i], frames[i].message_id );
+        TEST_ASSERT_EQUAL_UINT8( i, frames[i].data[7u] );
+    }
+
+    TMD_TIME_advance_time_ms( 100u );
+
+    TEST_ASSERT_EQUAL_UINT8( 0u, test_take_node_frames( frames ) );    /* and nothing twice, later */
+    TEST_ASSERT_EQUAL( 0u, TMD_MCP2515_get_protocol_error_count() );
+}
+
+/*!
+****************************************************************************************************
+*
+*   \brief         Verify a frame the bus does not take for 100 ms is dropped and does not go out late: when the bus is free again
+*                  the next frame goes and the old one does not
+*
+*   \author        mstewart
+*
+*   \return        none
+*
+*****************************************************************************************************/
+void test_a_frame_the_bus_does_not_take_in_time_is_dropped_and_not_sent_late( void )
+{
+    TMD_CAN_message_st frames[ TEST_NODES ];
+
+    TMD_MCP2515_set_tx_hold( TRUE );
+
+    test_inject_request( 0u, 0xAAu );
+    TMD_TIME_advance_time_ms( 150u );                                  /* longer than the ECU waits for the bus */
+
+    TMD_MCP2515_set_tx_hold( FALSE );
+    TMD_TIME_advance_time_ms( TEST_FRAME_SETTLE_MS );
+
+    TEST_ASSERT_EQUAL_UINT8( 0u, test_take_node_frames( frames ) );    /* the stale one was aborted, so it was not sent */
+
+    test_inject_request( 1u, 0xBBu );
+    TMD_TIME_advance_time_ms( TEST_FRAME_SETTLE_MS );
+
+    TEST_ASSERT_EQUAL_UINT8( 1u, test_take_node_frames( frames ) );    /* the buffer is free again: this one goes */
+    TEST_ASSERT_EQUAL_HEX32( test_node_ids_c[1], frames[0].message_id );
+    TEST_ASSERT_EQUAL_HEX8( 0xBBu, frames[0].data[7u] );
 }
 
 /****************************** END OF FILE *******************************************************/

@@ -376,8 +376,8 @@ const CANTP_cfg_st app_cantp2_cfg_s =
 /***************************************************************************************************
 **                              MCP2515 (CAN2)                                                    **
 ***************************************************************************************************/
-/* Shares SPI1 with the NRF24, so only ever ticked from the scheduler. Bit timing is a placeholder until
-   fitted: 8 MHz crystal, 500 kbit/s. */
+/* Shares SPI1 with the NRF24, so only ever ticked from the scheduler. The ERXs run at 125 kbit/s: 8 MHz crystal,
+   BRP 3 so a time quantum is 1 us, 8 TQ a bit (sync 1, prop 2, PS1 3, PS2 2), sample point 75 %. */
 const MCP2515_func_table_st mcp2515_can2_func_s =
 {
     .spi_transfer_func_p  = HAL_SPI1_write_and_read_data,
@@ -388,11 +388,11 @@ const MCP2515_func_table_st mcp2515_can2_func_s =
 
 const MCP2515_cfg_st mcp2515_can2_cfg_s =
 {
-    .cnf1               = 0x00u,
+    .cnf1               = 0x03u,
     .cnf2               = 0x91u,
-    .cnf3               = 0x02u,
+    .cnf3               = 0x01u,
     .initial_mode       = MCP2515_MODE_NORMAL,
-    .tx_timeout_retries = 200u,
+    .tx_abort_ticks     = 50u,     /* MCP2515_tick() runs every 2 ms: a frame that has not got on the bus in 100 ms (nobody ACKs it, an ERX is unplugged) is aborted. A frame takes about 1 ms at 125 kbit/s */
     .rx_channel         = APP_CAN_CH_CAN2
 };
 
@@ -453,7 +453,9 @@ const DIAG_GW_cfg_st app_diag_gw_cfg_s =
     .local_tx_pdu_id  = APP_CANIF_PDU_HUB_TX,
     .request_base_id  = APP_NODE_REQUEST_BASE_ID,
     .response_base_id = APP_NODE_RESPONSE_BASE_ID,
-    .node_available_base = APP_ISO_POSITION_FIRST
+    .node_available_base = APP_ISO_POSITION_FIRST,
+    .to_tester_fc_min_stmin_ms = 1u,    /* a frame is about 1 ms on CAN2 (125 kbit/s), and the MCP2515 driver, run every 2 ms, loads up to three: 1 ms a frame is the bus's own rate */
+    .to_node_fc_min_stmin_ms   = 1u     /* the MCP2515 has two receive buffers and is read every 2 ms: a node at 1 ms a frame fills two in that */
 };
 
 /***************************************************************************************************

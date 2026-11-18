@@ -218,6 +218,7 @@ xCOMMON_MODULES/test/support/models/TMD_CANTP/TMD_CANTP.c
 xCOMMON_MODULES/test/support/models/TMD_DEBUG/TMD_DEBUG.c
 xCOMMON_MODULES/test/support/models/TMD_ERX/TMD_ERX.c
 xCOMMON_MODULES/test/support/models/TMD_ERX/TMD_ERX_UDS.c
+xCOMMON_MODULES/test/support/models/TMD_ERX/TMD_ERX_FBL.c
 xCOMMON_MODULES/test/support/models/TMD_GPIO/TMD_GPIO.c
 xCOMMON_MODULES/test/support/models/TMD_INIT/TMD_INIT.c
 xCOMMON_MODULES/test/support/models/TMD_MBA/TMD_MBA.c
@@ -230,9 +231,11 @@ xCOMMON_MODULES/Src/CRYPTO/SHA256_CUSTOM/SHA256_CUSTOM.c
 xCOMMON_MODULES/test/support/models/TMD_SH1106/TMD_SH1106.c
 xCOMMON_MODULES/test/support/models/TMD_STARTUP/TMD_STARTUP.c
 xCOMMON_MODULES/test/support/models/TMD_SYSTICK/TMD_SYSTICK.c
+xCOMMON_MODULES/test/support/models/TMD_TESTER/TMD_TESTER.c
 xCOMMON_MODULES/test/support/models/TMD_TIME/TMD_TIME.c
 xCOMMON_MODULES/test/support/models/TMD_TJA1051/TMD_TJA1051.c
 xCOMMON_MODULES/test/support/models/TMD_UDS/TMD_UDS.c
 APP/test/sw_stubs/SW_TEST_STUBS.c
+APP/test/sw_stubs/TMD_FBL.c
 APP/Src/MAIN/main.c
 xCOMMON_MODULES/test/support/VHW_STM32F10X/system_stm32f10x.c

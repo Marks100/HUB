@@ -10,6 +10,7 @@
 /***************************************************************************************************
 **                                        Includes                                                **
 ***************************************************************************************************/
+#include <string.h>
 #include "STDC.h"
 #include "HAL_config.h"
 #include "vhw.h"
@@ -27,12 +28,14 @@
 #include "FLS_STM32F1.h"
 #include "TMD_INIT.h"
 #include "TMD_CAN.h"
+#include "TMD_DEBUG.h"
 #include "TMD_CANTP.h"
 #include "TMD_UDS.h"
 #include "TMD_TJA1051.h"
 #include "TMD_MCP2515.h"
 #include "TMD_STARTUP.h"
 #include "TMD_MBA.h"
+#include "TMD_FBL.h"
 #include "VPM_config.h"
 #include "NVM_GEN2.h"
 #include "FBL_NVM_BLOCKS.h"
@@ -48,9 +51,6 @@
 extern void app_main( void );                      /* main.c: the ECU's start, it returns */
 
 u32_t __isr_vector_start = 0u;    /* the start of the vector table, which app_main() hands to the vector table offset register */
-
-u8_t sw_test_fbl_baud_param_g    = 0u;
-u8_t sw_test_fbl_response_owed_g = 0u;
 
 
 /***************************************************************************************************
@@ -68,6 +68,13 @@ u8_t sw_test_fbl_response_owed_g = 0u;
    1 is every function, the finest; more is a faster run, and an interrupt that falls due waits for the next tick */
 #define SW_TEST_ENTRIES_PER_TICK    ( 8u )
 
+
+static const TMD_CANTP_config_st    sw_test_tester_cfg_s =                         /* the tester starts on CAN1, at the ECU's own UDS server */
+{
+    .can_instance = TEST_BUS_TESTER,
+    .request_id   = SW_TEST_ECU_UDS_REQUEST_ID,
+    .response_id  = SW_TEST_ECU_UDS_RESPONSE_ID
+};
 
 static const TMD_MBA_cfg_st         sw_test_bootloader_cfg_s =                     /* what the MBA model, the bootloader, knows of the flash and the NVM */
 {
@@ -89,8 +96,6 @@ const TMD_INIT_cfg_st sw_test_init_cfg_g =
 /***************************************************************************************************
 **                                  Public Functions                                              **
 ***************************************************************************************************/
-
-/* None */
 
 /***************************************************************************************************
 **                                  Private Functions                                             **
@@ -124,12 +129,6 @@ static void sw_test_power_on( false_true_et blank_nvm )
         .corrupt_func_p = FLASH_SIM_tear_last_program    /* the virtual flash is the STM32's: a program the power cut left unfinished */
     };
 
-    static const TMD_CANTP_config_st tester_cfg =
-    {
-        .request_id  = SW_TEST_ECU_UDS_REQUEST_ID,
-        .response_id = SW_TEST_ECU_UDS_RESPONSE_ID
-    };
-
     static const SPI_SIM_slave_st mcp2515_slave =
     {
         .is_selected = TMD_MCP2515_is_selected,
@@ -154,15 +153,20 @@ static void sw_test_power_on( false_true_et blank_nvm )
     /* The inits clear what was registered with the model before, so nothing is wired yet */
     TMD_TIME_init( SW_TEST_NS_PER_ENTRY, SW_TEST_ENTRIES_PER_TICK, sw_test_tick_the_models );    /* every model acts as the clock moves */
     TMD_SYSTICK_init( vhw_systick_read_regs, &SystemCoreClock, vhw_systick_set_pending );    /* the clock's address: the firmware sets it up after this */
+    TMD_DEBUG_init();
     TMD_CAN_init();
-    TMD_TJA1051_reset();
-    TMD_MCP2515_reset();
+    TMD_CAN_set_bit_rate( TEST_BUS_TESTER, SW_TEST_TESTER_BUS_BIT_RATE );
+    TMD_CAN_set_bit_rate( TEST_BUS_NODES, SW_TEST_NODES_BUS_BIT_RATE );
+    TMD_TJA1051_init();
+    TMD_MCP2515_init();
     TMD_NVM_init( &nvm_cfg );
     TMD_ERX_init();
-    TMD_CANTP_init( &tester_cfg );       /* the tester on CAN1, at the ECU's own UDS server: a test points it at another node with TMD_CANTP_set_ids() */
+    TMD_CANTP_init( &sw_test_tester_cfg_s );       /* the tester on CAN1, at the ECU's own UDS server: a test points it at another node with TMD_CANTP_set_ids() */
     TMD_UDS_init();
+    TMD_TESTER_init();
     TMD_UDS_set_timeout( SW_TEST_TESTER_TIMEOUT_MS );
     TMD_MBA_init( &sw_test_bootloader_cfg_s );            /* the tester's writes are made by the bootloader, which the library does not run: the model is it */
+    TMD_FBL_init();
     TMD_SH1106_init();                                    /* the OLED of the panel */
     TMD_PANEL_init( &panel_cfg );                         /* the buttons and the knob of the panel, released */
 
@@ -186,6 +190,7 @@ static void sw_test_power_on( false_true_et blank_nvm )
     /* The board's pull-ups hold a released button HIGH, which a virtual pin cannot do by itself: a power on clears it to LOW */
     GPIO_SIM_set_input( ONBOARD_BTN_PORT, ONBOARD_BTN_PIN, HIGH );
 }
+
 /*!
 ****************************************************************************************************
 *
@@ -207,7 +212,6 @@ static void sw_test_tick_the_models( void )
     TMD_SYSTICK_tick();   /* the scheduler's period: SysTick goes pending */
     TMD_CAN_tick();       /* the frames that have crossed the bus by now reach their end */
     TMD_ERX_tick();
-    TMD_CANTP_tick();
     TMD_UDS_tick();
 
     vhw_sync();           /* the hardware catches up with what the models did, and the interrupts they asserted run: here, at the top of whichever function the firmware has just entered */
@@ -222,14 +226,10 @@ static void sw_test_tick_the_models( void )
 *
 *   \return        none
 *
-*   \note          BM finds DATASET0 valid when its flash is not blank, and says so in the handoff RAM, which a restart keeps. The FBL is
-*                  the MBA model, and it runs only for what the application hands over for, a write it kept (0x3D
-*                  WriteMemoryByAddress): the application asked for it by the request in the handoff RAM, the FBL starts its NVM as its
-*                  own start does and registers the block it keeps its note in (which the application only reads), makes the write,
-*                  and clears the request as its start does. The request is gone whatever happened: a power
-*                  cut in the middle of it loses the handoff RAM. The firmware's RAM is wiped when the FBL is done, as the reset to the
-*                  application does. A pin the application drove reaches its listener on the next sync of the virtual STM32: without
-*                  this, the ERX supply it switched on at start-up would reach the ERXs only when the first millisecond goes by.
+*   \note          BM finds DATASET0 valid when its flash is not blank, and says so in the handoff RAM, which a restart keeps. The FBL is the
+*                  TMD_FBL model, which runs only if the application handed over to it (see there). A pin the application drove reaches its listener
+*                  on the next sync of the virtual STM32: without this, the ERX supply it switched on at start-up would reach the ERXs only when the first
+*                  millisecond goes by.
 *
 *****************************************************************************************************/
 static void sw_test_ecu_start( void )
@@ -237,29 +237,8 @@ static void sw_test_ecu_start( void )
     /*************************************** BM ***************************************/
     BOOT_HANDOFF_init();
 
-    sw_test_fbl_baud_param_g    = 0u;
-    sw_test_fbl_response_owed_g = BOOT_HANDOFF_RESPONSE_NONE;
-
     /*************************************** FBL, when the application asked for it ***************************************/
-    if( BOOT_HANDOFF_get_fbl_request() == TRUE )
-    {
-        /* A LinkControl hand-over: the FBL sets its bit rate to the baud rate asked for and sends the response it owes, once */
-        sw_test_fbl_baud_param_g    = BOOT_HANDOFF_get_baud_param();
-        sw_test_fbl_response_owed_g = BOOT_HANDOFF_get_response_owed();
-        BOOT_HANDOFF_set_baud_param( 0u );
-        BOOT_HANDOFF_set_response_owed( BOOT_HANDOFF_RESPONSE_NONE );
-
-        NVM_GEN2_init( &nvm_gen2_hw_interface_s );
-        NVM_GEN2_register_block( FBL_VPM_APPLIED_BLOCK_ID, &fbl_nvm_gen2_vpm_applied_block_s );
-
-        if( TMD_MBA_is_write_pending() == TRUE )
-        {
-            (void)TMD_MBA_start_server();
-            BOOT_HANDOFF_set_fbl_request( FALSE );
-        }
-
-        TMD_STARTUP_init_ram();    /* the reset to the application */
-    }
+    TMD_FBL_start();
 
     /*************************************** BM again, then the application ***************************************/
     BOOT_HANDOFF_set_dataset_valid_mask( ( STDC_memcompare_value( (void*)SW_TEST_DATASET0_PAYLOAD_ADDRESS, 0xFFu,

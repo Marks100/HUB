@@ -23,12 +23,17 @@
 #include "STDC.h"
 #include "TMD_INIT.h"
 #include "TMD_CAN.h"
+#include "TMD_ERX_FBL.h"
+#include "TMD_TESTER.h"
 
 /***************************************************************************************************
 **                                       Definitions                                              **
 ***************************************************************************************************/
 #define TEST_BUS_TESTER          ( TMD_CAN_INSTANCE_0 )    /* CAN1: bxCAN through the TJA1051 */
 #define TEST_BUS_NODES           ( TMD_CAN_INSTANCE_1 )    /* CAN2: the MCP2515 */
+
+#define SW_TEST_TESTER_BUS_BIT_RATE     ( 500000u )         /* CAN1: HAL_CAN's default, which the tester's tool uses */
+#define SW_TEST_NODES_BUS_BIT_RATE      ( 125000u )         /* CAN2: what the ERXs run at, and what the MCP2515 is set to (INTEGRATION_STUBS.c) */
 
 /* The tester on CAN1 is the UDS tester model (TMD_UDS, over TMD_CANTP), started with every other model: TMD_UDS_send_request() and the
    services on it. It starts at the ECU's own UDS server; TMD_CANTP_set_ids() points it at another node. */
@@ -48,12 +53,6 @@
 **                                    Exported Globals                                            **
 ***************************************************************************************************/
 extern const TMD_INIT_cfg_st sw_test_init_cfg_g;    /* power on, models, blank flash, app_main(): a virgin ECU */
-
-/* What the bootloader found in the handoff RAM at the last start of the ECU, 0 for a start the application did not hand over at. The FBL model
-   takes them, as the FBL does at its start: the baud rate a LinkControl (0x87) hand-over asks for, and the response it owes (BOOT_HANDOFF_RESPONSE_*).
-   The model does not run the FBL's comms, so what it sends at that baud rate is not here to see */
-extern u8_t sw_test_fbl_baud_param_g;
-extern u8_t sw_test_fbl_response_owed_g;
 
 /***************************************************************************************************
 **                                    Function Prototypes                                        **

@@ -51,12 +51,12 @@ extern CPS_instance_st    cps_crank_instance_s;
 STATIC const SCHED_entry_st app_sched_table_s[] =
 {
 	{ TIME_increment_time,            SCHED_PERIOD_10MS,     0u },
-	{ sched_cfg_mcp2515_tick,         SCHED_PERIOD_5MS,      0u },
-	{ DIAG_GW_tick,                   SCHED_PERIOD_5MS,      0u },
+	{ sched_cfg_mcp2515_tick,         SCHED_PERIOD_2MS,      0u },
+	{ DIAG_GW_tick,                   SCHED_PERIOD_2MS,      0u },
 	{ UDS_CLIENT_tick,                SCHED_PERIOD_10MS,     0u },
 	{ NODE_INFO_tick,                 SCHED_PERIOD_100MS,    0u },
-	{ CANIF_tick,                     SCHED_PERIOD_5MS,      0u },
-	{ sched_cfg_cantp_tick,           SCHED_PERIOD_5MS,      0u }, 
+	{ CANIF_tick,                     SCHED_PERIOD_2MS,      0u },
+	{ sched_cfg_cantp_tick,           SCHED_PERIOD_2MS,      0u },
 	{ UDS_tick,                       SCHED_PERIOD_10MS,     0u },
 	{ MSG_SCHED_tick,                 SCHED_PERIOD_20MS,     0u },
 	{ sched_cfg_cps_tick,             SCHED_PERIOD_20MS,     0u },
@@ -65,7 +65,7 @@ STATIC const SCHED_entry_st app_sched_table_s[] =
 	/* Not fitted on BLUE_PILL (CAN, ERX and UDS only): the display and buzzer, WiFi and cloud, the onboard button,
 	   the radio, and the vehicle simulation. The vehicle simulation keeps its order - the TCU feeds the engine
 	   simulation, which feeds the clusters. */
-	{ HMI_SH1106_tick,                SCHED_PERIOD_10MS,     SCHED_PERIOD_5MS },   /* blocking OLED writes (~6 ms) kept off the gateway's passes */
+	{ HMI_SH1106_tick,                SCHED_PERIOD_10MS,     SCHED_PERIOD_2MS },   /* blocking OLED writes (~6 ms): the gateway's next passes wait for them */
 	{ sched_cfg_buzzer_tick,          SCHED_PERIOD_20MS,     0u },
 	{ ESP01_tick,                     SCHED_PERIOD_10MS,     0u },
 	{ WIFI_tick,                      SCHED_PERIOD_10MS,     0u },   /* after ESP01_tick, before TB_tick */
