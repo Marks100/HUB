@@ -78,35 +78,38 @@ const NVM_GEN2_hw_interface_st nvm_gen2_hw_interface_s =
 };
 
 /***************************************************************************************************
-**                              AUTOCFG (follows the ERXs' heartbeats; the HUB does not run the AUTOCFG protocol)            **
+**                              AUTOCFG and ERX_MGR (the HUB powers the ERX ports and follows the ERXs; it does not run the AUTOCFG protocol)  **
 ***************************************************************************************************/
-/* Each port's ERX supply enable is a pin, HIGH = on (HAL_config.h). With autocfg_enabled FALSE, AUTOCFG_init()
-   switches on the ports that have an ERX configured and nothing switches them off. */
-STATIC void app_autocfg_port_0_power( AUTOCFG_port_power_state_et state )
+/* The HUB controls the power of its ERX ports: each port's ERX supply enable is a pin, HIGH = on (HAL_config.h). ERX_MGR switches them, for
+   AUTOCFG too: with autocfg_enabled FALSE, AUTOCFG_init() switches on the ports that have an ERX configured and nothing switches them off. */
+STATIC void app_erx_mgr_port_0_power( ERX_MGR_port_power_state_et state )
 {
-    HAL_BRD_set_pin_state( ERX_PORT_0_PWR_PORT, ERX_PORT_0_PWR_PIN, ( state == PORT_POWER_ON ) ? HIGH : LOW );
+    HAL_BRD_set_pin_state( ERX_PORT_0_PWR_PORT, ERX_PORT_0_PWR_PIN, ( state == ERX_MGR_PORT_POWER_ON ) ? HIGH : LOW );
 }
 
-STATIC void app_autocfg_port_1_power( AUTOCFG_port_power_state_et state )
+STATIC void app_erx_mgr_port_1_power( ERX_MGR_port_power_state_et state )
 {
-    HAL_BRD_set_pin_state( ERX_PORT_1_PWR_PORT, ERX_PORT_1_PWR_PIN, ( state == PORT_POWER_ON ) ? HIGH : LOW );
+    HAL_BRD_set_pin_state( ERX_PORT_1_PWR_PORT, ERX_PORT_1_PWR_PIN, ( state == ERX_MGR_PORT_POWER_ON ) ? HIGH : LOW );
 }
 
-/* The ERXs the HUB follows and powers: the port each is on and its ISO position, at most AUTOCFG_V2_MAX_ERX_PER_PORT
-   per port. A port with no row is not powered. */
+/* Where each ERX the HUB follows and powers is to live: its ISO position, by port and slot, at most ERX_MGR_MAX_ERX_PER_PORT
+   per port. A port with no ERX is not powered. AUTOCFG gives the ERXs these positions. */
+const ERX_MGR_init_st app_erx_mgr_init_s =
+{
+    .port_pwr_ctrl       = { app_erx_mgr_port_0_power, app_erx_mgr_port_1_power },
+    .erx_iso_position    =
+    {
+        { APP_ISO_AXLE_1_CENTRE },        /* port 0: slot 0, then 1, 2... */
+        { APP_ISO_AXLE_1_OUTER_LEFT }     /* port 1 */
+    }
+};
+
 const AUTOCFG_init_st app_autocfg_init_s =
 {
     .get_time_ms         = TIME_get_cumulative_run_time_ms,
     .has_time_elapsed_ms = TIME_has_time_elapsed_ms,
-    .port_pwr_ctrl       = { app_autocfg_port_0_power, app_autocfg_port_1_power },
-    .erx_locations       =
-    {
-        { 0u, APP_ISO_AXLE_1_CENTRE },
-        { 1u, APP_ISO_AXLE_1_OUTER_LEFT }
-    },
     .autocfg_enabled     = FALSE
 };
-
 /***************************************************************************************************
 **                              WDG                                                               **
 ***************************************************************************************************/
@@ -437,13 +440,20 @@ STATIC pass_fail_et app_diag_gw_tx( PDUR_pdu_id_t tx_pdu_id, const u8_t* data_p,
     return( result );
 }
 
+/* A node is the ISO position of an ERX, APP_ISO_POSITION_FIRST + node, which DIAG_GW passes. An ERX in its bootloader sends no heartbeat,
+   so while the tester updates one ERX_MGR does not flag it lost. */
+STATIC void app_diag_gw_node_update( u8_t iso_position, false_true_et updating )
+{
+    ERX_MGR_set_erx_updating( iso_position, updating );
+}
+
 /* The tester owns a node until it has been quiet longer than S3 (5 s) and P2* (5.5 s); the HUB then keeps it for
    at most 1 s per reply. Placeholders until the nodes' own values are known. */
 const DIAG_GW_cfg_st app_diag_gw_cfg_s =
 {
     .tester_idle_ms   = 5500u,
     .local_ms         = 1000u,
-    .node_available_func_p = AUTOCFG_is_erx_available,    /* a node is the ISO position of an ERX, APP_ISO_POSITION_FIRST + node: only one that is configured, powered and heard is reserved */
+    .node_available_func_p = ERX_MGR_is_erx_available,    /* a node is the ISO position of an ERX, APP_ISO_POSITION_FIRST + node: only one that is configured and heard is reserved */
     .time_ms_func_p   = TIME_get_cumulative_run_time_ms,
     .set_tx_id_func_p = CANIF_set_dynamic_tx_id,
     .tx_func_p        = app_diag_gw_tx,
@@ -455,7 +465,8 @@ const DIAG_GW_cfg_st app_diag_gw_cfg_s =
     .response_base_id = APP_NODE_RESPONSE_BASE_ID,
     .node_available_base = APP_ISO_POSITION_FIRST,
     .to_tester_fc_min_stmin_ms = 1u,    /* a frame is about 1 ms on CAN2 (125 kbit/s), and the MCP2515 driver, run every 2 ms, loads up to three: 1 ms a frame is the bus's own rate */
-    .to_node_fc_min_stmin_ms   = 1u     /* the MCP2515 has two receive buffers and is read every 2 ms: a node at 1 ms a frame fills two in that */
+    .to_node_fc_min_stmin_ms   = 1u,    /* the MCP2515 has two receive buffers and is read every 2 ms: a node at 1 ms a frame fills two in that */
+    .node_update_func_p        = app_diag_gw_node_update
 };
 
 /***************************************************************************************************
@@ -479,7 +490,7 @@ STATIC const CANIF_rx_pdu_st canif_main_rx_pdus_s[] =
 STATIC const CANIF_rx_pdu_st canif_can2_rx_pdus_s[] =
 {
     { APP_NODE_RESPONSE_BASE_ID,   CANIF_TO_PDUR, APP_PDU_GW_NODE,           APP_NODE_RESPONSE_LAST_ID },
-    { AUTOCFG_HEARTBEAT_BASE_ID + APP_ISO_POSITION_FIRST, CANIF_TO_PDUR, APP_PDU_ERX_HEARTBEAT_RX, AUTOCFG_HEARTBEAT_BASE_ID + APP_ISO_POSITION_LAST },
+    { ERX_MGR_HEARTBEAT_BASE_ID + APP_ISO_POSITION_FIRST, CANIF_TO_PDUR, APP_PDU_ERX_HEARTBEAT_RX, ERX_MGR_HEARTBEAT_BASE_ID + APP_ISO_POSITION_LAST },
 };
 
 /* Row index = channel number. A second bus is one more row. */
@@ -608,12 +619,12 @@ const u16_t canif_num_tx_pdus_s = (u16_t)( sizeof( canif_tx_pdus_s ) / sizeof( c
 /***************************************************************************************************
 **                              PDUR                                                              **
 ***************************************************************************************************/
-/* PDUR's receive shape with the CAN ID, to AUTOCFG's heartbeat consumer */
+/* PDUR's receive shape with the CAN ID, to ERX_MGR's heartbeat consumer */
 STATIC void app_pdur_erx_heartbeat_rx( PDUR_pdu_id_t pdu_id, u32_t id, u8_t* data_p, u16_t len )
 {
     (void)pdu_id;
 
-    AUTOCFG_receive_heartbeat( id, data_p, len );
+    ERX_MGR_receive_heartbeat( id, data_p, len );
 }
 
 /* Routes by PDU ID alone - no CAN ID, channel or medium. What a route sends with and receives from is the
@@ -665,7 +676,7 @@ const PDUR_route_st pdur_routing_table_s[] =
     [APP_PDU_GW_TESTER] = { .upperLayerRxIndicationId = DIAG_GW_tester_rx },
     [APP_PDU_GW_NODE]   = { .upperLayerRxIndicationId = DIAG_GW_node_rx },
 
-    /* AUTOCFG follows the ERXs' heartbeats: the ISO position is in the ID, which PDUR passes up */
+    /* ERX_MGR follows the ERXs' heartbeats: the ISO position is in the ID, which PDUR passes up */
     [APP_PDU_ERX_HEARTBEAT_RX] = { .upperLayerRxIndicationId = app_pdur_erx_heartbeat_rx },
 
     /* Plain-frame routes - CANIF sends by PDU ID (its transmit table) and queues what the controller's

@@ -7,7 +7,7 @@
 *               response of this size sends a first frame and waits for the tester's flow control. The tester is the UDS tester
 *               model (TMD_UDS), which every test starts pointed at the ECU's own server (SW_TEST_ECU_UDS_REQUEST_ID) and which
 *               answers that and puts the frames together. The HUB follows the front axle's centre line (slot 0 of port 0) and
-*               outer left wheel (slot 0 of port 1), app_autocfg_init_s. The ERXs are TMD_ERX instances on CAN2, powered
+*               outer left wheel (slot 0 of port 1), app_erx_mgr_init_s. The ERXs are TMD_ERX instances on CAN2, powered
 *               by the HUB's own supply pins, so what the tester reads is what the ECU made of their heartbeats. Every test
 *               case starts as a virgin ECU with no ERX placed (setUp, SW_TEST_STUBS.c).
 */
@@ -26,8 +26,8 @@
 
 #include "SW_TEST_STUBS.h"
 
-#define TEST_SLOT                   ( AUTOCFG_HEARTBEAT_INFO_SLOT_SIZE )    /* the record of a slot starts at slot * TEST_SLOT */
-#define TEST_PORT_1                 ( AUTOCFG_V2_MAX_ERX_PER_PORT * TEST_SLOT )    /* the records of port 1 start here: the centre line is port 0's, the outer left wheel port 1's */
+#define TEST_SLOT                   ( ERX_MGR_HEARTBEAT_INFO_SLOT_SIZE )    /* the record of a slot starts at slot * TEST_SLOT */
+#define TEST_PORT_1                 ( ERX_MGR_MAX_ERX_PER_PORT * TEST_SLOT )    /* the records of port 1 start here: the centre line is port 0's, the outer left wheel port 1's */
 
 /*!
 ****************************************************************************************************
@@ -74,7 +74,7 @@ void test_a_tester_reads_the_erx_heartbeat_state( void )
     TMD_TIME_advance_time_ms( 2100u );    /* four heartbeats, the last carrying the 2 seconds */
 
     TEST_ASSERT_EQUAL( TMD_UDS_RESULT_OK, TMD_UDS_read_data_by_identifier( DID_APP_ERX_HEARTBEATS, data, sizeof( data ), &len, NULL_P ) );
-    TEST_ASSERT_EQUAL_UINT16( AUTOCFG_HEARTBEAT_INFO_SIZE, len );
+    TEST_ASSERT_EQUAL_UINT16( ERX_MGR_HEARTBEAT_INFO_SIZE, len );
 
     /* Port 0, slot 0: the centre line, unplugged. Only the position. */
     TEST_ASSERT_EQUAL_HEX8( APP_ISO_AXLE_1_CENTRE, data[0u] );
@@ -85,7 +85,7 @@ void test_a_tester_reads_the_erx_heartbeat_state( void )
 
     /* Port 1, slot 0: the outer left wheel, alive, 4 frames, counter 2 */
     TEST_ASSERT_EQUAL_HEX8( APP_ISO_AXLE_1_OUTER_LEFT, data[TEST_PORT_1] );
-    TEST_ASSERT_EQUAL_HEX8( AUTOCFG_HEARTBEAT_INFO_ALIVE, data[TEST_PORT_1 + 1u] );
+    TEST_ASSERT_EQUAL_HEX8( ERX_MGR_HEARTBEAT_INFO_ALIVE, data[TEST_PORT_1 + 1u] );
     TEST_ASSERT_EQUAL_UINT32( 4u, STDC_make_32bit( data[TEST_PORT_1 + 2u], data[TEST_PORT_1 + 3u], data[TEST_PORT_1 + 4u], data[TEST_PORT_1 + 5u] ) );
     TEST_ASSERT_EQUAL_UINT32( 2u, STDC_make_32bit( data[TEST_PORT_1 + 6u], data[TEST_PORT_1 + 7u], data[TEST_PORT_1 + 8u], data[TEST_PORT_1 + 9u] ) );
 
@@ -111,13 +111,13 @@ void test_a_tester_sees_an_erx_that_was_unplugged_as_lost( void )
 
     TMD_TIME_advance_time_ms( 1000u );    /* two heartbeats */
     TMD_ERX_unplug_instance( TMD_ERX_find_instance( APP_ISO_AXLE_1_OUTER_LEFT ) );    /* unplugged */
-    TMD_TIME_advance_time_ms( AUTOCFG_HEARTBEAT_TIMEOUT_MS + 100u );    /* the timeout without a heartbeat */
+    TMD_TIME_advance_time_ms( ERX_MGR_HEARTBEAT_TIMEOUT_MS + 100u );    /* the timeout without a heartbeat */
 
     TEST_ASSERT_EQUAL( TMD_UDS_RESULT_OK, TMD_UDS_read_data_by_identifier( DID_APP_ERX_HEARTBEATS, data, sizeof( data ), &len, NULL_P ) );
 
-    TEST_ASSERT_EQUAL_UINT16( AUTOCFG_HEARTBEAT_INFO_SIZE, len );
+    TEST_ASSERT_EQUAL_UINT16( ERX_MGR_HEARTBEAT_INFO_SIZE, len );
     TEST_ASSERT_EQUAL_HEX8( APP_ISO_AXLE_1_OUTER_LEFT, data[TEST_PORT_1] );
-    TEST_ASSERT_EQUAL_HEX8( AUTOCFG_HEARTBEAT_INFO_LOST, data[TEST_PORT_1 + 1u] );
+    TEST_ASSERT_EQUAL_HEX8( ERX_MGR_HEARTBEAT_INFO_LOST, data[TEST_PORT_1 + 1u] );
     TEST_ASSERT_EQUAL_UINT32( 2u, STDC_make_32bit( data[TEST_PORT_1 + 2u], data[TEST_PORT_1 + 3u], data[TEST_PORT_1 + 4u], data[TEST_PORT_1 + 5u] ) );
 }
 
@@ -140,12 +140,12 @@ void test_a_tester_sees_an_erx_that_was_never_plugged_in_as_lost( void )
 
     TMD_ERX_place_instance( APP_ISO_AXLE_1_CENTRE, TMD_ERX_PORT_A );
     TMD_ERX_unplug_instance( TMD_ERX_find_instance( APP_ISO_AXLE_1_CENTRE ) );    /* unplugged from the start */
-    TMD_TIME_advance_time_ms( AUTOCFG_HEARTBEAT_TIMEOUT_MS + 100u );
+    TMD_TIME_advance_time_ms( ERX_MGR_HEARTBEAT_TIMEOUT_MS + 100u );
 
     TEST_ASSERT_EQUAL( TMD_UDS_RESULT_OK, TMD_UDS_read_data_by_identifier( DID_APP_ERX_HEARTBEATS, data, sizeof( data ), &len, NULL_P ) );
 
     TEST_ASSERT_EQUAL_HEX8( APP_ISO_AXLE_1_CENTRE, data[0u] );
-    TEST_ASSERT_EQUAL_HEX8( AUTOCFG_HEARTBEAT_INFO_LOST, data[1u] );
+    TEST_ASSERT_EQUAL_HEX8( ERX_MGR_HEARTBEAT_INFO_LOST, data[1u] );
     TEST_ASSERT_EQUAL_HEX8_ARRAY( empty, &data[2u], TEST_SLOT - 2u );
 }
 

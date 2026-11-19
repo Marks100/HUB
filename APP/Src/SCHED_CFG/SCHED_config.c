@@ -82,7 +82,8 @@ STATIC const SCHED_entry_st app_sched_table_s[] =
 	{ MRA_CLUSTER_tick,               SCHED_PERIOD_20MS,     0u },
 #endif /* HW_VARIANT == SUPER_PILL */
 	{ NVM_GEN2_tick,                  SCHED_PERIOD_50MS,     0u },
-	{ AUTOCFG_tick,                   SCHED_PERIOD_50MS,     0u },   /* autocfg_enabled is FALSE: follows the ERXs' heartbeats, no master */
+	{ AUTOCFG_tick,                   SCHED_PERIOD_50MS,     0u },   /* autocfg_enabled is FALSE: only the port fault monitor runs, no master */
+	{ ERX_MGR_tick,                   SCHED_PERIOD_50MS,     0u },   /* flags the ERXs whose heartbeat went missing */
 
 	/* Kicked last, so a kick means a whole pass completed - a callout that hangs part-way
 	   through stops the kicks */

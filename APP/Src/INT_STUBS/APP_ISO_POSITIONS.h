@@ -5,7 +5,7 @@
 **                              Defines                                                           **
 ***************************************************************************************************/
 /* The ISO positions an ERX can be at: five wheel positions on each of five axles. The ones used for the heartbeat
-   (AUTOCFG_HEARTBEAT_BASE_ID plus the position), the diagnostic IDs (0x600/0x700 plus the position) and the
+   (ERX_MGR_HEARTBEAT_BASE_ID plus the position), the diagnostic IDs (0x600/0x700 plus the position) and the
    HUB's own configuration (app_autocfg_init_s, INTEGRATION_STUBS.c) are these and no others.
 
    The tens digit is the axle, the units digit the wheel: 6 far left, 7 inner left, 8 centre line, 9 inner right,

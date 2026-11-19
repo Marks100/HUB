@@ -148,6 +148,7 @@ void app_main( void )
    DIAG_GW_init( &app_diag_gw_cfg_s );
    UDS_CLIENT_init( &app_uds_client_cfg_s );
    NODE_INFO_init();
+   ERX_MGR_init( &app_erx_mgr_init_s );    /* first: AUTOCFG works out its ports from ERX_MGR's table */
    AUTOCFG_init( &app_autocfg_init_s );
    HAL_CAN_set_rx_callback( APP_CAN_CH_MAIN, CANIF_rx_indication );
 

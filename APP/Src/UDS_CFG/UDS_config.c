@@ -588,15 +588,15 @@ STATIC u8_t uds_handle_read_app_sw_id( u16_t subfunc, u8_t* data_p, u16_t* len_p
 /*!
 ****************************************************************************************************
 *   \brief         0x22 ReadDataByIdentifier - the ERX heartbeat state (DID_APP_ERX_HEARTBEATS)
-*   \details       AUTOCFG_HEARTBEAT_INFO_SIZE bytes, one record per ISO position slot: see
-*                  AUTOCFG_get_erx_heartbeat_info() for the layout. Any session, no security, like the identification
+*   \details       ERX_MGR_HEARTBEAT_INFO_SIZE bytes, one record per ISO position slot: see
+*                  ERX_MGR_get_erx_heartbeat_info() for the layout. Any session, no security, like the identification
 *                  DIDs: it reports what the HUB hears and changes nothing.
 ***************************************************************************************************/
 STATIC u8_t uds_handle_read_erx_heartbeats( u16_t subfunc, u8_t* data_p, u16_t* len_p, UDS_response_code_et* nrc_p )
 {
     (void)subfunc;
 
-    AUTOCFG_get_erx_heartbeat_info( data_p, len_p );
+    ERX_MGR_get_erx_heartbeat_info( data_p, len_p );
     *nrc_p = UDS_RC_POSITIVE_RESPONSE;
 
     return( 0u );
