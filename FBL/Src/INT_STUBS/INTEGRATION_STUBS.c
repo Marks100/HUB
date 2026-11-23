@@ -96,9 +96,7 @@ STATIC const NVM_GEN2_hw_interface_st fbl_nvm_gen2_hw_interface_s =
     .partition_size     = FLS_STM32F1_PAGE_SIZE,
     .total_size         = NVM_TOTAL_SIZE,
     .erase_func         = FLS_STM32F1_erase_sector,
-    .write_func         = FLS_STM32F1_write_data,
-    .compare_func       = FLS_STM32F1_compare_data,
-    .read_func          = FLS_STM32F1_recover_data
+    .write_func         = FLS_STM32F1_write_data
 };
 
 /* All four blocks FBL registers - IDs, struct shapes, RAM mirrors and NVM_GEN2_block_cfg_st
@@ -398,12 +396,6 @@ STATIC TJA1051_instance_st fbl_tja1051_instance_s;
    difference between fitting and not. Its configuration is the const fbl_cantp_cfg_s below, which CANTP_init() copies in. */
 STATIC CANTP_instance_st fbl_cantp_instance_s;
 
-/* PDUR's lower-layer TX shape, bound to FBL's one instance */
-STATIC pass_fail_et fbl_cantp_transmit( PDUR_pdu_id_t tx_pdu_id, const u8_t* data_p, u16_t len )
-{
-    return( CANTP_tx_request( &fbl_cantp_instance_s, tx_pdu_id, data_p, len ) );
-}
-
 /* The one message buffer CANTP reassembles requests into and UDS builds responses in. Sized for
    FBL's largest request, a full TransferData: SID + blockSequenceCounter + max_transfer_block_len
    of data - enough whether the tester reads maxNumberOfBlockLength as covering those two header
@@ -418,9 +410,9 @@ STATIC u8_t fbl_uds_buffer_s[ FBL_UDS_BUFFER_SIZE ];
    knows PDU IDs only (CAN IDs are in CANIF's two tables below):
    - HAL_CAN RX ISR -> CANIF_rx_indication() (HAL_CAN_set_rx_callback() in fbl_comms_init()), CANIF ->
      CANTP_rx_frame_received() on the channel's cantp_p, by N-PDU.
-   - CANTP -> PDUR: rx_indication_func_p is PDUR_rx_indication(), TP completion goes through
+   - CANTP -> PDUR: rx_indication_func_p is PDUR_rx_data(), TP completion goes through
      PDUR_tx_confirmation(), both by the pair's N-SDU (the route).
-   - PDUR -> CANTP: both routes point at fbl_cantp_transmit (always ISO-TP framed - UDS request/response).
+   - PDUR -> CANTP: both routes point at CANTP_pdur_tx with FBL's CANTP instance (always ISO-TP framed - UDS request/response).
    - CANTP -> driver: can_tx_func_p is CANIF_transmit, by N-PDU.
    FBL has one bus, so every channel involved is 0. */
 
@@ -485,13 +477,13 @@ typedef enum
 } fbl_pdu_id_et;
 
 /* Bidirectional routes: functional (0x700->0x600) and physical (0x7E0->0x7E8). TX goes via CANTP
-   (fbl_cantp_transmit, always TP-framed) so multi-frame UDS responses get segmented. UDS_tx_confirmation tells UDS each response has actually gone out - it holds the
+   (CANTP_pdur_tx, always TP-framed) so multi-frame UDS responses get segmented. UDS_tx_confirmation tells UDS each response has actually gone out - it holds the
    shared buffer and any scheduled reset/APP jump until then. */
 STATIC const PDUR_route_st fbl_pdur_routing_table_s[] =
 {
-    [FBL_PDU_UDS_FUNCTIONAL] = { .upperLayerRxIndication = UDS_rx_indication, .lower_layer_tx_func = fbl_cantp_transmit,
+    [FBL_PDU_UDS_FUNCTIONAL] = { .rx_func = UDS_rx_indication, .tx_func = CANTP_pdur_tx, .tx_ctx_p = &fbl_cantp_instance_s,
       .txConfirmation = UDS_tx_confirmation },
-    [FBL_PDU_UDS_PHYSICAL] = { .upperLayerRxIndication = UDS_rx_indication, .lower_layer_tx_func = fbl_cantp_transmit,
+    [FBL_PDU_UDS_PHYSICAL] = { .rx_func = UDS_rx_indication, .tx_func = CANTP_pdur_tx, .tx_ctx_p = &fbl_cantp_instance_s,
       .txConfirmation = UDS_tx_confirmation },
 };
 
@@ -501,8 +493,8 @@ STATIC false_true_et fbl_uds_is_functional_route( UDS_route_id_t route_id )
     return( ( route_id == (UDS_route_id_t)FBL_PDU_UDS_FUNCTIONAL ) ? TRUE : FALSE );
 }
 
-/* UDS_init_cfg_st.tp_send_func_p is assigned PDUR_tx directly below - PDUR_pdu_id_t and
-   UDS_route_id_t are both u16_t and PDUR_tx's pass_fail_et return now matches the typedef exactly
+/* UDS_init_cfg_st.tp_send_func_p is assigned PDUR_tx_data directly below - PDUR_pdu_id_t and
+   UDS_route_id_t are both u16_t and PDUR_tx_data's pass_fail_et return now matches the typedef exactly
    (see UDS_init_cfg_st's comment in UDS.h), so no adapter is needed. route_id is whatever
    UDS_rx_indication() was called with for the request this response answers (UDS.c just stores and
    returns it, see UDS_ctrl_st.req_route_id), so a request received via FBL_PDU_UDS_PHYSICAL gets
@@ -515,7 +507,7 @@ STATIC false_true_et fbl_uds_is_functional_route( UDS_route_id_t route_id )
    UDS_func_p_st here - both moved into UDS_config.c service table rows (ecu_reset_cfg_s /
    tester_present_cfg_s, SID 0x11 / 0x3E - see UDS_ecu_reset_cfg_st/UDS_tester_present_cfg_st in
    UDS.h). FBL manages its own 30s boot delay rather than using UDS.c's S3 timeout (there is no
-   s3_timeout_notify hook any more). tp_send_func_p/message_received_notify (PDUR_tx /
+   s3_timeout_notify hook any more). tp_send_func_p/message_received_notify (PDUR_tx_data /
    FBL_reset_auto_boot_timer - the latter covers the "any SID" half of keeping FBL's boot-delay
    timer fresh; TesterPresent's own half is tester_present_cfg_s above) are now assigned directly
    in fbl_uds_init_cfg_s below instead of a separate wrapper object - see UDS_init_cfg_st's comment
@@ -524,7 +516,7 @@ STATIC false_true_et fbl_uds_is_functional_route( UDS_route_id_t route_id )
 /* The CAN-TP instance's configuration, copied into fbl_cantp_instance_s by CANTP_init() */
 STATIC const CANTP_cfg_st fbl_cantp_cfg_s =
 {
-    .rx_indication_func_p    = PDUR_rx_indication,
+    .rx_indication_func_p    = PDUR_rx_data,
     .tx_confirm_func_p       = PDUR_tx_confirmation,
     .can_tx_func_p           = CANIF_transmit,
     .rx_buffer_p             = fbl_uds_buffer_s,
@@ -588,7 +580,7 @@ STATIC void fbl_comms_init( void )
        comment, FBL.c). */
     const UDS_init_cfg_st fbl_uds_init_cfg_s =
     {
-        .tp_send_func_p          = PDUR_tx,
+        .tp_send_func_p          = PDUR_tx_data,
         .message_received_notify = FBL_reset_auto_boot_timer,
         .service_table_p         = UDS_get_service_table(),
         .service_table_size      = UDS_get_service_table_size(),
@@ -609,7 +601,7 @@ STATIC void fbl_comms_init( void )
     {
         fbl_uds_buffer_s[0u] = (u8_t)( UDS_SID_LINK_CONTROL + UDS_POSITIVE_RESPONSE_SID );
         fbl_uds_buffer_s[1u] = FBL_LINK_CONTROL_VERIFY_SUBFUNC;
-        (void)PDUR_tx( FBL_PDU_UDS_PHYSICAL, fbl_uds_buffer_s, 2u );
+        (void)PDUR_tx_data( FBL_PDU_UDS_PHYSICAL, fbl_uds_buffer_s, 2u );
     }
 
     BOOT_HANDOFF_set_baud_param( 0u );

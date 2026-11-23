@@ -73,8 +73,7 @@ const NVM_GEN2_hw_interface_st nvm_gen2_hw_interface_s =
     .total_size     = NVM_TOTAL_SIZE,
     .erase_func     = FLS_STM32F1_erase_sector,
     .write_func     = FLS_STM32F1_write_data,
-    .compare_func   = FLS_STM32F1_compare_data,
-    .read_func      = FLS_STM32F1_recover_data
+    .write_align    = 2u    /* the STM32F1 programs a half-word at a time */
 };
 
 /***************************************************************************************************
@@ -82,22 +81,47 @@ const NVM_GEN2_hw_interface_st nvm_gen2_hw_interface_s =
 ***************************************************************************************************/
 /* The HUB controls the power of its ERX ports: each port's ERX supply enable is a pin, HIGH = on (HAL_config.h). ERX_MGR switches them, for
    AUTOCFG too: with autocfg_enabled FALSE, AUTOCFG_init() switches on the ports that have an ERX configured and nothing switches them off. */
-STATIC void app_erx_mgr_port_0_power( ERX_MGR_port_power_state_et state )
+STATIC void app_erx_mgr_port_power( u8_t port, ERX_MGR_port_power_state_et state )
 {
-    HAL_BRD_set_pin_state( ERX_PORT_0_PWR_PORT, ERX_PORT_0_PWR_PIN, ( state == ERX_MGR_PORT_POWER_ON ) ? HIGH : LOW );
+    low_high_et level = ( state == ERX_MGR_PORT_POWER_ON ) ? HIGH : LOW;
+
+    if( port == 0u )
+    {
+        HAL_BRD_set_pin_state( ERX_PORT_0_PWR_PORT, ERX_PORT_0_PWR_PIN, level );
+    }
+    else if( port == 1u )
+    {
+        HAL_BRD_set_pin_state( ERX_PORT_1_PWR_PORT, ERX_PORT_1_PWR_PIN, level );
+    }
+    else
+    {
+        /* The HUB has two ERX ports */
+    }
 }
 
-STATIC void app_erx_mgr_port_1_power( ERX_MGR_port_power_state_et state )
+/* ERX_MGR's one transmit goes down PDUR on one route, on the CAN ID it is given. The ERXs are on CAN2 (see the CANIF tables below) */
+STATIC pass_fail_et app_erx_mgr_tx( u32_t id, u8_t* data_p, u16_t len )
 {
-    HAL_BRD_set_pin_state( ERX_PORT_1_PWR_PORT, ERX_PORT_1_PWR_PIN, ( state == ERX_MGR_PORT_POWER_ON ) ? HIGH : LOW );
+    COMSTACK_pdu_info_st info;
+
+    info.sdu_p   = data_p;
+    info.sdu_len = len;
+    info.id_p    = &id;
+
+    return( PDUR_tx( APP_PDU_ERX_TX, &info ) );
 }
+
+const ERX_MGR_init_st app_erx_mgr_init_s =
+{
+    .port_pwr_ctrl       = app_erx_mgr_port_power,
+    .tx_func_p           = app_erx_mgr_tx
+};
 
 /* Where each ERX the HUB follows and powers is to live: its ISO position, by port and slot, at most ERX_MGR_MAX_ERX_PER_PORT
    per port. A port with no ERX is not powered. AUTOCFG gives the ERXs these positions. */
-const ERX_MGR_init_st app_erx_mgr_init_s =
+const ERX_MGR_positions_st app_erx_mgr_positions_s =
 {
-    .port_pwr_ctrl       = { app_erx_mgr_port_0_power, app_erx_mgr_port_1_power },
-    .erx_iso_position    =
+    .iso_position        =
     {
         { APP_ISO_AXLE_1_CENTRE },        /* port 0: slot 0, then 1, 2... */
         { APP_ISO_AXLE_1_OUTER_LEFT }     /* port 1 */
@@ -106,10 +130,15 @@ const ERX_MGR_init_st app_erx_mgr_init_s =
 
 const AUTOCFG_init_st app_autocfg_init_s =
 {
-    .get_time_ms         = TIME_get_cumulative_run_time_ms,
-    .has_time_elapsed_ms = TIME_has_time_elapsed_ms,
     .autocfg_enabled     = FALSE
 };
+
+/* No consumer for the finished RF frames yet: they are put together and dropped */
+const ERX_RF_init_st app_erx_rf_init_s =
+{
+    .info_complete       = NULL_P
+};
+
 /***************************************************************************************************
 **                              WDG                                                               **
 ***************************************************************************************************/
@@ -333,7 +362,7 @@ u8_t app_uds_buffer_g[ APP_UDS_BUFFER_SIZE ];
 
 const CANTP_cfg_st app_cantp_cfg_s =
 {
-    .rx_indication_func_p = PDUR_rx_indication,
+    .rx_indication_func_p = PDUR_rx_data,
     .tx_confirm_func_p    = PDUR_tx_confirmation,
     .can_tx_func_p        = CANIF_transmit,
     .rx_buffer_p          = app_uds_buffer_g,
@@ -353,18 +382,9 @@ const CANTP_cfg_st app_cantp_cfg_s =
 CANTP_instance_st app_cantp2_instance_s;
 u8_t              app_cantp2_rx_buffer_g[ APP_NODE_RESPONSE_BUFFER_SIZE ];
 
-/* PDUR's lower-layer TX shape (it carries no instance), for both buses: the HUB's requests to the nodes go down CAN2's
-   instance, everything else CAN1's */
-STATIC pass_fail_et app_cantp_transmit( PDUR_pdu_id_t tx_pdu_id, const u8_t* data_p, u16_t len )
-{
-    CANTP_instance_st* instance_p = ( tx_pdu_id == APP_PDU_NODE_DIAG ) ? &app_cantp2_instance_s : &app_cantp_instance_s;
-
-    return( CANTP_tx_request( instance_p, tx_pdu_id, data_p, len ) );
-}
-
 const CANTP_cfg_st app_cantp2_cfg_s =
 {
-    .rx_indication_func_p = PDUR_rx_indication,
+    .rx_indication_func_p = PDUR_rx_data,
     .tx_confirm_func_p    = PDUR_tx_confirmation,
     .can_tx_func_p        = CANIF_transmit,   /* the transmit N-PDU covers every node request ID: DIAG_GW_local_reserve() sets the node's */
     .rx_buffer_p          = app_cantp2_rx_buffer_g,
@@ -419,16 +439,22 @@ volatile u32_t app_diag_gw_to_node_count_g   = 0u;
 volatile u32_t app_diag_gw_to_tester_count_g = 0u;
 volatile u32_t app_diag_gw_tx_fail_count_g   = 0u;
 
-/* CANIF_transmit, counting the frames sent or queued per direction and the ones CANIF refused */
-STATIC pass_fail_et app_diag_gw_tx( PDUR_pdu_id_t tx_pdu_id, const u8_t* data_p, u16_t len )
+/* PDUR_tx of a frame on the CAN ID it came in with, counting the frames sent or queued per direction and the ones CANIF refused */
+STATIC pass_fail_et app_diag_gw_tx( PDUR_pdu_id_t tx_pdu_id, u32_t id, u8_t* data_p, u16_t len )
 {
-    pass_fail_et result = CANIF_transmit( tx_pdu_id, data_p, len );
+    COMSTACK_pdu_info_st info;
+    pass_fail_et         result;
+
+    info.sdu_p   = data_p;
+    info.sdu_len = len;
+    info.id_p    = &id;
+    result       = PDUR_tx( tx_pdu_id, &info );
 
     if( result != PASS )
     {
         app_diag_gw_tx_fail_count_g++;
     }
-    else if( tx_pdu_id == (PDUR_pdu_id_t)APP_CANIF_PDU_GW_NODE_TX )
+    else if( tx_pdu_id == (PDUR_pdu_id_t)APP_PDU_GW_NODE_TX )
     {
         app_diag_gw_to_node_count_g++;
     }
@@ -438,6 +464,24 @@ STATIC pass_fail_et app_diag_gw_tx( PDUR_pdu_id_t tx_pdu_id, const u8_t* data_p,
     }
 
     return( result );
+}
+
+/* The nodes' bus: the tester's requests, on every node's request ID */
+STATIC pass_fail_et app_diag_gw_send_to_node( u32_t id, u8_t* data_p, u16_t len )
+{
+    return( app_diag_gw_tx( APP_PDU_GW_NODE_TX, id, data_p, len ) );
+}
+
+/* The tester's bus: the nodes' responses, on every node's response ID */
+STATIC pass_fail_et app_diag_gw_send_to_tester( u32_t id, u8_t* data_p, u16_t len )
+{
+    return( app_diag_gw_tx( APP_PDU_GW_TESTER_TX, id, data_p, len ) );
+}
+
+/* The HUB's own CANTP sends its requests and flow controls on the one transmit N-PDU: addressed at the node it was granted */
+STATIC pass_fail_et app_diag_gw_set_local_tx_id( u32_t id )
+{
+    return( CANIF_set_dynamic_tx_id( APP_CANIF_PDU_HUB_TX, id ) );
 }
 
 /* A node is the ISO position of an ERX, APP_ISO_POSITION_FIRST + node, which DIAG_GW passes. An ERX in its bootloader sends no heartbeat,
@@ -455,12 +499,10 @@ const DIAG_GW_cfg_st app_diag_gw_cfg_s =
     .local_ms         = 1000u,
     .node_available_func_p = ERX_MGR_is_erx_available,    /* a node is the ISO position of an ERX, APP_ISO_POSITION_FIRST + node: only one that is configured and heard is reserved */
     .time_ms_func_p   = TIME_get_cumulative_run_time_ms,
-    .set_tx_id_func_p = CANIF_set_dynamic_tx_id,
-    .tx_func_p        = app_diag_gw_tx,
+    .send_to_node_func_p   = app_diag_gw_send_to_node,
+    .send_to_tester_func_p = app_diag_gw_send_to_tester,
+    .set_local_tx_id_func_p = app_diag_gw_set_local_tx_id,
     .to_local_func_p  = app_diag_gw_to_hub,
-    .node_tx_pdu_id   = APP_CANIF_PDU_GW_NODE_TX,
-    .tester_tx_pdu_id = APP_CANIF_PDU_GW_TESTER_TX,
-    .local_tx_pdu_id  = APP_CANIF_PDU_HUB_TX,
     .request_base_id  = APP_NODE_REQUEST_BASE_ID,
     .response_base_id = APP_NODE_RESPONSE_BASE_ID,
     .node_available_base = APP_ISO_POSITION_FIRST,
@@ -526,10 +568,14 @@ const CANIF_tx_pdu_st canif_tx_pdus_s[] =
     { APP_CANIF_PDU_UDS_FUNC_TX,  APP_CAN_CH_MAIN, 0u, APP_UDS_RESPONSE_ID },
     { APP_CANIF_PDU_UDS_PHYS_TX,  APP_CAN_CH_MAIN, 0u, APP_CAN_TX_ID },
     { APP_CANIF_PDU_HUB_TX,       APP_CAN_CH_CAN2, 0u, APP_NODE_REQUEST_BASE_ID,  APP_NODE_REQUEST_LAST_ID },
-    { APP_CANIF_PDU_GW_NODE_TX,   APP_CAN_CH_CAN2, 0u, APP_NODE_REQUEST_BASE_ID,  APP_NODE_REQUEST_LAST_ID },
-    { APP_CANIF_PDU_GW_TESTER_TX, APP_CAN_CH_MAIN, 0u, APP_NODE_RESPONSE_BASE_ID, APP_NODE_RESPONSE_LAST_ID },
 
     /* Plain-frame routes */
+    /* The gateway's: every node ID of its range, on the ID of the frame it relays */
+    { APP_PDU_GW_NODE_TX,         APP_CAN_CH_CAN2, 0u, APP_NODE_REQUEST_BASE_ID,  APP_NODE_REQUEST_LAST_ID },
+    { APP_PDU_GW_TESTER_TX,       APP_CAN_CH_MAIN, 0u, APP_NODE_RESPONSE_BASE_ID, APP_NODE_RESPONSE_LAST_ID },
+    /* The ERX folder's */
+    /* Its IDs are the folder's own: AUTOCFG_STATUS_MSG_ID (0x001), ERX_MGR_POWERSTAT_MSG_ID (0x100) and AUTOCFG_REQ_MESSAGE_ID (0x101) */
+    { APP_PDU_ERX_TX,             APP_CAN_CH_CAN2, 0u, AUTOCFG_STATUS_MSG_ID,     AUTOCFG_REQ_MESSAGE_ID },
     /* Sensor slots, disabled - remove the // to enable. 0x105 clashes with MRA_CLUSTER_RPM_CAN_ID */
     //{ APP_PDU_SENSOR_BASE + 0u,  APP_CAN_CH_MAIN, 0u, 0x100u },
     //{ APP_PDU_SENSOR_BASE + 1u,  APP_CAN_CH_MAIN, 0u, 0x101u },
@@ -619,12 +665,36 @@ const u16_t canif_num_tx_pdus_s = (u16_t)( sizeof( canif_tx_pdus_s ) / sizeof( c
 /***************************************************************************************************
 **                              PDUR                                                              **
 ***************************************************************************************************/
-/* PDUR's receive shape with the CAN ID, to ERX_MGR's heartbeat consumer */
-STATIC void app_pdur_erx_heartbeat_rx( PDUR_pdu_id_t pdu_id, u32_t id, u8_t* data_p, u16_t len )
+/* PDUR's receive shape to ERX_MGR's heartbeat consumer: the CAN ID is the descriptor's meta data, as CANIF maps the whole range to the one route */
+STATIC void app_pdur_erx_heartbeat_rx( PDUR_pdu_id_t pdu_id, const COMSTACK_pdu_info_st* info_p )
 {
     (void)pdu_id;
 
-    ERX_MGR_receive_heartbeat( id, data_p, len );
+    if( ( info_p != NULL_P ) && ( info_p->id_p != NULL_P ) )
+    {
+        ERX_MGR_receive_heartbeat( *info_p->id_p, info_p->sdu_p, info_p->sdu_len );
+    }
+}
+
+/* PDUR's receive shape to DIAG_GW: the CAN ID is the descriptor's meta data, as CANIF maps the whole range to the one route */
+STATIC void app_pdur_gw_tester_rx( PDUR_pdu_id_t pdu_id, const COMSTACK_pdu_info_st* info_p )
+{
+    (void)pdu_id;
+
+    if( ( info_p != NULL_P ) && ( info_p->id_p != NULL_P ) )
+    {
+        DIAG_GW_rx( DIAG_GW_SRC_TESTER, *info_p->id_p, info_p->sdu_p, info_p->sdu_len );
+    }
+}
+
+STATIC void app_pdur_gw_node_rx( PDUR_pdu_id_t pdu_id, const COMSTACK_pdu_info_st* info_p )
+{
+    (void)pdu_id;
+
+    if( ( info_p != NULL_P ) && ( info_p->id_p != NULL_P ) )
+    {
+        DIAG_GW_rx( DIAG_GW_SRC_NODE, *info_p->id_p, info_p->sdu_p, info_p->sdu_len );
+    }
 }
 
 /* Routes by PDU ID alone - no CAN ID, channel or medium. What a route sends with and receives from is the
@@ -632,127 +702,136 @@ STATIC void app_pdur_erx_heartbeat_rx( PDUR_pdu_id_t pdu_id, u32_t id, u8_t* dat
 const PDUR_route_st pdur_routing_table_s[] =
 {
     /* Sensor slots, disabled - remove the // to enable */
-    //[APP_PDU_SENSOR_BASE + 0u]  = { .lower_layer_tx_func = CANIF_transmit },
-    //[APP_PDU_SENSOR_BASE + 1u]  = { .lower_layer_tx_func = CANIF_transmit },
-    //[APP_PDU_SENSOR_BASE + 2u]  = { .lower_layer_tx_func = CANIF_transmit },
-    //[APP_PDU_SENSOR_BASE + 3u]  = { .lower_layer_tx_func = CANIF_transmit },
-    //[APP_PDU_SENSOR_BASE + 4u]  = { .lower_layer_tx_func = CANIF_transmit },
-    //[APP_PDU_SENSOR_BASE + 5u]  = { .lower_layer_tx_func = CANIF_transmit },
-    //[APP_PDU_SENSOR_BASE + 6u]  = { .lower_layer_tx_func = CANIF_transmit },
-    //[APP_PDU_SENSOR_BASE + 7u]  = { .lower_layer_tx_func = CANIF_transmit },
-    //[APP_PDU_SENSOR_BASE + 8u]  = { .lower_layer_tx_func = CANIF_transmit },
-    //[APP_PDU_SENSOR_BASE + 9u]  = { .lower_layer_tx_func = CANIF_transmit },
-    //[APP_PDU_SENSOR_BASE + 10u] = { .lower_layer_tx_func = CANIF_transmit },
-    //[APP_PDU_SENSOR_BASE + 11u] = { .lower_layer_tx_func = CANIF_transmit },
+    //[APP_PDU_SENSOR_BASE + 0u]  = { .tx_func = CANIF_pdur_tx },
+    //[APP_PDU_SENSOR_BASE + 1u]  = { .tx_func = CANIF_pdur_tx },
+    //[APP_PDU_SENSOR_BASE + 2u]  = { .tx_func = CANIF_pdur_tx },
+    //[APP_PDU_SENSOR_BASE + 3u]  = { .tx_func = CANIF_pdur_tx },
+    //[APP_PDU_SENSOR_BASE + 4u]  = { .tx_func = CANIF_pdur_tx },
+    //[APP_PDU_SENSOR_BASE + 5u]  = { .tx_func = CANIF_pdur_tx },
+    //[APP_PDU_SENSOR_BASE + 6u]  = { .tx_func = CANIF_pdur_tx },
+    //[APP_PDU_SENSOR_BASE + 7u]  = { .tx_func = CANIF_pdur_tx },
+    //[APP_PDU_SENSOR_BASE + 8u]  = { .tx_func = CANIF_pdur_tx },
+    //[APP_PDU_SENSOR_BASE + 9u]  = { .tx_func = CANIF_pdur_tx },
+    //[APP_PDU_SENSOR_BASE + 10u] = { .tx_func = CANIF_pdur_tx },
+    //[APP_PDU_SENSOR_BASE + 11u] = { .tx_func = CANIF_pdur_tx },
 
     /* Shifter frames go to GKT_SHIFTER's gateway, never straight to TCU */
-    [APP_PDU_GKT_LEVER_RX]     = { .upperLayerRxIndication = app_pdur_gkt_lever_rx },
-    [APP_PDU_GKT_HEARTBEAT_RX] = { .upperLayerRxIndication = app_pdur_gkt_heartbeat_rx },
+    [APP_PDU_GKT_LEVER_RX]     = { .rx_func = app_pdur_gkt_lever_rx },
+    [APP_PDU_GKT_HEARTBEAT_RX] = { .rx_func = app_pdur_gkt_heartbeat_rx },
 
     /* UDS_tx_confirmation releases the shared buffer once a response has actually gone out */
     [APP_PDU_UDS_FUNCTIONAL] =
     {
-        .upperLayerRxIndication = UDS_rx_indication,
-        .lower_layer_tx_func    = app_cantp_transmit,
-        .txConfirmation         = UDS_tx_confirmation
+        .rx_func        = UDS_rx_indication,
+        .tx_func        = CANTP_pdur_tx,
+        .tx_ctx_p       = &app_cantp_instance_s,
+        .txConfirmation = UDS_tx_confirmation
     },
     [APP_PDU_UDS_PHYSICAL] =
     {
-        .upperLayerRxIndication = UDS_rx_indication,
-        .lower_layer_tx_func    = app_cantp_transmit,
-        .txConfirmation         = UDS_tx_confirmation
+        .rx_func        = UDS_rx_indication,
+        .tx_func        = CANTP_pdur_tx,
+        .tx_ctx_p       = &app_cantp_instance_s,
+        .txConfirmation = UDS_tx_confirmation
     },
 
     /* The HUB's own requests to the nodes on CAN2 (DIAG_GW_local_reserve() picks the real node ID) */
     [APP_PDU_NODE_DIAG] =
     {
-        .upperLayerRxIndication = UDS_CLIENT_rx_indication,
-        .lower_layer_tx_func    = app_cantp_transmit,
-        .txConfirmation         = UDS_CLIENT_tx_confirmation
+        .rx_func        = UDS_CLIENT_rx_indication,
+        .tx_func        = CANTP_pdur_tx,
+        .tx_ctx_p       = &app_cantp2_instance_s,
+        .txConfirmation = UDS_CLIENT_tx_confirmation
     },
 
     /* The gateway: the CANIF receive tables map the tester's request IDs (CAN1) and the nodes' response IDs
-       (CAN2) to these two routes, and DIAG_GW is told the ID so it knows the node */
-    [APP_PDU_GW_TESTER] = { .upperLayerRxIndicationId = DIAG_GW_tester_rx },
-    [APP_PDU_GW_NODE]   = { .upperLayerRxIndicationId = DIAG_GW_node_rx },
+       (CAN2) to these two routes, and DIAG_GW is told the ID so it knows the node. It sends the frames on
+       through the two transmit routes: CANIF sends them on the ID they came in with */
+    [APP_PDU_GW_TESTER]    = { .rx_func = app_pdur_gw_tester_rx },
+    [APP_PDU_GW_NODE]      = { .rx_func = app_pdur_gw_node_rx },
+    [APP_PDU_GW_TESTER_TX] = { .tx_func = CANIF_pdur_tx },
+    [APP_PDU_GW_NODE_TX]   = { .tx_func = CANIF_pdur_tx },
 
     /* ERX_MGR follows the ERXs' heartbeats: the ISO position is in the ID, which PDUR passes up */
-    [APP_PDU_ERX_HEARTBEAT_RX] = { .upperLayerRxIndicationId = app_pdur_erx_heartbeat_rx },
+    [APP_PDU_ERX_HEARTBEAT_RX] = { .rx_func = app_pdur_erx_heartbeat_rx },
+
+    /* What ERX_MGR and AUTOCFG send to the ERXs */
+    [APP_PDU_ERX_TX] = { .tx_func = CANIF_pdur_tx },
 
     /* Plain-frame routes - CANIF sends by PDU ID (its transmit table) and queues what the controller's
        mailboxes can't take at once */
-    [APP_PDU_GKT_LED_TX]                                   = { .lower_layer_tx_func = CANIF_transmit },
-    [APP_PDU_GKT_BACKLIGHT_TX]                             = { .lower_layer_tx_func = CANIF_transmit },
-    [APP_PDU_TCU_GEAR_STATE_TX]                            = { .lower_layer_tx_func = CANIF_transmit },
-    [APP_PDU_TCU_DYNAMICS_TX]                              = { .lower_layer_tx_func = CANIF_transmit },
+    [APP_PDU_GKT_LED_TX]                                   = { .tx_func = CANIF_pdur_tx },
+    [APP_PDU_GKT_BACKLIGHT_TX]                             = { .tx_func = CANIF_pdur_tx },
+    [APP_PDU_TCU_GEAR_STATE_TX]                            = { .tx_func = CANIF_pdur_tx },
+    [APP_PDU_TCU_DYNAMICS_TX]                              = { .tx_func = CANIF_pdur_tx },
 
     /* MRA_CLUSTER - frames CarCluster sends on its second bus ([CAN2] in MRA_CLUSTER.h) also go out
        on the main bus here */
-    [APP_PDU_MRA_TX_BASE + MRA_CLUSTER_MSG_IGNITION]       = { .lower_layer_tx_func = CANIF_transmit },
-    [APP_PDU_MRA_TX_BASE + MRA_CLUSTER_MSG_KEY_STATUS]     = { .lower_layer_tx_func = CANIF_transmit },
-    [APP_PDU_MRA_TX_BASE + MRA_CLUSTER_MSG_DOOR_STATUS]    = { .lower_layer_tx_func = CANIF_transmit },
-    [APP_PDU_MRA_TX_BASE + MRA_CLUSTER_MSG_RPM]            = { .lower_layer_tx_func = CANIF_transmit },
-    [APP_PDU_MRA_TX_BASE + MRA_CLUSTER_MSG_SPEED]          = { .lower_layer_tx_func = CANIF_transmit },
-    [APP_PDU_MRA_TX_BASE + MRA_CLUSTER_MSG_TRANS1]         = { .lower_layer_tx_func = CANIF_transmit },
-    [APP_PDU_MRA_TX_BASE + MRA_CLUSTER_MSG_GEARBOX_ALIVE]  = { .lower_layer_tx_func = CANIF_transmit },
-    [APP_PDU_MRA_TX_BASE + MRA_CLUSTER_MSG_DRIVE_MODE]     = { .lower_layer_tx_func = CANIF_transmit },
-    [APP_PDU_MRA_TX_BASE + MRA_CLUSTER_MSG_COOLANT_TEMP]   = { .lower_layer_tx_func = CANIF_transmit },
-    [APP_PDU_MRA_TX_BASE + MRA_CLUSTER_MSG_ABS]            = { .lower_layer_tx_func = CANIF_transmit },
-    [APP_PDU_MRA_TX_BASE + MRA_CLUSTER_MSG_LIGHTS]         = { .lower_layer_tx_func = CANIF_transmit },
-    [APP_PDU_MRA_TX_BASE + MRA_CLUSTER_MSG_LIGHTS2]        = { .lower_layer_tx_func = CANIF_transmit },
-    [APP_PDU_MRA_TX_BASE + MRA_CLUSTER_MSG_BLINKERS]       = { .lower_layer_tx_func = CANIF_transmit },
-    [APP_PDU_MRA_TX_BASE + MRA_CLUSTER_MSG_FUEL_LEVEL]     = { .lower_layer_tx_func = CANIF_transmit },
-    [APP_PDU_MRA_TX_BASE + MRA_CLUSTER_MSG_TRACTION]       = { .lower_layer_tx_func = CANIF_transmit },
-    [APP_PDU_MRA_TX_BASE + MRA_CLUSTER_MSG_AIRBAG]         = { .lower_layer_tx_func = CANIF_transmit },
-    [APP_PDU_MRA_TX_BASE + MRA_CLUSTER_MSG_DISTRONIC]      = { .lower_layer_tx_func = CANIF_transmit },
-    [APP_PDU_MRA_TX_BASE + MRA_CLUSTER_MSG_ENGINE_WARN]    = { .lower_layer_tx_func = CANIF_transmit },
-    [APP_PDU_MRA_TX_BASE + MRA_CLUSTER_MSG_POWER_STEERING] = { .lower_layer_tx_func = CANIF_transmit },
-    [APP_PDU_MRA_TX_BASE + MRA_CLUSTER_MSG_TPMS]           = { .lower_layer_tx_func = CANIF_transmit },
-    [APP_PDU_MRA_TX_BASE + MRA_CLUSTER_MSG_ASSIST_ERRORS]  = { .lower_layer_tx_func = CANIF_transmit },
-    [APP_PDU_MRA_TX_BASE + MRA_CLUSTER_MSG_SAFETY_ERRORS]  = { .lower_layer_tx_func = CANIF_transmit },
-    [APP_PDU_MRA_TX_BASE + MRA_CLUSTER_MSG_BRAKE_FLUID]    = { .lower_layer_tx_func = CANIF_transmit },
-    [APP_PDU_MRA_TX_BASE + MRA_CLUSTER_MSG_STEERING_BTNS]  = { .lower_layer_tx_func = CANIF_transmit },
+    [APP_PDU_MRA_TX_BASE + MRA_CLUSTER_MSG_IGNITION]       = { .tx_func = CANIF_pdur_tx },
+    [APP_PDU_MRA_TX_BASE + MRA_CLUSTER_MSG_KEY_STATUS]     = { .tx_func = CANIF_pdur_tx },
+    [APP_PDU_MRA_TX_BASE + MRA_CLUSTER_MSG_DOOR_STATUS]    = { .tx_func = CANIF_pdur_tx },
+    [APP_PDU_MRA_TX_BASE + MRA_CLUSTER_MSG_RPM]            = { .tx_func = CANIF_pdur_tx },
+    [APP_PDU_MRA_TX_BASE + MRA_CLUSTER_MSG_SPEED]          = { .tx_func = CANIF_pdur_tx },
+    [APP_PDU_MRA_TX_BASE + MRA_CLUSTER_MSG_TRANS1]         = { .tx_func = CANIF_pdur_tx },
+    [APP_PDU_MRA_TX_BASE + MRA_CLUSTER_MSG_GEARBOX_ALIVE]  = { .tx_func = CANIF_pdur_tx },
+    [APP_PDU_MRA_TX_BASE + MRA_CLUSTER_MSG_DRIVE_MODE]     = { .tx_func = CANIF_pdur_tx },
+    [APP_PDU_MRA_TX_BASE + MRA_CLUSTER_MSG_COOLANT_TEMP]   = { .tx_func = CANIF_pdur_tx },
+    [APP_PDU_MRA_TX_BASE + MRA_CLUSTER_MSG_ABS]            = { .tx_func = CANIF_pdur_tx },
+    [APP_PDU_MRA_TX_BASE + MRA_CLUSTER_MSG_LIGHTS]         = { .tx_func = CANIF_pdur_tx },
+    [APP_PDU_MRA_TX_BASE + MRA_CLUSTER_MSG_LIGHTS2]        = { .tx_func = CANIF_pdur_tx },
+    [APP_PDU_MRA_TX_BASE + MRA_CLUSTER_MSG_BLINKERS]       = { .tx_func = CANIF_pdur_tx },
+    [APP_PDU_MRA_TX_BASE + MRA_CLUSTER_MSG_FUEL_LEVEL]     = { .tx_func = CANIF_pdur_tx },
+    [APP_PDU_MRA_TX_BASE + MRA_CLUSTER_MSG_TRACTION]       = { .tx_func = CANIF_pdur_tx },
+    [APP_PDU_MRA_TX_BASE + MRA_CLUSTER_MSG_AIRBAG]         = { .tx_func = CANIF_pdur_tx },
+    [APP_PDU_MRA_TX_BASE + MRA_CLUSTER_MSG_DISTRONIC]      = { .tx_func = CANIF_pdur_tx },
+    [APP_PDU_MRA_TX_BASE + MRA_CLUSTER_MSG_ENGINE_WARN]    = { .tx_func = CANIF_pdur_tx },
+    [APP_PDU_MRA_TX_BASE + MRA_CLUSTER_MSG_POWER_STEERING] = { .tx_func = CANIF_pdur_tx },
+    [APP_PDU_MRA_TX_BASE + MRA_CLUSTER_MSG_TPMS]           = { .tx_func = CANIF_pdur_tx },
+    [APP_PDU_MRA_TX_BASE + MRA_CLUSTER_MSG_ASSIST_ERRORS]  = { .tx_func = CANIF_pdur_tx },
+    [APP_PDU_MRA_TX_BASE + MRA_CLUSTER_MSG_SAFETY_ERRORS]  = { .tx_func = CANIF_pdur_tx },
+    [APP_PDU_MRA_TX_BASE + MRA_CLUSTER_MSG_BRAKE_FLUID]    = { .tx_func = CANIF_pdur_tx },
+    [APP_PDU_MRA_TX_BASE + MRA_CLUSTER_MSG_STEERING_BTNS]  = { .tx_func = CANIF_pdur_tx },
 
     /* MQB cluster frames, disabled - remove the // to enable */
-    //[APP_PDU_MQB_TX_BASE + MQB_CLUSTER_MSG_ENGINE_RPM]        = { .lower_layer_tx_func = CANIF_transmit },
-    //[APP_PDU_MQB_TX_BASE + MQB_CLUSTER_MSG_SPEED_ODOMETER]    = { .lower_layer_tx_func = CANIF_transmit },
-    //[APP_PDU_MQB_TX_BASE + MQB_CLUSTER_MSG_COOLANT_TEMP]      = { .lower_layer_tx_func = CANIF_transmit },
-    //[APP_PDU_MQB_TX_BASE + MQB_CLUSTER_MSG_OIL_TEMP]          = { .lower_layer_tx_func = CANIF_transmit },
-    //[APP_PDU_MQB_TX_BASE + MQB_CLUSTER_MSG_BOOST_PRESSURE]    = { .lower_layer_tx_func = CANIF_transmit },
-    //[APP_PDU_MQB_TX_BASE + MQB_CLUSTER_MSG_FUEL_LEVEL]        = { .lower_layer_tx_func = CANIF_transmit },
-    //[APP_PDU_MQB_TX_BASE + MQB_CLUSTER_MSG_GEAR_SELECTOR]     = { .lower_layer_tx_func = CANIF_transmit },
-    //[APP_PDU_MQB_TX_BASE + MQB_CLUSTER_MSG_GEAR_DISPLAY]      = { .lower_layer_tx_func = CANIF_transmit },
-    //[APP_PDU_MQB_TX_BASE + MQB_CLUSTER_MSG_START_STOP]        = { .lower_layer_tx_func = CANIF_transmit },
-    //[APP_PDU_MQB_TX_BASE + MQB_CLUSTER_MSG_LIGHTING]          = { .lower_layer_tx_func = CANIF_transmit },
-    //[APP_PDU_MQB_TX_BASE + MQB_CLUSTER_MSG_FOG_LIGHTS]        = { .lower_layer_tx_func = CANIF_transmit },
-    //[APP_PDU_MQB_TX_BASE + MQB_CLUSTER_MSG_DOOR_STATUS]       = { .lower_layer_tx_func = CANIF_transmit },
-    //[APP_PDU_MQB_TX_BASE + MQB_CLUSTER_MSG_AMBIENT_TEMP]      = { .lower_layer_tx_func = CANIF_transmit },
-    //[APP_PDU_MQB_TX_BASE + MQB_CLUSTER_MSG_BACKLIGHT]         = { .lower_layer_tx_func = CANIF_transmit },
-    //[APP_PDU_MQB_TX_BASE + MQB_CLUSTER_MSG_WASHER_FLUID]      = { .lower_layer_tx_func = CANIF_transmit },
-    //[APP_PDU_MQB_TX_BASE + MQB_CLUSTER_MSG_HANDBRAKE_BRAKE]   = { .lower_layer_tx_func = CANIF_transmit },
-    //[APP_PDU_MQB_TX_BASE + MQB_CLUSTER_MSG_ABS_ESP]           = { .lower_layer_tx_func = CANIF_transmit },
-    //[APP_PDU_MQB_TX_BASE + MQB_CLUSTER_MSG_WHEEL_SPEEDS]      = { .lower_layer_tx_func = CANIF_transmit },
-    //[APP_PDU_MQB_TX_BASE + MQB_CLUSTER_MSG_STEERING_ANGLE]    = { .lower_layer_tx_func = CANIF_transmit },
-    //[APP_PDU_MQB_TX_BASE + MQB_CLUSTER_MSG_EPS_WARNING]       = { .lower_layer_tx_func = CANIF_transmit },
-    //[APP_PDU_MQB_TX_BASE + MQB_CLUSTER_MSG_AIRBAG]            = { .lower_layer_tx_func = CANIF_transmit },
-    //[APP_PDU_MQB_TX_BASE + MQB_CLUSTER_MSG_SEATBELT]          = { .lower_layer_tx_func = CANIF_transmit },
-    //[APP_PDU_MQB_TX_BASE + MQB_CLUSTER_MSG_TPMS]              = { .lower_layer_tx_func = CANIF_transmit },
-    //[APP_PDU_MQB_TX_BASE + MQB_CLUSTER_MSG_BRAKE_PAD_WEAR]    = { .lower_layer_tx_func = CANIF_transmit },
-    //[APP_PDU_MQB_TX_BASE + MQB_CLUSTER_MSG_ACC]               = { .lower_layer_tx_func = CANIF_transmit },
-    //[APP_PDU_MQB_TX_BASE + MQB_CLUSTER_MSG_FRONT_ASSIST]      = { .lower_layer_tx_func = CANIF_transmit },
-    //[APP_PDU_MQB_TX_BASE + MQB_CLUSTER_MSG_LANE_ASSIST]       = { .lower_layer_tx_func = CANIF_transmit },
-    //[APP_PDU_MQB_TX_BASE + MQB_CLUSTER_MSG_FATIGUE]           = { .lower_layer_tx_func = CANIF_transmit },
-    //[APP_PDU_MQB_TX_BASE + MQB_CLUSTER_MSG_KEYLESS]           = { .lower_layer_tx_func = CANIF_transmit },
-    //[APP_PDU_MQB_TX_BASE + MQB_CLUSTER_MSG_NM_SYNC]           = { .lower_layer_tx_func = CANIF_transmit },
-    //[APP_PDU_MQB_TX_BASE + MQB_CLUSTER_MSG_GATEWAY_HEARTBEAT] = { .lower_layer_tx_func = CANIF_transmit },
-    //[APP_PDU_MQB_TX_BASE + MQB_CLUSTER_MSG_HVAC_TEMP]         = { .lower_layer_tx_func = CANIF_transmit },
-    //[APP_PDU_MQB_TX_BASE + MQB_CLUSTER_MSG_UNMAPPED]          = { .lower_layer_tx_func = CANIF_transmit },
-    //[APP_PDU_MQB_TX_BASE + MQB_CLUSTER_MSG_IGNITION]          = { .lower_layer_tx_func = CANIF_transmit },
-    //[APP_PDU_MQB_TX_BASE + MQB_CLUSTER_MSG_AUDIO_TRACK]       = { .lower_layer_tx_func = CANIF_transmit },
-    //[APP_PDU_MQB_TX_BASE + MQB_CLUSTER_MSG_NAV]               = { .lower_layer_tx_func = CANIF_transmit },
-    //[APP_PDU_MQB_TX_BASE + MQB_CLUSTER_MSG_PHONE_CALL]        = { .lower_layer_tx_func = CANIF_transmit },
-    //[APP_PDU_MQB_TX_BASE + MQB_CLUSTER_MSG_NEEDLE_SWEEP]      = { .lower_layer_tx_func = CANIF_transmit },
-    //[APP_PDU_MQB_TX_BASE + MQB_CLUSTER_MSG_TRIP_RESET]        = { .lower_layer_tx_func = CANIF_transmit },
+    //[APP_PDU_MQB_TX_BASE + MQB_CLUSTER_MSG_ENGINE_RPM]        = { .tx_func = CANIF_pdur_tx },
+    //[APP_PDU_MQB_TX_BASE + MQB_CLUSTER_MSG_SPEED_ODOMETER]    = { .tx_func = CANIF_pdur_tx },
+    //[APP_PDU_MQB_TX_BASE + MQB_CLUSTER_MSG_COOLANT_TEMP]      = { .tx_func = CANIF_pdur_tx },
+    //[APP_PDU_MQB_TX_BASE + MQB_CLUSTER_MSG_OIL_TEMP]          = { .tx_func = CANIF_pdur_tx },
+    //[APP_PDU_MQB_TX_BASE + MQB_CLUSTER_MSG_BOOST_PRESSURE]    = { .tx_func = CANIF_pdur_tx },
+    //[APP_PDU_MQB_TX_BASE + MQB_CLUSTER_MSG_FUEL_LEVEL]        = { .tx_func = CANIF_pdur_tx },
+    //[APP_PDU_MQB_TX_BASE + MQB_CLUSTER_MSG_GEAR_SELECTOR]     = { .tx_func = CANIF_pdur_tx },
+    //[APP_PDU_MQB_TX_BASE + MQB_CLUSTER_MSG_GEAR_DISPLAY]      = { .tx_func = CANIF_pdur_tx },
+    //[APP_PDU_MQB_TX_BASE + MQB_CLUSTER_MSG_START_STOP]        = { .tx_func = CANIF_pdur_tx },
+    //[APP_PDU_MQB_TX_BASE + MQB_CLUSTER_MSG_LIGHTING]          = { .tx_func = CANIF_pdur_tx },
+    //[APP_PDU_MQB_TX_BASE + MQB_CLUSTER_MSG_FOG_LIGHTS]        = { .tx_func = CANIF_pdur_tx },
+    //[APP_PDU_MQB_TX_BASE + MQB_CLUSTER_MSG_DOOR_STATUS]       = { .tx_func = CANIF_pdur_tx },
+    //[APP_PDU_MQB_TX_BASE + MQB_CLUSTER_MSG_AMBIENT_TEMP]      = { .tx_func = CANIF_pdur_tx },
+    //[APP_PDU_MQB_TX_BASE + MQB_CLUSTER_MSG_BACKLIGHT]         = { .tx_func = CANIF_pdur_tx },
+    //[APP_PDU_MQB_TX_BASE + MQB_CLUSTER_MSG_WASHER_FLUID]      = { .tx_func = CANIF_pdur_tx },
+    //[APP_PDU_MQB_TX_BASE + MQB_CLUSTER_MSG_HANDBRAKE_BRAKE]   = { .tx_func = CANIF_pdur_tx },
+    //[APP_PDU_MQB_TX_BASE + MQB_CLUSTER_MSG_ABS_ESP]           = { .tx_func = CANIF_pdur_tx },
+    //[APP_PDU_MQB_TX_BASE + MQB_CLUSTER_MSG_WHEEL_SPEEDS]      = { .tx_func = CANIF_pdur_tx },
+    //[APP_PDU_MQB_TX_BASE + MQB_CLUSTER_MSG_STEERING_ANGLE]    = { .tx_func = CANIF_pdur_tx },
+    //[APP_PDU_MQB_TX_BASE + MQB_CLUSTER_MSG_EPS_WARNING]       = { .tx_func = CANIF_pdur_tx },
+    //[APP_PDU_MQB_TX_BASE + MQB_CLUSTER_MSG_AIRBAG]            = { .tx_func = CANIF_pdur_tx },
+    //[APP_PDU_MQB_TX_BASE + MQB_CLUSTER_MSG_SEATBELT]          = { .tx_func = CANIF_pdur_tx },
+    //[APP_PDU_MQB_TX_BASE + MQB_CLUSTER_MSG_TPMS]              = { .tx_func = CANIF_pdur_tx },
+    //[APP_PDU_MQB_TX_BASE + MQB_CLUSTER_MSG_BRAKE_PAD_WEAR]    = { .tx_func = CANIF_pdur_tx },
+    //[APP_PDU_MQB_TX_BASE + MQB_CLUSTER_MSG_ACC]               = { .tx_func = CANIF_pdur_tx },
+    //[APP_PDU_MQB_TX_BASE + MQB_CLUSTER_MSG_FRONT_ASSIST]      = { .tx_func = CANIF_pdur_tx },
+    //[APP_PDU_MQB_TX_BASE + MQB_CLUSTER_MSG_LANE_ASSIST]       = { .tx_func = CANIF_pdur_tx },
+    //[APP_PDU_MQB_TX_BASE + MQB_CLUSTER_MSG_FATIGUE]           = { .tx_func = CANIF_pdur_tx },
+    //[APP_PDU_MQB_TX_BASE + MQB_CLUSTER_MSG_KEYLESS]           = { .tx_func = CANIF_pdur_tx },
+    //[APP_PDU_MQB_TX_BASE + MQB_CLUSTER_MSG_NM_SYNC]           = { .tx_func = CANIF_pdur_tx },
+    //[APP_PDU_MQB_TX_BASE + MQB_CLUSTER_MSG_GATEWAY_HEARTBEAT] = { .tx_func = CANIF_pdur_tx },
+    //[APP_PDU_MQB_TX_BASE + MQB_CLUSTER_MSG_HVAC_TEMP]         = { .tx_func = CANIF_pdur_tx },
+    //[APP_PDU_MQB_TX_BASE + MQB_CLUSTER_MSG_UNMAPPED]          = { .tx_func = CANIF_pdur_tx },
+    //[APP_PDU_MQB_TX_BASE + MQB_CLUSTER_MSG_IGNITION]          = { .tx_func = CANIF_pdur_tx },
+    //[APP_PDU_MQB_TX_BASE + MQB_CLUSTER_MSG_AUDIO_TRACK]       = { .tx_func = CANIF_pdur_tx },
+    //[APP_PDU_MQB_TX_BASE + MQB_CLUSTER_MSG_NAV]               = { .tx_func = CANIF_pdur_tx },
+    //[APP_PDU_MQB_TX_BASE + MQB_CLUSTER_MSG_PHONE_CALL]        = { .tx_func = CANIF_pdur_tx },
+    //[APP_PDU_MQB_TX_BASE + MQB_CLUSTER_MSG_NEEDLE_SWEEP]      = { .tx_func = CANIF_pdur_tx },
+    //[APP_PDU_MQB_TX_BASE + MQB_CLUSTER_MSG_TRIP_RESET]        = { .tx_func = CANIF_pdur_tx },
 };
 
 const u16_t pdur_num_routes_s = (u16_t)( sizeof( pdur_routing_table_s ) / sizeof( pdur_routing_table_s[0u] ) );
@@ -777,7 +856,7 @@ const UDS_CLIENT_cfg_st app_uds_client_cfg_s =
 {
     .route_id            = APP_PDU_NODE_DIAG,
     .num_nodes           = (u8_t)( APP_NODE_REQUEST_LAST_ID - APP_NODE_REQUEST_BASE_ID + 1u ),
-    .tp_send_func_p      = PDUR_tx,
+    .tp_send_func_p      = PDUR_tx_data,
     .reserve_func_p      = DIAG_GW_local_reserve,
     .tp_cancel_func_p    = app_node_diag_cancel,
     .request_buffer_p    = app_node_request_buffer_s,

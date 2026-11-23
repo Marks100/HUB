@@ -291,7 +291,7 @@ STATIC false_true_et uds_cfg_is_functional_route( UDS_route_id_t route_id )
 
 const UDS_init_cfg_st app_uds_init_cfg_s =
 {
-    .tp_send_func_p          = PDUR_tx,
+    .tp_send_func_p          = PDUR_tx_data,
     .message_received_notify = NULL_P,
     .service_table_p         = uds_service_table_s,
     .service_table_size      = UDS_TABLE_ROWS( uds_service_table_s ),

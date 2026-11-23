@@ -415,13 +415,13 @@ void test_a_heartbeat_from_a_position_the_hub_does_not_follow_is_ignored( void )
 *****************************************************************************************************/
 void test_the_first_and_the_last_heartbeat_id_are_followed( void )
 {
-    ERX_MGR_init_st init_cfg = app_erx_mgr_init_s;
+    ERX_MGR_positions_st positions;
 
-    STDC_memset( init_cfg.erx_iso_position, 0x00, sizeof( init_cfg.erx_iso_position ) );
-    init_cfg.erx_iso_position[0u][0u] = APP_ISO_AXLE_1_OUTER_LEFT;
-    init_cfg.erx_iso_position[0u][1u] = APP_ISO_AXLE_5_OUTER_RIGHT;
+    STDC_memset( &positions, 0x00, sizeof( positions ) );
+    positions.iso_position[0u][0u] = APP_ISO_AXLE_1_OUTER_LEFT;
+    positions.iso_position[0u][1u] = APP_ISO_AXLE_5_OUTER_RIGHT;
 
-    ERX_MGR_init( &init_cfg );
+    ERX_MGR_init( &app_erx_mgr_init_s, &positions );
     TMD_ERX_place_instance( APP_ISO_AXLE_1_OUTER_LEFT, TMD_ERX_PORT_B );
     TMD_ERX_place_instance( APP_ISO_AXLE_5_OUTER_RIGHT, TMD_ERX_PORT_A );
 

@@ -16,7 +16,7 @@
 *               TCU/GKT_SHIFTER/MQB_CLUSTER are vehicle-sim's concern. Every frame those modules
 *               send goes out via PDUR_tx() on the route id given in their cfg structs below
 *               (APP_PDU_*_TX, APP_PDU_IDS.h). app_pdur_gkt_lever_rx() below is the
-*               APP_PDU_GKT_LEVER_RX row's upperLayerRxIndication - external linkage (not STATIC)
+*               APP_PDU_GKT_LEVER_RX row's rx_func - external linkage (not STATIC)
 *               purely so that table can still reference it.
 *
 *               Every tunable scalar (not the real per-gear ratio tables below - those are fixed
@@ -387,18 +387,18 @@ STATIC u16_t app_read_engine_rpm( void )
    own P/R/N/D from the frame and then feeds it on into TCU itself (see GKT_SHIFTER.c's own header
    comment); routing it any other way would mean two different modules both claiming to own the
    shifter's real CAN IDs, and TCU would decode it before GKT_SHIFTER had updated its own gear. */
-void app_pdur_gkt_lever_rx( PDUR_pdu_id_t pdu_id, u8_t* data_p, u16_t len )
+void app_pdur_gkt_lever_rx( PDUR_pdu_id_t pdu_id, const COMSTACK_pdu_info_st* info_p )
 {
     (void)pdu_id;
-    GKT_SHIFTER_process_rx_frame( GKT_SHIFTER_STATE_CAN_ID, data_p, (u8_t)len );
+    GKT_SHIFTER_process_rx_frame( GKT_SHIFTER_STATE_CAN_ID, info_p->sdu_p, (u8_t)info_p->sdu_len );
 }
 
 /* Real bus RX for the shifter's own heartbeat (GKT_SHIFTER_HEARTBEAT_CAN_ID) - same gateway as
    app_pdur_gkt_lever_rx above, feeds GKT_SHIFTER_is_heartbeat_missing() with live data. */
-void app_pdur_gkt_heartbeat_rx( PDUR_pdu_id_t pdu_id, u8_t* data_p, u16_t len )
+void app_pdur_gkt_heartbeat_rx( PDUR_pdu_id_t pdu_id, const COMSTACK_pdu_info_st* info_p )
 {
     (void)pdu_id;
-    GKT_SHIFTER_process_rx_frame( GKT_SHIFTER_HEARTBEAT_CAN_ID, data_p, (u8_t)len );
+    GKT_SHIFTER_process_rx_frame( GKT_SHIFTER_HEARTBEAT_CAN_ID, info_p->sdu_p, (u8_t)info_p->sdu_len );
 }
 
 /* This board runs TCU itself rather than TCU being a separate physical ECU, so TCU's own

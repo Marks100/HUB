@@ -48,6 +48,9 @@ typedef enum
    APP_PDU_GW_TESTER,           /* CAN1, DIAG_GW: every node's request ID (0x718-0x799) from the tester */
    APP_PDU_GW_NODE,             /* CAN2, DIAG_GW: every node's response ID (0x618-0x699) */
    APP_PDU_ERX_HEARTBEAT_RX,    /* CAN2, ERX_MGR: every ERX heartbeat ID (0x400-0x4FF), the ISO position is in the ID */
+   APP_PDU_GW_TESTER_TX,        /* CAN1, DIAG_GW: sends every node response ID, to the tester */
+   APP_PDU_GW_NODE_TX,          /* CAN2, DIAG_GW: sends every node request ID, to the nodes */
+   APP_PDU_ERX_TX,              /* CAN2, tx-only: what the ERX folder sends (POWERSTAT, and AUTOCFG's status and request), on the ID ERX_MGR gives */
    APP_PDU_GKT_LED_TX,          /* tx-only: GKT_SHIFTER_LED_CAN_ID (0x3FD), sent by GKT_SHIFTER_tick() */
    APP_PDU_GKT_BACKLIGHT_TX,    /* tx-only: GKT_SHIFTER_BACKLIGHT_CAN_ID (0x202), sent by GKT_SHIFTER_tick() */
    APP_PDU_TCU_GEAR_STATE_TX,   /* tx-only: TCU_GEAR_STATE_CAN_ID, sent by TCU_tick() */
@@ -58,7 +61,7 @@ typedef enum
 } app_pdu_id_et;
 
 /* CANIF's own PDU IDs - the ones that are not PDUR routes: the N-PDUs CANTP knows its frames by, and the
-   transmit PDUs the gateway sends on. Plain-frame routes use their PDUR route ID as their CANIF transmit
+   transmit PDU of the HUB's own node requests. Plain-frame routes use their PDUR route ID as their CANIF transmit
    PDU ID. Kept above every route ID, so the two never collide in CANIF's tables. */
 typedef enum
 {
@@ -68,9 +71,7 @@ typedef enum
    APP_CANIF_PDU_UDS_PHYS_RX,                           /* CAN1, CANTP: physical request (APP_CAN_RX_ID) */
    APP_CANIF_PDU_UDS_PHYS_TX,                           /* CAN1, CANTP: its response (APP_CAN_TX_ID) */
    APP_CANIF_PDU_HUB_RX,                                /* CAN2, CANTP: a node's reply, presented as the virtual node's */
-   APP_CANIF_PDU_HUB_TX,                                /* CAN2, CANTP: HUB requests and Flow Controls - any node request ID */
-   APP_CANIF_PDU_GW_TESTER_TX,                          /* CAN1, DIAG_GW: every node response ID, to the tester */
-   APP_CANIF_PDU_GW_NODE_TX                             /* CAN2, DIAG_GW: every node request ID, to the nodes */
+   APP_CANIF_PDU_HUB_TX                                 /* CAN2, CANTP: HUB requests and Flow Controls - any node request ID */
 } app_canif_pdu_id_et;
 
 #endif /* APP_PDU_IDS_H */

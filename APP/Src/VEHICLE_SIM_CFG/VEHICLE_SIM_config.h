@@ -31,11 +31,11 @@ extern const ENGINE_SIM_cfg_st      engine_sim_cfg_s;
 /***************************************************************************************************
 **                              Function Prototypes                                               **
 ***************************************************************************************************/
-/* upperLayerRxIndication for INTEGRATION_STUBS.c's pdur_routing_table_s, APP_PDU_GKT_LEVER_RX
+/* rx_func for INTEGRATION_STUBS.c's pdur_routing_table_s, APP_PDU_GKT_LEVER_RX
    route - not STATIC so that table (which also carries the unrelated sensor/UDS routes, so it
    stayed in INTEGRATION_STUBS.c) can still reference it. */
-void app_pdur_gkt_lever_rx( PDUR_pdu_id_t pdu_id, u8_t* data_p, u16_t len );
-void app_pdur_gkt_heartbeat_rx( PDUR_pdu_id_t pdu_id, u8_t* data_p, u16_t len );
+void app_pdur_gkt_lever_rx( PDUR_pdu_id_t pdu_id, const COMSTACK_pdu_info_st* info_p );
+void app_pdur_gkt_heartbeat_rx( PDUR_pdu_id_t pdu_id, const COMSTACK_pdu_info_st* info_p );
 void app_tcu_gear_state_local_relay( void );  /* call once per cycle, right after TCU_tick() - see SCHED_config.c */
 void app_engine_sim_cluster_relay( void );    /* call once per cycle, right after ENGINE_SIM_tick() - see SCHED_config.c */
 

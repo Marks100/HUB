@@ -36,6 +36,7 @@
 #include "DIAG_GW.h"
 #include "AUTOCFG.h"
 #include "ERX_MGR.h"
+#include "ERX_RF.h"
 #include "HAL_config.h"   /* HW_VARIANT: what the hardware variant has fitted, and so what is wired below */
 
 /* The diagnostic nodes on CAN2: an ERX at one of the ISO positions of APP_ISO_POSITIONS.h (the 69 from 0x16 to 0x5A, of
@@ -76,7 +77,9 @@ extern const DBG_MGR_cfg_st             dbg_mgr_cfg_s;
 extern const TIME_cfg_st                time_cfg_s;
 extern const WDG_HW_STM32_config_st     wdg_cfg_s;
 extern const AUTOCFG_init_st            app_autocfg_init_s;
+extern const ERX_RF_init_st              app_erx_rf_init_s;
 extern const ERX_MGR_init_st            app_erx_mgr_init_s;
+extern const ERX_MGR_positions_st       app_erx_mgr_positions_s;
 
 /* Not fitted on BLUE_PILL: the display, buzzer and LEDs, the onboard button, the radio, and WiFi and cloud */
 #if ( HW_VARIANT == SUPER_PILL )
