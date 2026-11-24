@@ -41,7 +41,7 @@
 #include "VPM_CLIENT.h"
 #include "VPM_config.h"
 #include "TYRE_DATA.h"
-#include "NODE_INFO.h"
+#include "ERX_IDENT.h"
 #include "DATASET_config.h"
 
 extern u32_t __isr_vector_start;   /* Linker symbol - APP/linker_script/STM32F103C8_flash.ld */
@@ -147,7 +147,7 @@ void app_main( void )
    CANIF_init( canif_channels_s, (u8_t)APP_CAN_NUM_CHANNELS, canif_tx_pdus_s, canif_num_tx_pdus_s );
    DIAG_GW_init( &app_diag_gw_cfg_s );
    UDS_CLIENT_init( &app_uds_client_cfg_s );
-   NODE_INFO_init();
+   ERX_IDENT_init( APP_ISO_POSITION_FIRST );
    ERX_MGR_init( &app_erx_mgr_init_s, &app_erx_mgr_positions_s );    /* first: AUTOCFG works out its ports from ERX_MGR's table */
    AUTOCFG_init( &app_autocfg_init_s );
    ERX_RF_init( &app_erx_rf_init_s );

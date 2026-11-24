@@ -17,7 +17,7 @@
 #include "STDC.h"
 
 #include "INTEGRATION_STUBS.h"
-#include "NODE_INFO.h"
+#include "ERX_IDENT.h"
 
 #include "TMD_CANTP.h"
 #include "TMD_ERX.h"
@@ -234,7 +234,7 @@ void test_a_tester_reaches_the_erx_at_the_first_id_of_the_gateway_range( void )
 {
     const u8_t request[2u] = { TMD_UDS_SID_DIAGNOSTIC_SESSION_CONTROL, TMD_UDS_SESSION_EXTENDED };
     u8_t       response[SW_TEST_TESTER_RESPONSE_MAX_LEN];
-    u8_t       part_number_len = 0u;
+    u8_t       part_number[ERX_IDENT_HW_PART_NUMBER_LEN];
     u16_t      len = 0u;
 
     TMD_ERX_place_instance( APP_ISO_AXLE_1_OUTER_LEFT, TMD_ERX_PORT_B );
@@ -252,7 +252,7 @@ void test_a_tester_reaches_the_erx_at_the_first_id_of_the_gateway_range( void )
 
     TMD_TIME_advance_time_ms( TEST_CLIENT_READ_MS );
 
-    TEST_ASSERT_NOT_NULL( NODE_INFO_get( NODE_INFO_PART_NUMBER, &part_number_len ) );    /* the HUB's own client still reads the same ERX */
+    TEST_ASSERT_EQUAL( TRUE, ERX_IDENT_get( 1u, part_number ) );    /* the HUB's own client still reads the same ERX: the first of port 1 */
 }
 
 /*!

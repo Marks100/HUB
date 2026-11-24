@@ -839,7 +839,7 @@ const u16_t pdur_num_routes_s = (u16_t)( sizeof( pdur_routing_table_s ) / sizeof
 /***************************************************************************************************
 **                              UDS_CLIENT                                                        **
 ***************************************************************************************************/
-/* What to read or write, and when, is NODE_INFO's and the layers above's to decide: each request names the function that
+/* What to read or write, and when, is ERX_IDENT's and the layers above's to decide: each request names the function that
    is told its outcome. Every request asks DIAG_GW for the selected node's pair first, so it never interrupts a tester.
    P2/P2* placeholders until the node's own values are known: ISO 14229-2 defaults plus margin */
 STATIC u8_t app_node_request_buffer_s[ APP_NODE_REQUEST_BUFFER_SIZE ];
