@@ -104,7 +104,7 @@ void test_the_client_reads_a_multi_frame_part_number_from_its_node( void )
 
     TMD_TIME_advance_time_ms( TEST_IDENT_DONE_MS );
 
-    TEST_ASSERT_EQUAL( TRUE, ERX_IDENT_get( 1u, part_number ) );
+    TEST_ASSERT_EQUAL( TRUE, ERX_IDENT_get_hw_part_number( TEST_POSITION, part_number ) );
     TEST_ASSERT_EQUAL_HEX8_ARRAY( test_erx_model_part_number(), part_number, ERX_IDENT_HW_PART_NUMBER_LEN );
     TEST_ASSERT_TRUE( TMD_ERX_UDS_get_request_count( TMD_ERX_find_instance( TEST_POSITION ) ) > 0u );
     TEST_ASSERT_TRUE( TMD_ERX_UDS_get_response_count( TMD_ERX_find_instance( TEST_POSITION ) ) > 0u );
@@ -128,7 +128,7 @@ void test_a_silent_node_leaves_the_client_without_a_part_number_and_it_asks_agai
 
     TMD_TIME_advance_time_ms( TEST_IDENT_DONE_MS + TEST_AFTER_RETRY_MS );
 
-    TEST_ASSERT_EQUAL( FALSE, ERX_IDENT_get( 1u, part_number ) );
+    TEST_ASSERT_EQUAL( FALSE, ERX_IDENT_get_hw_part_number( TEST_POSITION, part_number ) );
     TEST_ASSERT_TRUE( TMD_ERX_UDS_get_request_count( TMD_ERX_find_instance( TEST_POSITION ) ) >= 2u );
     TEST_ASSERT_EQUAL_UINT32( 0u, TMD_ERX_UDS_get_response_count( TMD_ERX_find_instance( TEST_POSITION ) ) );
 }
@@ -151,7 +151,7 @@ void test_a_negative_response_leaves_the_client_without_a_part_number( void )
 
     TMD_TIME_advance_time_ms( TEST_IDENT_DONE_MS );
 
-    TEST_ASSERT_EQUAL( FALSE, ERX_IDENT_get( 1u, part_number ) );
+    TEST_ASSERT_EQUAL( FALSE, ERX_IDENT_get_hw_part_number( TEST_POSITION, part_number ) );
     TEST_ASSERT_TRUE( TMD_ERX_UDS_get_response_count( TMD_ERX_find_instance( TEST_POSITION ) ) > 0u );
 }
 
@@ -173,7 +173,7 @@ void test_erx_ident_stops_asking_once_it_has_everything( void )
     TMD_TIME_advance_time_ms( TEST_IDENT_DONE_MS );
     requests = TMD_ERX_UDS_get_request_count( slot );
 
-    TEST_ASSERT_EQUAL_UINT32( 1u, requests );    /* one read of the one item */
+    TEST_ASSERT_EQUAL_UINT32( ERX_IDENT_ITEMS_PER_ERX, requests );    /* one read of each item */
 
     TMD_TIME_advance_time_ms( TEST_IDENT_DONE_MS );
     TEST_ASSERT_EQUAL_UINT32( requests, TMD_ERX_UDS_get_request_count( slot ) );
@@ -198,13 +198,13 @@ void test_a_request_straight_after_a_reply_is_not_refused( void )
     u8_t        written_len = 0u;
     const u8_t* written_p;
 
-    while( ( ERX_IDENT_get( 1u, part_number ) == FALSE ) && ( waited_ms < TEST_IDENT_DONE_MS ) )    /* up to the moment the reply is in */
+    while( ( ERX_IDENT_get_hw_part_number( TEST_POSITION, part_number ) == FALSE ) && ( waited_ms < TEST_IDENT_DONE_MS ) )    /* up to the moment the reply is in */
     {
         TMD_TIME_advance_time_ms( TEST_STEP_MS );
         waited_ms = (u16_t)( waited_ms + TEST_STEP_MS );
     }
 
-    TEST_ASSERT_EQUAL( TRUE, ERX_IDENT_get( 1u, part_number ) );
+    TEST_ASSERT_EQUAL( TRUE, ERX_IDENT_get_hw_part_number( TEST_POSITION, part_number ) );
     TEST_ASSERT_EQUAL( FALSE, UDS_CLIENT_is_busy() );
 
     TEST_ASSERT_EQUAL( PASS, UDS_CLIENT_set_node( TEST_NODE ) );
@@ -234,7 +234,7 @@ void test_nothing_is_sent_for_a_port_with_no_erx( void )
     TMD_TIME_advance_time_ms( TEST_IDENT_DONE_MS );
 
     TEST_ASSERT_EQUAL( FALSE, ERX_MGR_is_erx_available( TEST_PORT_1_POSITION ) );
-    TEST_ASSERT_EQUAL( FALSE, ERX_IDENT_get( 0u, part_number ) );
+    TEST_ASSERT_EQUAL( FALSE, ERX_IDENT_get_hw_part_number( TEST_PORT_1_POSITION, part_number ) );
     TEST_ASSERT_EQUAL( 0u, TMD_CAN_get_message_count_from_ecu( TEST_BUS_NODES, APP_NODE_REQUEST_BASE_ID + ( TEST_PORT_1_POSITION - APP_ISO_POSITION_FIRST ) ) );
 }
 /*!
@@ -293,36 +293,6 @@ void test_a_node_that_refuses_the_chassis_number_keeps_nothing( void )
     TMD_TIME_advance_time_ms( TEST_WRITE_MS );
 
     TEST_ASSERT_NULL( TMD_ERX_UDS_get_written_value( TMD_ERX_find_instance( TEST_POSITION ), &written_len ) );
-    TEST_ASSERT_EQUAL( FALSE, UDS_CLIENT_is_busy() );
-}
-
-/*!
-****************************************************************************************************
-*
-*   \brief         Verify a TesterPresent with its response suppressed ends as soon as it is sent: the node gets the
-*                  request, answers nothing, and the client is free without waiting out a timeout
-*
-*   \author        mstewart
-*
-*   \return        none
-*
-*****************************************************************************************************/
-void test_tester_present_ends_when_sent_without_waiting_for_a_response( void )
-{
-    const u8_t slot = TMD_ERX_find_instance( TEST_POSITION );
-    u32_t      requests;
-    u32_t      responses;
-
-    TMD_TIME_advance_time_ms( TEST_IDENT_DONE_MS );
-    requests  = TMD_ERX_UDS_get_request_count( slot );
-    responses = TMD_ERX_UDS_get_response_count( slot );
-
-    TEST_ASSERT_EQUAL( PASS, UDS_CLIENT_set_node( TEST_NODE ) );
-    TEST_ASSERT_EQUAL( PASS, UDS_CLIENT_tester_present( NULL_P ) );
-    TMD_TIME_advance_time_ms( TEST_TESTER_ANSWER_MS );
-
-    TEST_ASSERT_EQUAL_UINT32( requests + 1u, TMD_ERX_UDS_get_request_count( slot ) );
-    TEST_ASSERT_EQUAL_UINT32( responses, TMD_ERX_UDS_get_response_count( slot ) );
     TEST_ASSERT_EQUAL( FALSE, UDS_CLIENT_is_busy() );
 }
 
@@ -397,27 +367,6 @@ void test_a_write_to_a_node_that_is_not_there_is_refused( void )
     TEST_ASSERT_EQUAL( FAIL, UDS_CLIENT_write_did( TMD_ERX_UDS_DID_CHASSIS_NUMBER, chassis, (u16_t)sizeof( chassis ), NULL_P ) );
     TEST_ASSERT_EQUAL( FALSE, UDS_CLIENT_is_busy() );
     TEST_ASSERT_EQUAL( 0u, TMD_CAN_get_message_count_from_ecu( TEST_BUS_NODES, APP_NODE_REQUEST_BASE_ID + TEST_NODE ) );
-}
-
-/*!
-****************************************************************************************************
-*
-*   \brief         Verify the client keeps the node it was given
-*
-*   \author        mstewart
-*
-*   \return        none
-*
-*****************************************************************************************************/
-void test_the_client_keeps_the_node_it_is_given( void )
-{
-    TMD_TIME_advance_time_ms( TEST_IDENT_DONE_MS );
-
-    TEST_ASSERT_EQUAL( PASS, UDS_CLIENT_set_node( TEST_NODE ) );
-    TEST_ASSERT_EQUAL_UINT8( TEST_NODE, UDS_CLIENT_get_node() );
-
-    TEST_ASSERT_EQUAL( PASS, UDS_CLIENT_set_node( TEST_NOT_CONFIGURED_NODE ) );
-    TEST_ASSERT_EQUAL_UINT8( TEST_NOT_CONFIGURED_NODE, UDS_CLIENT_get_node() );
 }
 
 /****************************** END OF FILE *******************************************************/

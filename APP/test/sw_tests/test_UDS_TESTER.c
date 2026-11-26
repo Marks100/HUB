@@ -252,7 +252,7 @@ void test_a_tester_reaches_the_erx_at_the_first_id_of_the_gateway_range( void )
 
     TMD_TIME_advance_time_ms( TEST_CLIENT_READ_MS );
 
-    TEST_ASSERT_EQUAL( TRUE, ERX_IDENT_get( 1u, part_number ) );    /* the HUB's own client still reads the same ERX: the first of port 1 */
+    TEST_ASSERT_EQUAL( TRUE, ERX_IDENT_get_hw_part_number( APP_ISO_AXLE_1_OUTER_LEFT, part_number ) );    /* the HUB's own client still reads the same ERX: the first of port 1 */
 }
 
 /*!
